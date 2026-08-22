@@ -1,0 +1,8 @@
+packages:
+  - apps/web
+
+allowBuilds:
+  esbuild: true
+  ffmpeg-static: true
+  ffprobe-static: true
+  unrs-resolver: true

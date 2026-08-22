@@ -1,0 +1,15 @@
+.DS_Store
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.pyc
+node_modules/
+.pnpm-store/
+.next/
+*.tsbuildinfo
+data/
+artifacts/
+!fixtures/

@@ -1,0 +1,37 @@
+# Clipper
+
+Clipper is a local-first application for turning media you are authorized to repurpose into reviewable vertical clips. The core pipeline uses local models and local FFmpeg processes; it does not require a cloud-model account and never publishes automatically.
+
+The current vertical slice provides secure upload, media probing, durable stage state, provider-based `faster-whisper` transcription, Ollama/Qwen editorial selection, schema-validated editing plans, deterministic 9:16 FFmpeg rendering, subtitles, and a small review UI. Human approval is required before final rendering.
+
+> Importing a publicly accessible URL does **not** grant permission to republish it. Only process media you own, license, or have explicit authorization to repurpose.
+
+## Prerequisites
+
+- Python 3.13 (Python 3.12 is also supported; Python 3.14 is excluded for native ML compatibility)
+- `uv`
+- Node.js 22 LTS or newer and `pnpm`
+- FFmpeg and ffprobe 7 or newer
+- Ollama with a suitable instruction model, such as `qwen3:8b-q4_K_M`
+
+## Development
+
+```bash
+cp .env.example .env
+uv sync --project apps/api --extra dev
+pnpm install
+pnpm dev
+```
+
+`pnpm dev` starts the API on port 8000 and web client on port 3000. Run `pnpm doctor` before processing media. Model downloads are explicit user actions; see [docs/models.md](docs/models.md).
+
+```bash
+pnpm check
+pnpm test
+```
+
+The data directory contains the SQLite database, private source media, stage artifacts, and exports. Back it up to preserve completed work. See [docs/architecture.md](docs/architecture.md), [docs/security.md](docs/security.md), and [docs/troubleshooting.md](docs/troubleshooting.md).
+
+## Scope
+
+This repository intentionally focuses on the local clipping workflow. Publishing remains an adapter boundary and has no browser automation. Phase-two Remotion templates, face tracking, VLM reranking, and publishing adapters are described in the architecture plan but are not claimed as complete.
