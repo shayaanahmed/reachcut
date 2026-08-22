@@ -1,6 +1,6 @@
 import { projectSchema, type Project } from "./contracts";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000/api";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
 
 export async function listProjects(): Promise<Project[]> {
   const response = await fetch(`${API_URL}/projects`, { cache: "no-store" });

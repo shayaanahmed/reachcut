@@ -1,0 +1,57 @@
+name: clipper
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    init: true
+    environment:
+      CLIPPER_DATA_DIR: /data
+      CLIPPER_DATABASE_URL: sqlite:////data/clipper.db
+      CLIPPER_EDITORIAL_BASE_URL: ${CLIPPER_DOCKER_EDITORIAL_BASE_URL:-http://host.docker.internal:11434}
+      CLIPPER_EDITORIAL_MODEL: ${CLIPPER_EDITORIAL_MODEL:-qwen3:8b-q4_K_M}
+      CLIPPER_WHISPER_MODEL: ${CLIPPER_WHISPER_MODEL:-small}
+      CLIPPER_MAX_UPLOAD_BYTES: ${CLIPPER_MAX_UPLOAD_BYTES:-8589934592}
+      CLIPPER_MAX_DURATION_SECONDS: ${CLIPPER_MAX_DURATION_SECONDS:-21600}
+      HF_HOME: /models/huggingface
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    ports:
+      - "127.0.0.1:${CLIPPER_API_PORT:-8000}:8000"
+    volumes:
+      - clipper-data:/data
+      - whisper-models:/models/huggingface
+    tmpfs:
+      - /tmp:size=2g,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    stop_grace_period: 30s
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    init: true
+    environment:
+      API_INTERNAL_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+        restart: true
+    ports:
+      - "127.0.0.1:${CLIPPER_WEB_PORT:-3000}:3000"
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+      - /app/apps/web/.next/cache:size=128m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 15s
+
+volumes:
+  clipper-data:
+  whisper-models:

@@ -16,6 +16,27 @@ The current vertical slice provides secure upload, media probing, durable stage 
 
 ## Development
 
+### Docker Compose
+
+The fully containerized CPU setup needs only Docker Desktop or Docker Engine with Compose:
+
+```bash
+cp .env.example .env
+docker compose -f compose.yaml -f compose.ollama.yaml --profile setup run --rm model-init
+docker compose -f compose.yaml -f compose.ollama.yaml up --build -d
+```
+
+Open [http://localhost:3000](http://localhost:3000). The first command explicitly downloads the configured editorial model into a persistent Docker volume. Whisper downloads its configured model on the first transcription and caches it in a separate volume. Application projects and exports persist in `clipper-data`.
+
+```bash
+docker compose -f compose.yaml -f compose.ollama.yaml logs -f
+docker compose -f compose.yaml -f compose.ollama.yaml down
+```
+
+On Apple Silicon, run Ollama natively to retain Metal acceleration, then use `docker compose up --build -d`; the API container reaches it through `host.docker.internal`. For an NVIDIA-backed Ollama container, append `-f compose.nvidia.yaml`. See [docs/docker.md](docs/docker.md) for volume backups, model changes, troubleshooting, and security notes.
+
+### Native development
+
 ```bash
 cp .env.example .env
 uv sync --project apps/api --extra dev

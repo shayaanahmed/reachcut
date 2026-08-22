@@ -1,0 +1,15 @@
+.git
+.github
+.env
+.pnpm-store
+**/.next
+**/.pytest_cache
+**/.ruff_cache
+**/.venv
+**/__pycache__
+**/*.pyc
+**/*.tsbuildinfo
+**/node_modules
+artifacts
+data
+fixtures/*.mp4
