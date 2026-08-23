@@ -72,3 +72,53 @@ def test_keeps_valid_candidates_and_discards_unsafe_timestamps(
     candidates = provider._generate("test prompt")
 
     assert candidates == [valid]
+
+
+def test_normalizes_unambiguous_absolute_nested_timestamps(
+    make_plan: Callable[..., EditingPlanV1],
+) -> None:
+    absolute = make_plan(start=300, end=360).model_dump(mode="json")
+    absolute["hook"] = {
+        "text": "Absolute hook",
+        "start_seconds": 300,
+        "end_seconds": 303,
+    }
+    absolute["emphasis"] = [
+        {
+            "words": ["important"],
+            "style": "primary",
+            "start_seconds": 310,
+            "end_seconds": 311,
+        }
+    ]
+    absolute["effects"] = [{"time_seconds": 320, "type": "punch_zoom", "parameters": {}}]
+    absolute["cta"] = {
+        "text": "Keep watching",
+        "start_seconds": 355,
+        "end_seconds": 359,
+    }
+
+    valid, errors = OllamaEditorialProvider._validated_candidates({"candidates": [absolute]})
+
+    assert errors == []
+    assert valid[0]["hook"]["start_seconds"] == 0
+    assert valid[0]["hook"]["end_seconds"] == 3
+    assert valid[0]["emphasis"][0]["start_seconds"] == 10
+    assert valid[0]["effects"][0]["time_seconds"] == 20
+    assert valid[0]["cta"]["start_seconds"] == 55
+
+
+def test_does_not_normalize_ambiguous_out_of_range_timestamp(
+    make_plan: Callable[..., EditingPlanV1],
+) -> None:
+    unsafe = make_plan(start=300, end=360).model_dump(mode="json")
+    unsafe["hook"] = {
+        "text": "Outside source",
+        "start_seconds": 299,
+        "end_seconds": 303,
+    }
+
+    valid, errors = OllamaEditorialProvider._validated_candidates({"candidates": [unsafe]})
+
+    assert valid == []
+    assert "relative timestamp exceeds selected source duration" in errors[0]

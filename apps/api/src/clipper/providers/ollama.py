@@ -124,13 +124,81 @@ class OllamaEditorialProvider:
         errors: list[str] = []
         for index, item in enumerate(items[:25]):
             try:
-                plan = EditingPlanV1.model_validate(item)
+                plan = EditingPlanV1.model_validate(
+                    OllamaEditorialProvider._normalize_relative_timestamps(item)
+                )
                 valid.append(plan.model_dump(mode="json"))
             except ValidationError as error:
                 issue = error.errors(include_url=False)[0]
                 location = ".".join(str(part) for part in issue["loc"])
                 errors.append(f"candidate {index + 1} {location}: {issue['msg']}")
         return valid, errors
+
+    @staticmethod
+    def _normalize_relative_timestamps(item: Any) -> Any:
+        """Repair only unambiguous absolute-to-relative timestamp mistakes.
+
+        Source boundaries are absolute media timestamps. Nested hook, emphasis,
+        effect, and CTA timestamps are relative to the selected clip. Local models
+        sometimes copy absolute transcript timestamps into every field despite the
+        prompt. Values wholly inside the source interval can be converted safely;
+        anything ambiguous is left unchanged for strict schema validation to reject.
+        """
+        if not isinstance(item, dict):
+            return item
+        source = item.get("source")
+        if not isinstance(source, dict):
+            return item
+        source_start = source.get("start_seconds")
+        source_end = source.get("end_seconds")
+        if not isinstance(source_start, int | float) or not isinstance(source_end, int | float):
+            return item
+        if source_start < 0 or source_end <= source_start:
+            return item
+
+        normalized = dict(item)
+        duration = source_end - source_start
+
+        def normalize_range(value: Any) -> Any:
+            if not isinstance(value, dict):
+                return value
+            start = value.get("start_seconds")
+            end = value.get("end_seconds")
+            if not isinstance(start, int | float) or not isinstance(end, int | float):
+                return value
+            if 0 <= start < end <= duration:
+                return value
+            if source_start <= start < end <= source_end:
+                return {
+                    **value,
+                    "start_seconds": start - source_start,
+                    "end_seconds": end - source_start,
+                }
+            return value
+
+        for name in ("hook", "cta"):
+            if name in normalized:
+                normalized[name] = normalize_range(normalized[name])
+        emphasis = normalized.get("emphasis")
+        if isinstance(emphasis, list):
+            normalized["emphasis"] = [normalize_range(value) for value in emphasis]
+        effects = normalized.get("effects")
+        if isinstance(effects, list):
+            normalized_effects: list[Any] = []
+            for effect in effects:
+                if not isinstance(effect, dict):
+                    normalized_effects.append(effect)
+                    continue
+                time = effect.get("time_seconds")
+                if (
+                    isinstance(time, int | float)
+                    and time > duration
+                    and source_start <= time <= source_end
+                ):
+                    effect = {**effect, "time_seconds": time - source_start}
+                normalized_effects.append(effect)
+            normalized["effects"] = normalized_effects
+        return normalized
 
     @staticmethod
     def _chunks(transcript: Transcript, max_chars: int = 8_000) -> list[str]:
@@ -153,7 +221,9 @@ class OllamaEditorialProvider:
         return (
             "Find up to 5 self-contained 20-180 second excerpts. Return only JSON as "
             '{"candidates":[EditingPlanV1,...]}. Timestamps in source are absolute; hook, '
-            "emphasis, effects, and CTA timestamps are relative to the excerpt. Prefer coherent "
+            "emphasis, effects, and CTA timestamps are relative to the excerpt: the clip always "
+            "starts at 0.0, so never copy an absolute source timestamp into those nested fields. "
+            "For example, source 300-360 has a hook at 0-3, not 300-303. Prefer coherent "
             "ideas with strong openings and natural endings. Scores are editorial heuristics. "
             "Use schema_version 1.0, caption_style clean, no effects unless clearly justified, "
             "and include a concise rationale. Transcript:\n" + chunk
