@@ -15,7 +15,9 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 FROM dependencies AS build
 COPY apps/web ./apps/web
 ARG API_INTERNAL_URL=http://api:8000
+ARG NEXT_PUBLIC_UPLOAD_API_URL=http://127.0.0.1:8000/api
 ENV API_INTERNAL_URL=$API_INTERNAL_URL \
+    NEXT_PUBLIC_UPLOAD_API_URL=$NEXT_PUBLIC_UPLOAD_API_URL \
     NEXT_TELEMETRY_DISABLED=1
 RUN pnpm --dir apps/web build
 

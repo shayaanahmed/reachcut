@@ -34,6 +34,8 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_UPLOAD_API_URL: ${CLIPPER_BROWSER_API_URL:-http://127.0.0.1:8000/api}
     restart: unless-stopped
     init: true
     environment:

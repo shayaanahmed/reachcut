@@ -1,6 +1,8 @@
 import { projectSchema, type Project } from "./contracts";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
+const UPLOAD_API_URL =
+  process.env.NEXT_PUBLIC_UPLOAD_API_URL ?? "http://127.0.0.1:8000/api";
 
 export async function listProjects(): Promise<Project[]> {
   const response = await fetch(`${API_URL}/projects`, { cache: "no-store" });
@@ -10,7 +12,7 @@ export async function listProjects(): Promise<Project[]> {
 }
 
 export async function uploadProject(data: FormData): Promise<Project> {
-  const response = await fetch(`${API_URL}/projects/upload`, {
+  const response = await fetch(`${UPLOAD_API_URL}/projects/upload`, {
     method: "POST",
     body: data,
   });

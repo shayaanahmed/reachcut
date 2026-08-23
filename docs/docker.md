@@ -36,6 +36,8 @@ docker compose up --build -d
 
 The API uses `http://host.docker.internal:11434`. Override `CLIPPER_DOCKER_EDITORIAL_BASE_URL` in `.env` for another trusted endpoint. The separate variable prevents Docker-specific addressing from changing native development.
 
+Large media uploads go directly from the browser to the FastAPI port instead of passing through Next.js, whose rewrite proxy buffers request bodies and defaults to 10 MB. If you change `CLIPPER_API_PORT`, also update `CLIPPER_BROWSER_API_URL` and rebuild the web image.
+
 ## Storage and backups
 
 - `clipper-data`: SQLite database, uploaded source media, stage artifacts, previews, and exports.
