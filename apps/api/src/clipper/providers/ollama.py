@@ -7,11 +7,14 @@ from pathlib import Path
 from typing import Any, Literal
 
 import httpx
+import structlog
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from clipper.domain.editing_plan import EditingPlanV1, Hook, Scores, TimeRange
 from clipper.domain.transcript import Transcript
 from clipper.transcription import CancellationProbe, ProgressReporter
+
+logger = structlog.get_logger()
 
 
 class EditorialCandidate(BaseModel):
@@ -43,9 +46,30 @@ class CandidateOption:
 class EditorialOutputError(ValueError):
     """The local editorial model returned data outside the editorial contract."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason: str | None = None,
+        validation: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.reason = reason
+        self.validation = validation
+
+
+@dataclass(frozen=True)
+class EditorialGenerationConfig:
+    """Token budgets for normal generation and a truncation recovery attempt."""
+
+    num_ctx: int = 8_192
+    num_predict: int = 2_048
+    retry_num_ctx: int = 16_384
+    retry_num_predict: int = 4_096
+
 
 class OllamaEditorialProvider:
-    CONTRACT_VERSION = "editorial-ranking-4"
+    CONTRACT_VERSION = "editorial-ranking-6"
 
     def __init__(
         self,
@@ -53,11 +77,13 @@ class OllamaEditorialProvider:
         model: str,
         timeout_seconds: float = 600,
         cache_dir: Path | None = None,
+        generation: EditorialGenerationConfig | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout_seconds = timeout_seconds
         self.cache_dir = cache_dir
+        self.generation = generation or EditorialGenerationConfig()
 
     @property
     def identity(self) -> str:
@@ -76,30 +102,55 @@ class OllamaEditorialProvider:
         batches = self._candidate_batches(options)
         if not batches:
             raise EditorialOutputError("transcript contained no suitable candidate windows")
+        desired_count = min(target_count, len(options))
         options_by_id = {option.candidate_id: option for option in options}
         shortlists: list[dict[str, Any]] = []
         progress(0.02)
         for index, batch in enumerate(batches):
             if cancelled():
                 raise InterruptedError("editorial selection cancelled")
-            shortlists.extend(
-                self.generate_structured(
+            requested_count = min(3, len(batch))
+            try:
+                ranked = self.generate_structured(
                     self._batch_prompt(batch),
+                    minimum_candidates=requested_count,
                     allowed_ids={option.candidate_id for option in batch},
                 )
-            )
+            except EditorialOutputError as error:
+                if error.reason != "length":
+                    raise
+                logger.warning(
+                    "editorial_batch_fallback",
+                    reason=error.reason,
+                    requested_count=requested_count,
+                    batch_size=len(batch),
+                )
+                ranked = self.fallback_candidates(batch, requested_count)
+            shortlists.extend(ranked)
             progress(0.82 * (index + 1) / len(batches))
-        shortlist_limit = max(target_count * 3, 15)
+        shortlist_limit = max(desired_count * 3, 15)
         shortlists = sorted(
             shortlists,
             key=lambda item: int(item.get("scores", {}).get("overall", 0)),
             reverse=True,
         )[:shortlist_limit]
-        reranked = self.generate_structured(
-            self._rerank_prompt(shortlists, target_count),
-            minimum_candidates=target_count,
-            allowed_ids={item["candidate_id"] for item in shortlists},
-        )
+        rerank_count = min(desired_count, len(shortlists))
+        try:
+            reranked = self.generate_structured(
+                self._rerank_prompt(shortlists, rerank_count),
+                minimum_candidates=rerank_count,
+                allowed_ids={item["candidate_id"] for item in shortlists},
+            )
+        except EditorialOutputError as error:
+            if error.reason != "length":
+                raise
+            logger.warning(
+                "editorial_rerank_fallback",
+                reason=error.reason,
+                requested_count=rerank_count,
+                shortlist_size=len(shortlists),
+            )
+            reranked = self.fallback_rerank(shortlists, rerank_count)
         progress(0.98)
         plans = [
             self.create_editing_plan(
@@ -107,11 +158,11 @@ class OllamaEditorialProvider:
             )
             for item in reranked
         ]
-        if len(plans) < target_count:
+        if len(plans) < rerank_count:
             raise EditorialOutputError(
-                f"editorial model returned {len(plans)} candidates; need {target_count}"
+                f"editorial model returned {len(plans)} candidates; need {rerank_count}"
             )
-        return plans[:target_count]
+        return plans[:rerank_count]
 
     def rank_options(self, options: list[CandidateOption]) -> list[dict[str, Any]]:
         """Rank supplied options through the provider's validated public contract."""
@@ -131,6 +182,7 @@ class OllamaEditorialProvider:
             return cached
         validation_hint = ""
         for attempt in range(2):
+            retry = attempt == 1
             response = httpx.post(
                 f"{self.base_url}/api/generate",
                 json={
@@ -139,7 +191,17 @@ class OllamaEditorialProvider:
                     "stream": False,
                     "think": False,
                     "format": CandidateEnvelope.model_json_schema(),
-                    "options": {"temperature": 0.1, "num_ctx": 8_192, "num_predict": 2_048},
+                    "options": {
+                        "temperature": 0.1,
+                        "num_ctx": (
+                            self.generation.retry_num_ctx if retry else self.generation.num_ctx
+                        ),
+                        "num_predict": (
+                            self.generation.retry_num_predict
+                            if retry
+                            else self.generation.num_predict
+                        ),
+                    },
                 },
                 timeout=self.timeout_seconds,
             )
@@ -161,17 +223,35 @@ class OllamaEditorialProvider:
                     if validation_errors:
                         detail += f"; {'; '.join(validation_errors[:3])}"
                 except json.JSONDecodeError:
-                    detail = "response field was not valid JSON"
+                    recovered = self.recover_truncated_candidates(content, allowed_ids)
+                    if len(recovered) >= minimum_candidates:
+                        self._write_cache(prompt, recovered)
+                        return recovered
+                    detail = (
+                        "response field was not valid JSON; "
+                        f"recovered {len(recovered)} of {minimum_candidates} required candidates"
+                    )
             if attempt == 0:
-                validation_hint = (
-                    "\nYour previous response was rejected by the editorial ranking contract: "
-                    f"{detail}. Copy only candidate IDs supplied in the options."
-                )
+                done_reason = payload.get("done_reason", "unknown")
+                if done_reason == "length":
+                    validation_hint = (
+                        "\nThe previous response was truncated. Return compact JSON immediately: "
+                        "no markdown, commentary, or unnecessary whitespace. Keep rationale and "
+                        "hook_text concise. Copy only candidate IDs supplied in the options."
+                    )
+                else:
+                    validation_hint = (
+                        "\nYour previous response was rejected by the editorial ranking contract: "
+                        f"{detail}. Copy only candidate IDs supplied in the options."
+                    )
                 continue
             done_reason = payload.get("done_reason", "unknown")
+            reason = str(done_reason)
             raise EditorialOutputError(
                 "editorial model failed the structured-output contract after 2 attempts "
-                f"(reason={done_reason}; validation={detail})"
+                f"(reason={reason}; validation={detail})",
+                reason=reason,
+                validation=detail,
             )
         raise AssertionError("unreachable editorial retry state")
 
@@ -204,6 +284,88 @@ class OllamaEditorialProvider:
                 else:
                     errors.append(f"candidate {index + 1}: {error}")
         return valid, errors
+
+    @classmethod
+    def recover_truncated_candidates(
+        cls, content: str, allowed_ids: set[str] | None = None
+    ) -> list[dict[str, Any]]:
+        """Recover fully encoded candidate objects from an unfinished envelope."""
+
+        marker = content.find('"candidates"')
+        array_start = content.find("[", marker)
+        if marker < 0 or array_start < 0:
+            return []
+        decoder = json.JSONDecoder()
+        position = array_start + 1
+        recovered: list[Any] = []
+        while position < len(content):
+            while position < len(content) and content[position] in " \r\n\t,":
+                position += 1
+            if position >= len(content) or content[position] == "]":
+                break
+            try:
+                item, position = decoder.raw_decode(content, position)
+            except json.JSONDecodeError:
+                break
+            recovered.append(item)
+        valid, _ = cls.validate_candidates({"candidates": recovered}, allowed_ids)
+        return valid
+
+    @staticmethod
+    def fallback_candidates(options: list[CandidateOption], count: int) -> list[dict[str, Any]]:
+        """Rank transcript windows deterministically when Ollama truncates JSON."""
+
+        candidates: list[EditorialCandidate] = []
+        for option in options:
+            duration = option.source.end_seconds - option.source.start_seconds
+            complete_sentence = option.text.rstrip().endswith(
+                (".", "?", "!", "؟", "۔")  # noqa: RUF001 - Urdu punctuation
+            )
+            duration_fit = max(0, 20 - round(abs(duration - 60) / 3))
+            completeness = 8 if complete_sentence else 0
+            overall = min(88, 52 + duration_fit + completeness)
+            hook_text = " ".join(option.text.split())[:100].rstrip()
+            candidates.append(
+                EditorialCandidate(
+                    candidate_id=option.candidate_id,
+                    scores=Scores(
+                        overall=overall,
+                        hook=max(45, overall - 5),
+                        clarity=min(92, overall + 4),
+                        payoff=max(40, overall - 8),
+                        visual_interest=45,
+                    ),
+                    rationale=(
+                        "Ollama output was truncated; selected deterministically for complete "
+                        "phrasing and a clip-length window."
+                    ),
+                    hook_text=hook_text or "Selected transcript moment",
+                    caption_style="clean",
+                )
+            )
+        return [
+            item.model_dump(mode="json")
+            for item in sorted(
+                candidates,
+                key=lambda candidate: candidate.scores.overall,
+                reverse=True,
+            )[:count]
+        ]
+
+    @staticmethod
+    def fallback_rerank(candidates: list[dict[str, Any]], count: int) -> list[dict[str, Any]]:
+        """Preserve the best validated shortlist entries if reranking truncates."""
+
+        unique: dict[str, dict[str, Any]] = {}
+        for candidate in candidates:
+            candidate_id = candidate.get("candidate_id")
+            if isinstance(candidate_id, str) and candidate_id not in unique:
+                unique[candidate_id] = candidate
+        return sorted(
+            unique.values(),
+            key=lambda item: int(item.get("scores", {}).get("overall", 0)),
+            reverse=True,
+        )[:count]
 
     def _cache_path(self, prompt: str) -> Path | None:
         if self.cache_dir is None:
@@ -323,8 +485,10 @@ class OllamaEditorialProvider:
     @staticmethod
     def _batch_prompt(options: list[CandidateOption]) -> str:
         rendered = "\n".join(f"[{option.candidate_id}] {option.text}" for option in options)
+        requested_count = min(3, len(options))
         return (
-            "Rank exactly 3 of the supplied transcript options. Return only JSON as "
+            f"Rank exactly {requested_count} of the supplied transcript options. "
+            "Return only JSON as "
             '{"candidates":[EditorialCandidate,...]}. Copy candidate_id exactly and return scores, '
             "rationale, hook_text, and caption_style. Do not generate or change timestamps, "
             "boundaries, effects, or rendering instructions. Prefer coherent ideas with strong "

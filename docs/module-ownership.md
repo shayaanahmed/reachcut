@@ -5,6 +5,11 @@ package `__init__.py`; underscore-prefixed helpers and unexported functions are
 implementation details. The old `clipper.services.*` and `clipper.db` modules are
 compatibility imports only and should not receive new logic.
 
+Repository-wide contribution rules are defined in `AGENTS.md`. Executable checks
+in `apps/api/tests/test_architecture.py` prevent pure domain modules from acquiring
+framework, persistence, or subprocess dependencies and keep the web page as a
+small composition root.
+
 ## Backend modules
 
 | Change | Owning module | Public interface |

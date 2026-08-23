@@ -54,7 +54,9 @@ pnpm check
 pnpm test
 ```
 
-The data directory contains the SQLite database, private source media, stage artifacts, and exports. Back it up to preserve completed work. See [docs/architecture.md](docs/architecture.md), [docs/module-ownership.md](docs/module-ownership.md), [docs/security.md](docs/security.md), and [docs/troubleshooting.md](docs/troubleshooting.md).
+The data directory contains the SQLite database, private source media, stage artifacts, and exports. Back it up to preserve completed work.
+
+For an end-to-end, function-by-function walkthrough, start with [docs/code-flow.md](docs/code-flow.md). Architectural boundaries and change ownership are documented in [docs/architecture.md](docs/architecture.md) and [docs/module-ownership.md](docs/module-ownership.md). See also [docs/security.md](docs/security.md) and [docs/troubleshooting.md](docs/troubleshooting.md).
 
 ## Scope
 

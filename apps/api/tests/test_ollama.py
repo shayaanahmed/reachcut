@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 
 from clipper.domain.editing_plan import TimeRange
+from clipper.domain.transcript import Segment, Transcript
 from clipper.providers.ollama import (
     CandidateOption,
     EditorialCandidate,
@@ -73,6 +74,221 @@ def test_uses_small_json_schema_and_disables_thinking(
     assert isinstance(schema, dict)
     assert "effects" not in json.dumps(schema)
     assert "emphasis" not in json.dumps(schema)
+
+
+def test_retries_truncated_json_with_larger_generation_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests: list[dict[str, Any]] = []
+
+    class Response:
+        def __init__(self, payload: dict[str, object]) -> None:
+            self.payload = payload
+
+        def raise_for_status(self) -> None:
+            pass
+
+        def json(self) -> dict[str, object]:
+            return self.payload
+
+    responses = iter(
+        [
+            Response({"response": '{"candidates":[', "done_reason": "length"}),
+            Response(
+                {
+                    "response": json.dumps({"candidates": [candidate()]}),
+                    "done_reason": "stop",
+                }
+            ),
+        ]
+    )
+
+    def post(*args: object, **kwargs: object) -> Response:
+        requests.append(kwargs["json"])  # type: ignore[arg-type]
+        return next(responses)
+
+    monkeypatch.setattr("httpx.post", post)
+    provider = OllamaEditorialProvider("http://127.0.0.1:11434", "qwen")
+
+    assert provider.generate_structured("test prompt") == [candidate()]
+    assert requests[0]["options"] == {
+        "temperature": 0.1,
+        "num_ctx": 8_192,
+        "num_predict": 2_048,
+    }
+    assert requests[1]["options"] == {
+        "temperature": 0.1,
+        "num_ctx": 16_384,
+        "num_predict": 4_096,
+    }
+    assert "previous response was truncated" in requests[1]["prompt"]
+
+
+def test_recovers_complete_candidate_from_truncated_envelope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+
+    class Response:
+        def raise_for_status(self) -> None:
+            pass
+
+        def json(self) -> dict[str, object]:
+            return {
+                "response": (
+                    '{"candidates":[' + json.dumps(candidate()) + ',{"candidate_id":"c0001"'
+                ),
+                "done_reason": "length",
+            }
+
+    def post(*args: object, **kwargs: object) -> Response:
+        nonlocal calls
+        calls += 1
+        return Response()
+
+    monkeypatch.setattr("httpx.post", post)
+    provider = OllamaEditorialProvider("http://127.0.0.1:11434", "qwen")
+
+    assert provider.generate_structured("test prompt") == [candidate()]
+    assert calls == 1
+
+
+def test_short_batch_requests_only_available_candidate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests: list[dict[str, Any]] = []
+
+    class Response:
+        def raise_for_status(self) -> None:
+            pass
+
+        def json(self) -> dict[str, object]:
+            return {
+                "response": json.dumps({"candidates": [candidate()]}),
+                "done_reason": "stop",
+            }
+
+    def post(*args: object, **kwargs: object) -> Response:
+        requests.append(kwargs["json"])  # type: ignore[arg-type]
+        return Response()
+
+    monkeypatch.setattr("httpx.post", post)
+    provider = OllamaEditorialProvider("http://127.0.0.1:11434", "qwen")
+    option = CandidateOption(
+        candidate_id="c0000",
+        source=TimeRange(start_seconds=0, end_seconds=60),
+        text="One available transcript window.",
+    )
+
+    assert provider.rank_options([option]) == [candidate()]
+    assert "Rank exactly 1 of the supplied transcript options" in requests[0]["prompt"]
+
+
+def test_short_video_returns_available_highlights_instead_of_requiring_five(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = OllamaEditorialProvider("http://127.0.0.1:11434", "qwen")
+    requested_minimums: list[int] = []
+
+    def generate(
+        prompt: str,
+        minimum_candidates: int = 1,
+        allowed_ids: set[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        requested_minimums.append(minimum_candidates)
+        return [candidate(next(iter(allowed_ids or {"c0000"})))]
+
+    monkeypatch.setattr(provider, "generate_structured", generate)
+    transcript = Transcript(
+        language="en",
+        provider="fixture",
+        model="fixture",
+        segments=[
+            Segment(
+                id=0,
+                text="A complete short highlight.",
+                start_seconds=0,
+                end_seconds=60,
+                words=[],
+            )
+        ],
+    )
+
+    plans = provider.select_candidates(transcript, 5, lambda: False, lambda progress: None)
+
+    assert len(plans) == 1
+    assert requested_minimums == [1, 1]
+
+
+def test_repeated_length_failures_use_deterministic_highlight_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = OllamaEditorialProvider("http://127.0.0.1:11434", "qwen")
+
+    def fail_generation(
+        prompt: str,
+        minimum_candidates: int = 1,
+        allowed_ids: set[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        raise EditorialOutputError(
+            "fixture truncation",
+            reason="length",
+            validation="response field was not valid JSON",
+        )
+
+    monkeypatch.setattr(provider, "generate_structured", fail_generation)
+    transcript = Transcript(
+        language="en",
+        provider="fixture",
+        model="fixture",
+        segments=[
+            Segment(
+                id=0,
+                text="A complete short highlight with a natural ending.",
+                start_seconds=0,
+                end_seconds=60,
+                words=[],
+            )
+        ],
+    )
+
+    plans = provider.select_candidates(transcript, 5, lambda: False, lambda progress: None)
+
+    assert len(plans) == 1
+    assert plans[0].source == TimeRange(start_seconds=0, end_seconds=60)
+    assert "Ollama output was truncated" in plans[0].rationale
+
+
+def test_non_length_contract_failures_are_not_silently_replaced(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = OllamaEditorialProvider("http://127.0.0.1:11434", "qwen")
+
+    def fail_generation(
+        prompt: str,
+        minimum_candidates: int = 1,
+        allowed_ids: set[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        raise EditorialOutputError("invalid IDs", reason="stop", validation="invented ID")
+
+    monkeypatch.setattr(provider, "generate_structured", fail_generation)
+    transcript = Transcript(
+        language="en",
+        provider="fixture",
+        model="fixture",
+        segments=[
+            Segment(
+                id=0,
+                text="A complete short highlight.",
+                start_seconds=0,
+                end_seconds=60,
+                words=[],
+            )
+        ],
+    )
+
+    with pytest.raises(EditorialOutputError, match="invalid IDs"):
+        provider.select_candidates(transcript, 5, lambda: False, lambda progress: None)
 
 
 def test_keeps_supplied_candidate_id_and_discards_invented_id() -> None:
