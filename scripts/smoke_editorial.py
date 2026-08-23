@@ -5,7 +5,8 @@ from __future__ import annotations
 import argparse
 import json
 
-from clipper.providers.ollama import OllamaEditorialProvider
+from clipper.domain.editing_plan import TimeRange
+from clipper.providers.ollama import CandidateOption, OllamaEditorialProvider
 
 
 def main() -> None:
@@ -14,14 +15,21 @@ def main() -> None:
     parser.add_argument("--model", default="qwen3:8b-q4_K_M")
     args = parser.parse_args()
 
-    transcript = (
-        "[0.00-12.00] Small teams often lose time by automating a process before they understand it.\n"
-        "[12.00-28.00] First do the work manually, record each decision, and identify the repeated parts.\n"
-        "[28.00-45.00] Then automate only the stable steps and keep human review for exceptions.\n"
-        "[45.00-60.00] That approach creates a smaller system, fewer surprises, and a clear payoff."
+    transcript = " ".join(
+        [
+            "Small teams often lose time by automating before they understand a process.",
+            "First do the work manually, record decisions, and identify repeated parts.",
+            "Then automate stable steps and keep human review for exceptions.",
+            "That creates a smaller system, fewer surprises, and a clear payoff.",
+        ]
+    )
+    option = CandidateOption(
+        "c0000", TimeRange(start_seconds=0, end_seconds=60), transcript
     )
     provider = OllamaEditorialProvider(args.base_url, args.model)
-    candidates = provider._generate(provider._chunk_prompt(transcript))
+    candidates = provider._generate(
+        provider._batch_prompt([option]), allowed_ids={option.candidate_id}
+    )
     print(
         json.dumps(
             {

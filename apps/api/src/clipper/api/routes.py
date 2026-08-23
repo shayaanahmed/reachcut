@@ -32,7 +32,11 @@ from clipper.services.render import render_vertical
 
 router = APIRouter(prefix="/api")
 transcription_provider = FasterWhisperProvider(settings.whisper_model)
-editorial_provider = OllamaEditorialProvider(settings.editorial_base_url, settings.editorial_model)
+editorial_provider = OllamaEditorialProvider(
+    settings.editorial_base_url,
+    settings.editorial_model,
+    cache_dir=settings.data_dir / "cache" / "editorial",
+)
 pipeline = Pipeline(settings, transcription_provider, editorial_provider)
 pipeline_lock = threading.Lock()
 logger = structlog.get_logger()
