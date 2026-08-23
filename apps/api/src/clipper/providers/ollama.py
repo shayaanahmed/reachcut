@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from clipper.domain.editing_plan import EditingPlanV1, Hook, Scores, TimeRange
 from clipper.domain.transcript import Transcript
-from clipper.providers.base import CancellationProbe, ProgressReporter
+from clipper.transcription import CancellationProbe, ProgressReporter
 
 
 class EditorialCandidate(BaseModel):
@@ -83,7 +83,7 @@ class OllamaEditorialProvider:
             if cancelled():
                 raise InterruptedError("editorial selection cancelled")
             shortlists.extend(
-                self._generate(
+                self.generate_structured(
                     self._batch_prompt(batch),
                     allowed_ids={option.candidate_id for option in batch},
                 )
@@ -95,14 +95,14 @@ class OllamaEditorialProvider:
             key=lambda item: int(item.get("scores", {}).get("overall", 0)),
             reverse=True,
         )[:shortlist_limit]
-        reranked = self._generate(
+        reranked = self.generate_structured(
             self._rerank_prompt(shortlists, target_count),
             minimum_candidates=target_count,
             allowed_ids={item["candidate_id"] for item in shortlists},
         )
         progress(0.98)
         plans = [
-            self._to_editing_plan(
+            self.create_editing_plan(
                 EditorialCandidate.model_validate(item), options_by_id[item["candidate_id"]]
             )
             for item in reranked
@@ -113,7 +113,14 @@ class OllamaEditorialProvider:
             )
         return plans[:target_count]
 
-    def _generate(
+    def rank_options(self, options: list[CandidateOption]) -> list[dict[str, Any]]:
+        """Rank supplied options through the provider's validated public contract."""
+
+        return self.generate_structured(
+            self._batch_prompt(options), allowed_ids={option.candidate_id for option in options}
+        )
+
+    def generate_structured(
         self,
         prompt: str,
         minimum_candidates: int = 1,
@@ -144,7 +151,7 @@ class OllamaEditorialProvider:
             else:
                 try:
                     decoded = json.loads(content)
-                    valid, validation_errors = self._validated_candidates(decoded, allowed_ids)
+                    valid, validation_errors = self.validate_candidates(decoded, allowed_ids)
                     if len(valid) >= minimum_candidates:
                         self._write_cache(prompt, valid)
                         return valid
@@ -169,7 +176,7 @@ class OllamaEditorialProvider:
         raise AssertionError("unreachable editorial retry state")
 
     @staticmethod
-    def _validated_candidates(
+    def validate_candidates(
         decoded: Any, allowed_ids: set[str] | None = None
     ) -> tuple[list[dict[str, Any]], list[str]]:
         if not isinstance(decoded, dict) or set(decoded) != {"candidates"}:
@@ -214,7 +221,7 @@ class OllamaEditorialProvider:
             return None
         try:
             decoded = json.loads(path.read_text())
-            valid, _ = self._validated_candidates({"candidates": decoded}, allowed_ids)
+            valid, _ = self.validate_candidates({"candidates": decoded}, allowed_ids)
         except (OSError, json.JSONDecodeError):
             return None
         return valid if len(valid) >= minimum_candidates else None
@@ -227,7 +234,9 @@ class OllamaEditorialProvider:
         path.write_text(json.dumps(candidates, indent=2) + "\n")
 
     @staticmethod
-    def _to_editing_plan(candidate: EditorialCandidate, option: CandidateOption) -> EditingPlanV1:
+    def create_editing_plan(
+        candidate: EditorialCandidate, option: CandidateOption
+    ) -> EditingPlanV1:
         duration = option.source.end_seconds - option.source.start_seconds
         return EditingPlanV1(
             source=option.source,
@@ -265,7 +274,7 @@ class OllamaEditorialProvider:
             while end_index < len(segments):
                 segment = segments[end_index]
                 if segment.end_seconds >= target_end and segment.text.rstrip().endswith(
-                    (".", "?", "!")
+                    (".", "?", "!", "؟", "۔")  # noqa: RUF001 - Urdu punctuation
                 ):
                     natural_end = end_index
                     break

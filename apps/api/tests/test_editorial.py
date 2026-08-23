@@ -2,7 +2,7 @@ from collections.abc import Callable
 
 from clipper.domain.editing_plan import EditingPlanV1
 from clipper.domain.transcript import Segment
-from clipper.services.editorial import diverse_top_plans, semantic_windows
+from clipper.editorial import diverse_top_plans, semantic_windows
 
 
 def test_windows_preserve_segment_boundaries() -> None:

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from clipper.services.media import MediaError, safe_filename, store_upload
+from clipper.media import MediaError, safe_filename, store_upload
 
 
 def test_filename_drops_traversal() -> None:

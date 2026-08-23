@@ -11,11 +11,12 @@
 ```bash
 cp .env.example .env
 docker compose -f compose.yaml -f compose.ollama.yaml --profile setup run --rm model-init
+docker compose --profile setup run --rm whisper-model-init
 docker compose -f compose.yaml -f compose.ollama.yaml up --build -d
 docker compose -f compose.yaml -f compose.ollama.yaml ps
 ```
 
-The setup job is deliberately separate: model weights are large, and starting the UI must never silently trigger a network download. Change `CLIPPER_EDITORIAL_MODEL` in `.env`, rerun the setup command, and recreate the API to switch models.
+The setup jobs are deliberately separate: model weights are large, and starting the UI must never silently trigger a network download. Change `CLIPPER_EDITORIAL_MODEL` or `CLIPPER_WHISPER_MODEL` in `.env`, rerun the corresponding setup command, and recreate the API to switch models. The shorter Whisper command is `pnpm docker:whisper-model`.
 
 To use NVIDIA for Ollama:
 
@@ -74,4 +75,4 @@ docker compose build --pull --no-cache
 docker compose config --quiet
 ```
 
-If the web container stays unhealthy, inspect `docker compose logs web`. If analysis fails with a missing Ollama model, rerun the explicit model setup job. If transcription is killed for memory pressure, set `CLIPPER_WHISPER_MODEL=small`, keep one job at a time, and increase Docker Desktop's memory allocation.
+If the web container stays unhealthy, inspect `docker compose logs web`. If analysis fails with a missing Ollama or Whisper model, rerun its explicit model setup job. If transcription is killed for memory pressure, set `CLIPPER_WHISPER_MODEL=small`, run `pnpm docker:whisper-model`, recreate the API, and keep one job at a time.

@@ -1,10 +1,32 @@
-# Architecture and phased plan
+# Architecture
+
+## Dependency rule
+
+The API and web UI are delivery adapters. Project application services coordinate
+feature modules. Feature modules contain pure policy wherever possible, while
+SQLAlchemy, model providers, and subprocess execution remain adapters at the edge.
+
+```text
+Next.js page -> feature components/hooks -> feature API clients -> HTTP contracts
+                                                               |
+FastAPI routes -> project/clip services -> caption/editorial/render/transcription ports
+                    |                         |
+                    +-> persistence adapter   +-> provider + FFmpeg adapters
+```
+
+Dependencies point inward: captions, editorial, transcription, and pure rendering
+command construction do not import FastAPI or SQLAlchemy. Rendering does not build
+caption text, and caption modules never execute FFmpeg. Provider adapters implement
+the transcription/editorial protocols. The project pipeline is the composition
+boundary for these capabilities.
+
+See [module ownership](module-ownership.md) for public interfaces and change routing.
 
 ## Boundaries
 
 The Next.js client is a review surface. FastAPI is the control plane and owns authorization confirmation, input validation, projects, jobs, stage transitions, provider selection, artifacts, approvals, and exports. SQLite is the default durable store; SQLAlchemy models avoid SQLite-only data types so PostgreSQL can be added later. Large immutable artifacts live under the configured data directory.
 
-Model and media integrations sit behind typed providers. Pipeline services depend on those interfaces, not model names. Every candidate becomes an `EditingPlanV1`; only validated plans may reach FFmpeg or, later, Remotion. Subprocesses receive argument arrays and never use a shell.
+Model and media integrations sit behind typed providers. Project services depend on those interfaces, not model names. Every candidate becomes an `EditingPlanV1`; only validated plans may reach FFmpeg or, later, Remotion. Subprocesses receive argument arrays and never use a shell.
 
 ```text
 Next.js review UI
@@ -41,7 +63,7 @@ Stages are persisted as independent rows with `pending`, `running`, `succeeded`,
 
 ## Extension contracts
 
-- Model provider: implement the relevant protocol in `clipper.providers.base`, add configuration and a health check, then register it in the application composition root.
+- Transcription provider: implement `clipper.transcription.TranscriptionProvider`, add configuration and a health check, then register it in `clipper.api.dependencies`.
+- Editorial provider: implement `clipper.editorial.EditorialLLMProvider` and register it in `clipper.api.dependencies`.
 - Editing template: add a versioned JSON/Zod configuration. Templates may reference only registered assets/effects; they cannot execute code.
 - Publishing adapter: implement draft/schedule validation and OAuth token storage. Require an approved clip and a separate explicit publish action. If an official API is unavailable, export a package.
-

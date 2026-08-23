@@ -7,6 +7,7 @@
     "dev:api": "uv run --project apps/api uvicorn clipper.main:app --reload --host 127.0.0.1 --port 8000",
     "dev:web": "pnpm --dir apps/web dev",
     "docker:model": "docker compose -f compose.yaml -f compose.ollama.yaml --profile setup run --rm model-init",
+    "docker:whisper-model": "docker compose --profile setup run --rm whisper-model-init",
     "docker:up": "docker compose -f compose.yaml -f compose.ollama.yaml up --build",
     "docker:down": "docker compose -f compose.yaml -f compose.ollama.yaml down",
     "doctor": "node scripts/doctor.mjs",

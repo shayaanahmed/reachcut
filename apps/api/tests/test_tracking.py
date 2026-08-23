@@ -1,6 +1,6 @@
 import pytest
 
-from clipper.services.tracking import CropPoint, smooth_crop_path
+from clipper.rendering import CropPoint, smooth_crop_path
 
 
 def test_crop_smoothing_limits_velocity_and_bounds() -> None:

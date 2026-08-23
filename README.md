@@ -2,7 +2,9 @@
 
 Clipper is a local-first application for turning media you are authorized to repurpose into reviewable vertical clips. The core pipeline uses local models and local FFmpeg processes; it does not require a cloud-model account and never publishes automatically.
 
-The current vertical slice provides secure upload, media probing, durable stage state, provider-based `faster-whisper` transcription, Ollama/Qwen editorial selection, schema-validated editing plans, deterministic 9:16 FFmpeg rendering, subtitles, and a small review UI. Human approval is required before final rendering.
+The current vertical slice provides secure upload, media probing, durable stage state, provider-based `faster-whisper` transcription, Ollama/Qwen editorial selection, schema-validated editing plans, deterministic 9:16 FFmpeg rendering, customizable animated subtitles, and a small review UI. Human approval is required before final rendering. Exports preserve the complete source frame over a soft 9:16 background by default; center-crop remains available per clip.
+
+For Urdu and other non-English media, select the spoken language before analysis. The default `large-v3-turbo` Whisper model substantially improves multilingual recognition, while ASS/libass captions preserve Unicode/RTL shaping. Caption position, font, size, colors, highlighted words, line length, and pop/karaoke animation can be reviewed and changed on each generated clip.
 
 > Importing a publicly accessible URL does **not** grant permission to republish it. Only process media you own, license, or have explicit authorization to repurpose.
 
@@ -23,6 +25,7 @@ The fully containerized CPU setup needs only Docker Desktop or Docker Engine wit
 ```bash
 cp .env.example .env
 docker compose -f compose.yaml -f compose.ollama.yaml --profile setup run --rm model-init
+docker compose --profile setup run --rm whisper-model-init
 docker compose -f compose.yaml -f compose.ollama.yaml up --build -d
 ```
 
@@ -51,7 +54,7 @@ pnpm check
 pnpm test
 ```
 
-The data directory contains the SQLite database, private source media, stage artifacts, and exports. Back it up to preserve completed work. See [docs/architecture.md](docs/architecture.md), [docs/security.md](docs/security.md), and [docs/troubleshooting.md](docs/troubleshooting.md).
+The data directory contains the SQLite database, private source media, stage artifacts, and exports. Back it up to preserve completed work. See [docs/architecture.md](docs/architecture.md), [docs/module-ownership.md](docs/module-ownership.md), [docs/security.md](docs/security.md), and [docs/troubleshooting.md](docs/troubleshooting.md).
 
 ## Scope
 

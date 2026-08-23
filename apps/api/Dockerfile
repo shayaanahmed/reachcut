@@ -19,7 +19,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     UV_COMPILE_BYTECODE=1
 
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends ca-certificates ffmpeg \
+    && apt-get install --yes --no-install-recommends ca-certificates ffmpeg fonts-noto-core \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 clipper \
     && useradd --uid 10001 --gid clipper --no-create-home --shell /usr/sbin/nologin clipper \

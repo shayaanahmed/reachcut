@@ -17,6 +17,32 @@ const editingPlan = z.object({
   rationale: z.string(),
   hook: timeRange.extend({ text: z.string() }).nullable(),
   caption_style: z.enum(["clean", "kinetic_highlight", "karaoke"]),
+  caption_config: z
+    .object({
+      position: z.enum(["top", "middle", "bottom"]),
+      font_family: z.string(),
+      font_size: z.number(),
+      text_color: z.string(),
+      highlight_color: z.string(),
+      outline_color: z.string(),
+      animation: z.enum(["none", "pop", "karaoke"]),
+      highlighted_words: z.array(z.string()),
+      max_words_per_line: z.number(),
+    })
+    .default({
+      position: "bottom",
+      font_family: "Noto Sans",
+      font_size: 58,
+      text_color: "#FFFFFF",
+      highlight_color: "#D8FF42",
+      outline_color: "#111111",
+      animation: "pop",
+      highlighted_words: [],
+      max_words_per_line: 5,
+    }),
+  frame_style: z
+    .enum(["blurred_background", "center_crop"])
+    .default("blurred_background"),
   emphasis: z.array(z.unknown()),
   effects: z.array(z.unknown()),
   cta: timeRange.extend({ text: z.string() }).nullable(),

@@ -27,9 +27,7 @@ def main() -> None:
         "c0000", TimeRange(start_seconds=0, end_seconds=60), transcript
     )
     provider = OllamaEditorialProvider(args.base_url, args.model)
-    candidates = provider._generate(
-        provider._batch_prompt([option]), allowed_ids={option.candidate_id}
-    )
+    candidates = provider.rank_options([option])
     print(
         json.dumps(
             {

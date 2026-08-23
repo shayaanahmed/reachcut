@@ -73,6 +73,20 @@ class CTA(TimeRange):
     text: Annotated[str, Field(min_length=1, max_length=160)]
 
 
+class CaptionConfig(StrictModel):
+    position: Literal["top", "middle", "bottom"] = "bottom"
+    font_family: Annotated[str, Field(min_length=1, max_length=80)] = "Noto Sans"
+    font_size: Annotated[int, Field(ge=28, le=96)] = 58
+    text_color: Annotated[str, Field(pattern=r"^#[0-9A-Fa-f]{6}$")] = "#FFFFFF"
+    highlight_color: Annotated[str, Field(pattern=r"^#[0-9A-Fa-f]{6}$")] = "#D8FF42"
+    outline_color: Annotated[str, Field(pattern=r"^#[0-9A-Fa-f]{6}$")] = "#111111"
+    animation: Literal["none", "pop", "karaoke"] = "pop"
+    highlighted_words: list[Annotated[str, Field(min_length=1, max_length=40)]] = Field(
+        default_factory=list, max_length=24
+    )
+    max_words_per_line: Annotated[int, Field(ge=2, le=8)] = 5
+
+
 class EditingPlanV1(StrictModel):
     schema_version: Literal["1.0"] = "1.0"
     source: TimeRange
@@ -80,6 +94,8 @@ class EditingPlanV1(StrictModel):
     rationale: Annotated[str, Field(min_length=1, max_length=600)]
     hook: Hook | None = None
     caption_style: Literal["clean", "kinetic_highlight", "karaoke"] = "clean"
+    caption_config: CaptionConfig = Field(default_factory=CaptionConfig)
+    frame_style: Literal["blurred_background", "center_crop"] = "blurred_background"
     emphasis: list[Emphasis] = Field(default_factory=list, max_length=40)
     effects: list[Effect] = Field(default_factory=list, max_length=40)
     cta: CTA | None = None

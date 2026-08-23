@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from clipper.api.routes import router
-from clipper.db import create_schema
+from clipper.persistence import create_schema
 
 
 @asynccontextmanager

@@ -1,8 +1,9 @@
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
-from clipper.domain.editing_plan import EditingPlanV1
+from clipper.domain.editing_plan import CaptionConfig, EditingPlanV1
 
 
 class StageResponse(BaseModel):
@@ -38,6 +39,15 @@ class ProjectResponse(BaseModel):
 
 class ApprovalRequest(BaseModel):
     approved: bool
+
+
+class ProcessRequest(BaseModel):
+    language: str | None = Field(default=None, pattern=r"^[a-z]{2}$")
+
+
+class ClipStyleRequest(BaseModel):
+    caption_config: CaptionConfig
+    frame_style: Literal["blurred_background", "center_crop"]
 
 
 class HealthResponse(BaseModel):

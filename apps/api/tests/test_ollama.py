@@ -41,7 +41,7 @@ def test_rejects_malformed_model_output(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr("httpx.post", lambda *args, **kwargs: Response())
     provider = OllamaEditorialProvider("http://127.0.0.1:11434", "qwen")
     with pytest.raises(EditorialOutputError, match="after 2 attempts"):
-        provider._generate("test prompt")
+        provider.generate_structured("test prompt")
 
 
 def test_uses_small_json_schema_and_disables_thinking(
@@ -65,7 +65,7 @@ def test_uses_small_json_schema_and_disables_thinking(
 
     monkeypatch.setattr("httpx.post", post)
     provider = OllamaEditorialProvider("http://127.0.0.1:11434", "qwen")
-    candidates = provider._generate("test prompt")
+    candidates = provider.generate_structured("test prompt")
 
     assert len(candidates) == 1
     assert requests[0]["think"] is False
@@ -76,7 +76,7 @@ def test_uses_small_json_schema_and_disables_thinking(
 
 
 def test_keeps_supplied_candidate_id_and_discards_invented_id() -> None:
-    valid, errors = OllamaEditorialProvider._validated_candidates(
+    valid, errors = OllamaEditorialProvider.validate_candidates(
         {"candidates": [candidate("c0001"), candidate("c9999")]},
         allowed_ids={"c0001", "c0002"},
     )
@@ -86,7 +86,7 @@ def test_keeps_supplied_candidate_id_and_discards_invented_id() -> None:
 
 
 def test_rejects_duplicate_candidate_id() -> None:
-    valid, errors = OllamaEditorialProvider._validated_candidates(
+    valid, errors = OllamaEditorialProvider.validate_candidates(
         {"candidates": [candidate("c0001"), candidate("c0001")]}
     )
 
@@ -102,7 +102,7 @@ def test_builds_render_plan_with_deterministic_relative_timestamps() -> None:
         text="Licensed synthetic fixture text.",
     )
 
-    plan = OllamaEditorialProvider._to_editing_plan(editorial, option)
+    plan = OllamaEditorialProvider.create_editing_plan(editorial, option)
 
     assert plan.source.start_seconds == 300
     assert plan.source.end_seconds == 360
@@ -135,6 +135,6 @@ def test_reuses_valid_cached_chunk(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     monkeypatch.setattr("httpx.post", post)
     provider = OllamaEditorialProvider("http://127.0.0.1:11434", "qwen", cache_dir=tmp_path)
 
-    assert provider._generate("same prompt") == [candidate()]
-    assert provider._generate("same prompt") == [candidate()]
+    assert provider.generate_structured("same prompt") == [candidate()]
+    assert provider.generate_structured("same prompt") == [candidate()]
     assert calls == 1
