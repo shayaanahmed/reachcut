@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.20
 FROM node:24.19.0-bookworm-slim AS base
 
 ENV PNPM_HOME=/pnpm

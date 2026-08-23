@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any
 
 from clipper.domain.transcript import Segment, Transcript, Word
-from clipper.providers.base import CancellationProbe
+from clipper.providers.base import CancellationProbe, ProgressReporter
 
 
 class FasterWhisperProvider:
@@ -26,7 +26,10 @@ class FasterWhisperProvider:
             )
         return self._model
 
-    def transcribe(self, media: Path, cancelled: CancellationProbe) -> Transcript:
+    def transcribe(
+        self, media: Path, cancelled: CancellationProbe, progress: ProgressReporter
+    ) -> Transcript:
+        progress(0.01)
         raw_segments, info = self._load().transcribe(
             str(media), word_timestamps=True, vad_filter=True, beam_size=5
         )
@@ -50,6 +53,8 @@ class FasterWhisperProvider:
                     words=words,
                 )
             )
+            if info.duration > 0:
+                progress(min(item.end / info.duration, 0.99))
         return Transcript(
             language=info.language,
             language_probability=info.language_probability,

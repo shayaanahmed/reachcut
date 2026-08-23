@@ -9,3 +9,4 @@
 - **Docker API cannot reach Ollama on macOS:** keep Ollama running natively and use the base `compose.yaml`; do not add the Ollama override. Verify `curl http://localhost:11434/api/version` on the host.
 - **The Ollama container has no model:** run the model setup command from `docs/docker.md`; model downloads are intentionally not automatic during normal startup.
 - **Next.js reports that `/api/projects/upload` exceeded 10 MB:** rebuild the current web image. Uploads now use `CLIPPER_BROWSER_API_URL` to bypass Next's buffering rewrite proxy and stream directly to FastAPI.
+- **Editorial selection reports malformed candidates:** rebuild the API, then choose **Retry analysis**. Completed probe and transcription stages are cached; structured output is retried, and candidates with unsafe timestamps are discarded individually.

@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import {
-  getProject,
   listProjects,
   previewUrl,
   processProject,
@@ -12,16 +11,67 @@ import {
 } from "../lib/api";
 import type { Project } from "../lib/contracts";
 
+const STAGE_ORDER = [
+  "probe",
+  "transcribe",
+  "select_candidates",
+  "render_previews",
+] as const;
+
+const STAGE_LABELS: Record<(typeof STAGE_ORDER)[number], string> = {
+  probe: "Inspect media",
+  transcribe: "Transcribe locally",
+  select_candidates: "Find highlights",
+  render_previews: "Render previews",
+};
+
+function projectProgress(project: Project): number {
+  const progress = STAGE_ORDER.reduce((total, name) => {
+    const stage = project.stages.find((item) => item.name === name);
+    if (stage?.status === "succeeded") return total + 1;
+    if (stage?.status === "running") return total + stage.progress;
+    return total;
+  }, 0);
+  return progress / STAGE_ORDER.length;
+}
+
+function errorMessage(error: Record<string, unknown> | null): string | null {
+  return typeof error?.message === "string" ? error.message : null;
+}
+
 export default function Home() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasProcessingProjects = projects.some(
+    (project) => project.status === "processing",
+  );
 
   useEffect(() => {
     void listProjects()
       .then(setProjects)
       .catch((e: Error) => setError(e.message));
   }, []);
+
+  useEffect(() => {
+    if (!hasProcessingProjects) return;
+    let active = true;
+    const refresh = () => {
+      void listProjects()
+        .then((updated) => {
+          if (active) setProjects(updated);
+        })
+        .catch((e: Error) => {
+          if (active) setError(e.message);
+        });
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 1500);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [hasProcessingProjects]);
 
   async function upload(formData: FormData) {
     setBusy(true);
@@ -41,14 +91,11 @@ export default function Home() {
     setError(null);
     try {
       await processProject(id);
-      for (let attempt = 0; attempt < 900; attempt += 1) {
-        const updated = await getProject(id);
-        setProjects((items) =>
-          items.map((item) => (item.id === updated.id ? updated : item)),
-        );
-        if (["review", "failed"].includes(updated.status)) break;
-        await new Promise((resolve) => window.setTimeout(resolve, 1000));
-      }
+      setProjects((items) =>
+        items.map((item) =>
+          item.id === id ? { ...item, status: "processing" } : item,
+        ),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Processing failed");
     } finally {
@@ -157,14 +204,58 @@ export default function Home() {
                       : ""}
                   </p>
                 </div>
-                {project.status !== "review" && (
+                {["created", "failed"].includes(project.status) && (
                   <button
                     className="secondary"
                     disabled={busy}
                     onClick={() => void process(project.id)}
                   >
-                    Analyze
+                    {project.status === "failed" ? "Retry analysis" : "Analyze"}
                   </button>
+                )}
+                {project.stages.length > 0 && (
+                  <div className="pipeline" aria-label="Analysis progress">
+                    <div className="pipeline-summary">
+                      <strong>
+                        {project.status === "failed"
+                          ? "Analysis needs attention"
+                          : project.status === "review"
+                            ? "Analysis complete"
+                            : "Analyzing locally"}
+                      </strong>
+                      <span>{Math.round(projectProgress(project) * 100)}%</span>
+                    </div>
+                    <progress max={1} value={projectProgress(project)} />
+                    <div className="stage-list">
+                      {STAGE_ORDER.map((name) => {
+                        const stage = project.stages.find(
+                          (item) => item.name === name,
+                        );
+                        const stageError = errorMessage(stage?.error ?? null);
+                        return (
+                          <div
+                            className={`stage ${stage?.status ?? "pending"}`}
+                            key={name}
+                          >
+                            <span className="stage-dot" aria-hidden="true" />
+                            <div>
+                              <strong>{STAGE_LABELS[name]}</strong>
+                              <small>
+                                {stage?.status === "running"
+                                  ? `${Math.round(stage.progress * 100)}% · attempt ${stage.attempts}`
+                                  : stage?.status === "failed"
+                                    ? `Failed · attempt ${stage.attempts}`
+                                    : stage?.status === "succeeded"
+                                      ? "Complete"
+                                      : "Waiting"}
+                              </small>
+                              {stageError && <p role="alert">{stageError}</p>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 )}
                 {project.clips.length > 0 && (
                   <div className="clips">

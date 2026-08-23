@@ -125,7 +125,11 @@ def process_project(
     background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
 ) -> dict[str, str]:
-    _project_or_404(session, project_id)
+    project = _project_or_404(session, project_id)
+    if project.status == "processing":
+        raise HTTPException(status_code=409, detail="project is already processing")
+    project.status = "processing"
+    session.commit()
     background_tasks.add_task(_run_pipeline, project_id)
     return {"status": "queued", "project_id": project_id}
 

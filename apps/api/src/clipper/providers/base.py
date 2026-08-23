@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
@@ -9,11 +10,16 @@ class CancellationProbe(Protocol):
     def __call__(self) -> bool: ...
 
 
+type ProgressReporter = Callable[[float], None]
+
+
 class TranscriptionProvider(Protocol):
     @property
     def identity(self) -> str: ...
 
-    def transcribe(self, media: Path, cancelled: CancellationProbe) -> Transcript: ...
+    def transcribe(
+        self, media: Path, cancelled: CancellationProbe, progress: ProgressReporter
+    ) -> Transcript: ...
 
 
 class EditorialLLMProvider(Protocol):
@@ -21,7 +27,11 @@ class EditorialLLMProvider(Protocol):
     def identity(self) -> str: ...
 
     def select_candidates(
-        self, transcript: Transcript, target_count: int, cancelled: CancellationProbe
+        self,
+        transcript: Transcript,
+        target_count: int,
+        cancelled: CancellationProbe,
+        progress: ProgressReporter,
     ) -> list[EditingPlanV1]: ...
 
 

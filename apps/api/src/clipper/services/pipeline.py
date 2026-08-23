@@ -14,7 +14,7 @@ from clipper.config import Settings
 from clipper.db import Clip, Project, ProjectStatus, StageRun, StageStatus
 from clipper.domain.editing_plan import EditingPlanV1
 from clipper.domain.transcript import Transcript, Word
-from clipper.providers.base import EditorialLLMProvider, TranscriptionProvider
+from clipper.providers.base import EditorialLLMProvider, ProgressReporter, TranscriptionProvider
 from clipper.services.captions import phrase_cues, serialize_srt, serialize_vtt
 from clipper.services.media import probe_media
 from clipper.services.render import render_vertical
@@ -47,7 +47,9 @@ class Pipeline:
                 project,
                 "probe",
                 project.media_sha256,
-                lambda: probe_media(Path(project.source_path), self.settings.max_duration_seconds),
+                lambda progress: probe_media(
+                    Path(project.source_path), self.settings.max_duration_seconds
+                ),
             )
             project.media_info = media_info
             project.duration_seconds = float(str(media_info["duration_seconds"]))
@@ -57,8 +59,10 @@ class Pipeline:
                 project,
                 "transcribe",
                 self._key(project.media_sha256, self.transcription.identity),
-                lambda: self.transcription.transcribe(
-                    Path(project.source_path), lambda: self._cancelled(session, project.id)
+                lambda progress: self.transcription.transcribe(
+                    Path(project.source_path),
+                    lambda: self._cancelled(session, project.id),
+                    progress,
                 ).model_dump(mode="json"),
             )
             project.transcript = transcript_payload
@@ -69,10 +73,13 @@ class Pipeline:
                 project,
                 "select_candidates",
                 self._key(project.media_sha256, self.editorial.identity, str(target_count)),
-                lambda: [
+                lambda progress: [
                     plan.model_dump(mode="json")
                     for plan in self.editorial.select_candidates(
-                        transcript, target_count, lambda: self._cancelled(session, project.id)
+                        transcript,
+                        target_count,
+                        lambda: self._cancelled(session, project.id),
+                        progress,
                     )
                 ],
             )
@@ -90,7 +97,7 @@ class Pipeline:
                 project,
                 "render_previews",
                 self._key(*(clip.id for clip in clips), project.media_sha256),
-                lambda: self._render_previews(session, project, clips),
+                lambda progress: self._render_previews(session, project, clips, progress),
             )
             project.status = ProjectStatus.REVIEW
             session.commit()
@@ -109,7 +116,7 @@ class Pipeline:
         project: Project,
         name: str,
         cache_key: str,
-        operation: Callable[[], StageResult],
+        operation: Callable[[ProgressReporter], StageResult],
     ) -> StageResult:
         stage = session.scalar(
             select(StageRun).where(StageRun.project_id == project.id, StageRun.name == name)
@@ -128,8 +135,19 @@ class Pipeline:
         stage.error = None
         stage.started_at = datetime.now(UTC)
         session.commit()
+        last_progress = 0.0
+
+        def report_progress(value: float) -> None:
+            nonlocal last_progress
+            clamped = min(max(value, last_progress, 0.0), 0.99)
+            if clamped - last_progress < 0.01 and clamped < 0.99:
+                return
+            last_progress = clamped
+            stage.progress = clamped
+            session.commit()
+
         try:
-            result = operation()
+            result = operation(report_progress)
             artifact = self._stage_artifact(project, name)
             artifact.parent.mkdir(parents=True, exist_ok=True)
             artifact.write_text(json.dumps(result, indent=2) + "\n")
@@ -170,10 +188,15 @@ class Pipeline:
         (root / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
 
     @staticmethod
-    def _render_previews(session: Session, project: Project, clips: list[Clip]) -> list[str]:
+    def _render_previews(
+        session: Session,
+        project: Project,
+        clips: list[Clip],
+        progress: ProgressReporter,
+    ) -> list[str]:
         outputs: list[str] = []
         project_root = Path(project.source_path).parent
-        for clip in clips:
+        for index, clip in enumerate(clips):
             root = project_root / "clips" / clip.id
             output = root / "preview.mp4"
             render_vertical(
@@ -186,6 +209,7 @@ class Pipeline:
             clip.preview_path = str(output)
             outputs.append(str(output.relative_to(project_root)))
             session.commit()
+            progress((index + 1) / len(clips))
         return outputs
 
     @staticmethod

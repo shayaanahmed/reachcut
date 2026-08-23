@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.20
 FROM python:3.13.15-slim-trixie AS build
 
 ENV UV_COMPILE_BYTECODE=1 \
