@@ -17,6 +17,7 @@ def test_model_runtime_settings_are_loaded_from_environment(
     monkeypatch.setenv("CLIPPER_EDITORIAL_NUM_PREDICT", "1024")
     monkeypatch.setenv("CLIPPER_EDITORIAL_RETRY_NUM_CTX", "8192")
     monkeypatch.setenv("CLIPPER_EDITORIAL_RETRY_NUM_PREDICT", "2048")
+    monkeypatch.setenv("CLIPPER_WEB_PORT", "3001")
 
     settings = Settings(_env_file=None)
 
@@ -31,3 +32,5 @@ def test_model_runtime_settings_are_loaded_from_environment(
     assert settings.editorial_num_predict == 1024
     assert settings.editorial_retry_num_ctx == 8192
     assert settings.editorial_retry_num_predict == 2048
+    assert settings.web_port == 3001
+    assert settings.tiktok_redirect_uri == ""

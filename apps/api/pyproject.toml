@@ -5,6 +5,7 @@ description = "Local-first AI video clipping control plane"
 requires-python = ">=3.12,<3.14"
 dependencies = [
   "alembic>=1.16,<2",
+  "cryptography>=46,<47",
   "fastapi>=0.138,<0.139",
   "faster-whisper>=1.2.1,<2",
   "httpx>=0.28,<0.29",
@@ -13,6 +14,7 @@ dependencies = [
   "sqlalchemy>=2.0.43,<2.1",
   "structlog>=25.4,<26",
   "uvicorn[standard]>=0.35,<0.36",
+  "yt-dlp>=2026.8.19,<2027",
 ]
 
 [project.optional-dependencies]

@@ -59,3 +59,20 @@ def store_upload(stream: BinaryIO, target: Path, max_bytes: int) -> StoredUpload
             shutil.rmtree(target.parent)
         raise
     return StoredUpload(path=target, sha256=digest.hexdigest(), bytes_written=total)
+
+
+def inspect_stored_media(path: Path, max_bytes: int) -> StoredUpload:
+    """Validate and fingerprint media written by an external ingestion adapter."""
+
+    size = path.stat().st_size
+    if size > max_bytes:
+        raise MediaError(f"download exceeds {max_bytes} byte limit")
+    digest = hashlib.sha256()
+    header = b""
+    with path.open("rb") as source:
+        while chunk := source.read(1024 * 1024):
+            if len(header) < 16:
+                header += chunk[: 16 - len(header)]
+            digest.update(chunk)
+    detect_container(header)
+    return StoredUpload(path=path, sha256=digest.hexdigest(), bytes_written=size)

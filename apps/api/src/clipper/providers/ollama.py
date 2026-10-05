@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
 import httpx
 import structlog
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from clipper.domain.editing_plan import EditingPlanV1, Hook, Scores, TimeRange
 from clipper.domain.transcript import Transcript
@@ -27,7 +28,18 @@ class EditorialCandidate(BaseModel):
     scores: Scores
     rationale: str = Field(min_length=1, max_length=240)
     hook_text: str = Field(min_length=1, max_length=100)
+    suggested_title: str = Field(min_length=1, max_length=100)
+    hashtags: list[str] = Field(min_length=3, max_length=6)
     caption_style: Literal["clean", "kinetic_highlight", "karaoke"] = "clean"
+
+    @field_validator("hashtags")
+    @classmethod
+    def hashtags_are_distinct(cls, hashtags: list[str]) -> list[str]:
+        if invalid := [tag for tag in hashtags if not re.fullmatch(r"#[^\s#]{1,39}", tag)]:
+            raise ValueError(f"hashtags must start with # and contain no spaces: {invalid[0]}")
+        if len({hashtag.casefold() for hashtag in hashtags}) != len(hashtags):
+            raise ValueError("hashtags must be distinct")
+        return hashtags
 
 
 class CandidateEnvelope(BaseModel):
@@ -69,7 +81,7 @@ class EditorialGenerationConfig:
 
 
 class OllamaEditorialProvider:
-    CONTRACT_VERSION = "editorial-ranking-6"
+    CONTRACT_VERSION = "editorial-ranking-8"
 
     def __init__(
         self,
@@ -205,7 +217,15 @@ class OllamaEditorialProvider:
                 },
                 timeout=self.timeout_seconds,
             )
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as error:
+                detail = self._provider_error_detail(response)
+                raise EditorialOutputError(
+                    f"Ollama rejected the editorial request: {detail}",
+                    reason="provider_error",
+                    validation=detail,
+                ) from error
             payload = response.json()
             content = payload.get("response")
             if not isinstance(content, str):
@@ -237,7 +257,8 @@ class OllamaEditorialProvider:
                     validation_hint = (
                         "\nThe previous response was truncated. Return compact JSON immediately: "
                         "no markdown, commentary, or unnecessary whitespace. Keep rationale and "
-                        "hook_text concise. Copy only candidate IDs supplied in the options."
+                        "hook_text concise. Include suggested_title and 3-6 compact hashtags. "
+                        "Copy only candidate IDs supplied in the options."
                     )
                 else:
                     validation_hint = (
@@ -254,6 +275,17 @@ class OllamaEditorialProvider:
                 validation=detail,
             )
         raise AssertionError("unreachable editorial retry state")
+
+    @staticmethod
+    def _provider_error_detail(response: httpx.Response) -> str:
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = None
+        if isinstance(payload, dict) and isinstance(payload.get("error"), str):
+            return payload["error"][:500]
+        text = response.text.strip()
+        return text[:500] or f"HTTP {response.status_code}"
 
     @staticmethod
     def validate_candidates(
@@ -325,6 +357,7 @@ class OllamaEditorialProvider:
             completeness = 8 if complete_sentence else 0
             overall = min(88, 52 + duration_fit + completeness)
             hook_text = " ".join(option.text.split())[:100].rstrip()
+            suggested_title = hook_text[:100].rstrip(" .,!?:;")
             candidates.append(
                 EditorialCandidate(
                     candidate_id=option.candidate_id,
@@ -340,6 +373,8 @@ class OllamaEditorialProvider:
                         "phrasing and a clip-length window."
                     ),
                     hook_text=hook_text or "Selected transcript moment",
+                    suggested_title=suggested_title or "A Moment Worth Watching",
+                    hashtags=["#VideoClip", "#Highlights", "#MustWatch"],
                     caption_style="clean",
                 )
             )
@@ -404,6 +439,8 @@ class OllamaEditorialProvider:
             source=option.source,
             scores=candidate.scores,
             rationale=candidate.rationale,
+            suggested_title=candidate.suggested_title,
+            hashtags=candidate.hashtags,
             hook=Hook(
                 text=candidate.hook_text,
                 start_seconds=0,
@@ -490,9 +527,12 @@ class OllamaEditorialProvider:
             f"Rank exactly {requested_count} of the supplied transcript options. "
             "Return only JSON as "
             '{"candidates":[EditorialCandidate,...]}. Copy candidate_id exactly and return scores, '
-            "rationale, hook_text, and caption_style. Do not generate or change timestamps, "
-            "boundaries, effects, or rendering instructions. Prefer coherent ideas with strong "
-            "openings and natural endings. Scores are editorial heuristics. Use schema_version "
+            "rationale, hook_text, suggested_title, hashtags, and caption_style. Make "
+            "suggested_title concise, accurate, curiosity-driven, and catchy without misleading "
+            "clickbait. Return 3-6 distinct, relevant, ready-to-paste hashtags, each beginning "
+            "with # and containing no spaces. Do not generate or change timestamps, boundaries, "
+            "effects, or rendering instructions. Prefer coherent ideas with strong openings and "
+            "natural endings. Scores are editorial heuristics. Use schema_version "
             "1.0. Options:\n" + rendered
         )
 

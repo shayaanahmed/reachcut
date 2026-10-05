@@ -11,7 +11,7 @@ export function ClipStyleEditor({
 }: {
   clip: Clip;
   busy: boolean;
-  onSave: (clipId: string, form: HTMLFormElement) => Promise<void>;
+  onSave: (clipId: string, form: HTMLFormElement) => Promise<unknown>;
 }) {
   const config = clip.plan.caption_config;
   return (
@@ -23,6 +23,20 @@ export function ClipStyleEditor({
           void onSave(clip.id, event.currentTarget);
         }}
       >
+        <label className="caption-toggle wide">
+          <input
+            name="captions_enabled"
+            type="checkbox"
+            value="true"
+            defaultChecked={config.enabled}
+          />
+          <span>
+            Burn subtitles into this clip
+            <small>
+              Turn off for a clean video; caption files stay available.
+            </small>
+          </span>
+        </label>
         <label>
           Framing
           <select name="frame_style" defaultValue={clip.plan.frame_style}>
@@ -113,8 +127,8 @@ export function ClipStyleEditor({
         </button>
       </form>
       <small>
-        Unicode/RTL text is rendered through libass with Noto font fallback.
-        Highlighted words are comma-separated.
+        When enabled, Unicode/RTL text is rendered through libass with Noto font
+        fallback. Highlighted words are comma-separated.
       </small>
     </details>
   );

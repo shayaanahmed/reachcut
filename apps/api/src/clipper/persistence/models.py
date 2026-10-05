@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import uuid4
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import JSON, BigInteger, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -81,3 +81,114 @@ class Clip(Base):
     final_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     project: Mapped[Project] = relationship(back_populates="clips")
+    publications: Mapped[list[Publication]] = relationship(
+        back_populates="clip", cascade="all, delete-orphan"
+    )
+
+
+class Publication(Base):
+    __tablename__ = "publications"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    clip_id: Mapped[str] = mapped_column(ForeignKey("clips.id", ondelete="CASCADE"))
+    platform: Mapped[str] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(32), default="ready")
+    post_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    title: Mapped[str] = mapped_column(String(200), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    clip: Mapped[Clip] = relationship(back_populates="publications")
+    metric_snapshots: Mapped[list[MetricSnapshot]] = relationship(
+        back_populates="publication",
+        cascade="all, delete-orphan",
+        order_by="MetricSnapshot.recorded_at",
+    )
+    account_link: Mapped[PublicationAccountLink | None] = relationship(
+        back_populates="publication", cascade="all, delete-orphan", uselist=False
+    )
+    provider_reference: Mapped[PublicationProviderReference | None] = relationship(
+        back_populates="publication", cascade="all, delete-orphan", uselist=False
+    )
+
+    @property
+    def social_account_id(self) -> str | None:
+        return self.account_link.social_account_id if self.account_link else None
+
+    @property
+    def account_label(self) -> str | None:
+        return self.account_link.account_label_snapshot if self.account_link else None
+
+    @property
+    def account_username(self) -> str | None:
+        return self.account_link.account_username_snapshot if self.account_link else None
+
+    @property
+    def provider_publication_id(self) -> str | None:
+        return self.provider_reference.external_id if self.provider_reference else None
+
+
+class MetricSnapshot(Base):
+    __tablename__ = "metric_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    publication_id: Mapped[str] = mapped_column(ForeignKey("publications.id", ondelete="CASCADE"))
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    views: Mapped[int] = mapped_column(BigInteger, default=0)
+    likes: Mapped[int] = mapped_column(BigInteger, default=0)
+    comments: Mapped[int] = mapped_column(BigInteger, default=0)
+    shares: Mapped[int] = mapped_column(BigInteger, default=0)
+    watch_time_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    followers_gained: Mapped[int] = mapped_column(Integer, default=0)
+    affiliate_clicks: Mapped[int] = mapped_column(Integer, default=0)
+    conversions: Mapped[int] = mapped_column(Integer, default=0)
+    revenue: Mapped[float] = mapped_column(Float, default=0)
+    currency: Mapped[str] = mapped_column(String(3), default="EUR")
+    publication: Mapped[Publication] = relationship(back_populates="metric_snapshots")
+
+
+class SocialAccount(Base):
+    __tablename__ = "social_accounts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    platform: Mapped[str] = mapped_column(String(32))
+    label: Mapped[str] = mapped_column(String(100))
+    username: Mapped[str] = mapped_column(String(100), default="")
+    profile_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    default_hashtags: Mapped[list[str]] = mapped_column(JSON, default=list)
+    default_cta: Mapped[str] = mapped_column(String(500), default="")
+    default_campaign_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    currency: Mapped[str] = mapped_column(String(3), default="EUR")
+    connection_status: Mapped[str] = mapped_column(String(32), default="manual")
+    is_default: Mapped[bool] = mapped_column(default=False)
+    is_active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, onupdate=now_utc
+    )
+    publication_links: Mapped[list[PublicationAccountLink]] = relationship(back_populates="account")
+
+
+class PublicationAccountLink(Base):
+    __tablename__ = "publication_account_links"
+
+    publication_id: Mapped[str] = mapped_column(
+        ForeignKey("publications.id", ondelete="CASCADE"), primary_key=True
+    )
+    social_account_id: Mapped[str] = mapped_column(
+        ForeignKey("social_accounts.id", ondelete="RESTRICT"), index=True
+    )
+    account_label_snapshot: Mapped[str] = mapped_column(String(100))
+    account_username_snapshot: Mapped[str] = mapped_column(String(100), default="")
+    publication: Mapped[Publication] = relationship(back_populates="account_link")
+    account: Mapped[SocialAccount] = relationship(back_populates="publication_links")
+
+
+class PublicationProviderReference(Base):
+    __tablename__ = "publication_provider_references"
+
+    publication_id: Mapped[str] = mapped_column(
+        ForeignKey("publications.id", ondelete="CASCADE"), primary_key=True
+    )
+    external_id: Mapped[str] = mapped_column(String(255))
+    publication: Mapped[Publication] = relationship(back_populates="provider_reference")

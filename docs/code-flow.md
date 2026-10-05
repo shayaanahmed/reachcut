@@ -2,7 +2,7 @@
 
 This guide traces the running application from the browser through FastAPI, SQLite,
 Whisper, Ollama, caption generation, and FFmpeg. It describes the code that exists now;
-planned VLM, diarization, tracking, publishing, and Remotion stages are not part of the
+planned VLM, diarization, tracking, additional social publishing, and Remotion stages are not part of the
 current runtime flow.
 
 If you have worked in TypeScript, Java, C#, or a similar typed language, the most useful

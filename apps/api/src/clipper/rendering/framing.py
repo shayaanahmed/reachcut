@@ -8,15 +8,16 @@ def build_video_filter(plan: EditingPlanV1, subtitles: Path, width: int, height:
 
     escaped = str(subtitles).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
     subtitle_filter = "ass" if subtitles.suffix.lower() == ".ass" else "subtitles"
+    caption_suffix = f",{subtitle_filter}='{escaped}'" if plan.caption_config.enabled else ""
     if plan.frame_style == "center_crop":
         return (
             f"[0:v]scale={width}:{height}:force_original_aspect_ratio=increase,"
-            f"crop={width}:{height},{subtitle_filter}='{escaped}'[v]"
+            f"crop={width}:{height}{caption_suffix}[v]"
         )
     return (
         f"[0:v]split=2[background][foreground];"
         f"[background]scale={width}:{height}:force_original_aspect_ratio=increase,"
         f"crop={width}:{height},gblur=sigma=28,eq=brightness=-0.10:saturation=0.75[bg];"
         f"[foreground]scale={width}:{height}:force_original_aspect_ratio=decrease[fg];"
-        f"[bg][fg]overlay=(W-w)/2:(H-h)/2,{subtitle_filter}='{escaped}'[v]"
+        f"[bg][fg]overlay=(W-w)/2:(H-h)/2{caption_suffix}[v]"
     )

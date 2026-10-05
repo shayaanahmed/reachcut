@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 
 from clipper.domain.editing_plan import TimeRange
@@ -27,6 +28,8 @@ def candidate(candidate_id: str = "c0000", score: int = 80) -> dict[str, Any]:
         },
         "rationale": "A self-contained idea with a clear payoff.",
         "hook_text": "A useful opening",
+        "suggested_title": "The Useful Idea You Should Know",
+        "hashtags": ["#UsefulTips", "#LearnSomething", "#VideoClip"],
         "caption_style": "clean",
     }
 
@@ -74,6 +77,21 @@ def test_uses_small_json_schema_and_disables_thinking(
     assert isinstance(schema, dict)
     assert "effects" not in json.dumps(schema)
     assert "emphasis" not in json.dumps(schema)
+    assert r"\s" not in json.dumps(schema)
+
+
+def test_surfaces_ollama_error_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    request = httpx.Request("POST", "http://127.0.0.1:11434/api/generate")
+    response = httpx.Response(
+        400,
+        request=request,
+        json={"error": "Failed to initialize samplers: failed to parse grammar"},
+    )
+    monkeypatch.setattr("httpx.post", lambda *args, **kwargs: response)
+    provider = OllamaEditorialProvider("http://127.0.0.1:11434", "qwen")
+
+    with pytest.raises(EditorialOutputError, match="failed to parse grammar"):
+        provider.generate_structured("test prompt")
 
 
 def test_retries_truncated_json_with_larger_generation_budget(
@@ -182,6 +200,8 @@ def test_short_batch_requests_only_available_candidate(
 
     assert provider.rank_options([option]) == [candidate()]
     assert "Rank exactly 1 of the supplied transcript options" in requests[0]["prompt"]
+    assert "suggested_title" in requests[0]["prompt"]
+    assert "3-6 distinct, relevant, ready-to-paste hashtags" in requests[0]["prompt"]
 
 
 def test_short_video_returns_available_highlights_instead_of_requiring_five(
@@ -310,6 +330,18 @@ def test_rejects_duplicate_candidate_id() -> None:
     assert "duplicated" in errors[0]
 
 
+def test_rejects_duplicate_hashtags() -> None:
+    duplicate_hashtags = candidate()
+    duplicate_hashtags["hashtags"] = ["#UsefulTips", "#usefultips", "#VideoClip"]
+
+    valid, errors = OllamaEditorialProvider.validate_candidates(
+        {"candidates": [duplicate_hashtags]}
+    )
+
+    assert valid == []
+    assert "hashtags must be distinct" in errors[0]
+
+
 def test_builds_render_plan_with_deterministic_relative_timestamps() -> None:
     editorial = EditorialCandidate.model_validate(candidate())
     option = CandidateOption(
@@ -325,6 +357,8 @@ def test_builds_render_plan_with_deterministic_relative_timestamps() -> None:
     assert plan.hook is not None
     assert plan.hook.start_seconds == 0
     assert plan.hook.end_seconds == 3.5
+    assert plan.suggested_title == "The Useful Idea You Should Know"
+    assert plan.hashtags == ["#UsefulTips", "#LearnSomething", "#VideoClip"]
     assert plan.emphasis == []
     assert plan.effects == []
     assert plan.cta is None

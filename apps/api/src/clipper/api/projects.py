@@ -7,19 +7,33 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Response,
     UploadFile,
     status,
 )
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from clipper.api.dependencies import find_project, run_pipeline
-from clipper.api.schemas import ProcessRequest, ProjectResponse
+from clipper.api.dependencies import find_project, media_downloader, run_pipeline
+from clipper.api.schemas import (
+    ProcessRequest,
+    ProjectResponse,
+    ProjectUpdateRequest,
+    UrlImportRequest,
+)
 from clipper.config import settings
-from clipper.media import MediaError, safe_filename, store_upload
-from clipper.persistence import Project, get_session, now_utc
+from clipper.media import MediaError, safe_filename, store_upload, validate_public_media_url
+from clipper.persistence import (
+    Clip,
+    Project,
+    Publication,
+    PublicationAccountLink,
+    get_session,
+)
+from clipper.projects import ProjectService
 
 router = APIRouter()
+project_service = ProjectService(settings.data_dir / "projects")
 
 
 def project_or_404(session: Session, project_id: str) -> Project:
@@ -34,7 +48,19 @@ def projects(session: Session = Depends(get_session)) -> list[Project]:
     return list(
         session.scalars(
             select(Project)
-            .options(selectinload(Project.stages), selectinload(Project.clips))
+            .options(
+                selectinload(Project.stages),
+                selectinload(Project.clips)
+                .selectinload(Clip.publications)
+                .selectinload(Publication.metric_snapshots),
+                selectinload(Project.clips)
+                .selectinload(Clip.publications)
+                .selectinload(Publication.account_link)
+                .selectinload(PublicationAccountLink.account),
+                selectinload(Project.clips)
+                .selectinload(Clip.publications)
+                .selectinload(Publication.provider_reference),
+            )
             .order_by(Project.created_at.desc())
         )
     )
@@ -43,6 +69,26 @@ def projects(session: Session = Depends(get_session)) -> list[Project]:
 @router.get("/projects/{project_id}", response_model=ProjectResponse)
 def project(project_id: str, session: Session = Depends(get_session)) -> Project:
     return project_or_404(session, project_id)
+
+
+@router.put("/projects/{project_id}", response_model=ProjectResponse)
+def update_project(
+    project_id: str,
+    request: ProjectUpdateRequest,
+    session: Session = Depends(get_session),
+) -> Project:
+    selected = project_or_404(session, project_id)
+    return project_service.rename(session, selected, request.title)
+
+
+@router.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_project(project_id: str, session: Session = Depends(get_session)) -> Response:
+    selected = project_or_404(session, project_id)
+    try:
+        project_service.delete(session, selected)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(
@@ -63,16 +109,41 @@ def upload_project(
         stored = store_upload(media.file, target, settings.max_upload_bytes)
     except MediaError as error:
         raise HTTPException(status_code=415, detail=str(error)) from error
-    created = Project(
-        id=project_id,
-        title=title,
-        original_filename=filename,
-        source_path=str(stored.path),
-        media_sha256=stored.sha256,
-        authorization_confirmed_at=now_utc(),
+    created = project_service.create(
+        session,
+        project_id,
+        title,
+        filename,
+        stored,
     )
-    session.add(created)
-    session.commit()
+    return project_or_404(session, created.id)
+
+
+@router.post(
+    "/projects/import-url",
+    response_model=ProjectResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def import_project_url(
+    request: UrlImportRequest,
+    session: Session = Depends(get_session),
+) -> Project:
+    if not request.authorization_confirmed:
+        raise HTTPException(status_code=422, detail="media authorization confirmation is required")
+    try:
+        url = validate_public_media_url(request.url, settings.media_import_hosts)
+        project_id = str(uuid4())
+        target = settings.data_dir.resolve() / "projects" / project_id / "source"
+        stored = media_downloader.download(url, target, settings.max_upload_bytes)
+    except MediaError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    created = project_service.create(
+        session,
+        project_id,
+        request.title,
+        stored.path.name,
+        stored,
+    )
     return project_or_404(session, created.id)
 
 

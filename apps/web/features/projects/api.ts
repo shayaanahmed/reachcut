@@ -26,6 +26,46 @@ export async function uploadProject(data: FormData): Promise<Project> {
   return projectSchema.parse(await response.json());
 }
 
+export type UrlImportRequest = {
+  title: string;
+  url: string;
+  authorization_confirmed: boolean;
+};
+
+export async function importProjectUrl(
+  request: UrlImportRequest,
+): Promise<Project> {
+  const response = await fetch(`${UPLOAD_API_URL}/projects/import-url`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) throw await responseError(response, "URL import failed");
+  return projectSchema.parse(await response.json());
+}
+
+export async function updateProject(
+  projectId: string,
+  title: string,
+): Promise<Project> {
+  const response = await fetch(`${API_URL}/projects/${projectId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  if (!response.ok)
+    throw await responseError(response, "Project update failed");
+  return projectSchema.parse(await response.json());
+}
+
+export async function deleteProject(projectId: string): Promise<void> {
+  const response = await fetch(`${API_URL}/projects/${projectId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok)
+    throw await responseError(response, "Project deletion failed");
+}
+
 export async function processProject(
   projectId: string,
   language?: string,

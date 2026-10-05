@@ -31,3 +31,12 @@ def test_clamps_zoom_values(make_plan: Callable[..., EditingPlanV1]) -> None:
     ]
     effect = EditingPlanV1.model_validate(payload).effects[0]
     assert effect.parameters == {"scale": 1.35, "duration_seconds": 8.0}
+
+
+def test_validates_ready_to_paste_hashtags(make_plan: Callable[..., EditingPlanV1]) -> None:
+    payload = make_plan().model_dump(mode="json")
+    payload["suggested_title"] = "The One Detail Everyone Misses"
+    payload["hashtags"] = ["#UsefulTips", "missing-prefix"]
+
+    with pytest.raises(ValidationError, match="String should match pattern"):
+        EditingPlanV1.model_validate(payload)

@@ -1,8 +1,8 @@
 # Clipper
 
-Clipper is a local-first application for turning media you are authorized to repurpose into reviewable vertical clips. The core pipeline uses local models and local FFmpeg processes; it does not require a cloud-model account and never publishes automatically.
+Clipper is a local-first application for turning media you are authorized to repurpose into reviewable vertical clips. The core pipeline uses local models and local FFmpeg processes. Official API adapters can upload approved clips to YouTube, TikTok, Instagram Reels, Facebook Reels, and X without opening each platform's upload interface.
 
-The current vertical slice provides secure upload, media probing, durable stage state, provider-based `faster-whisper` transcription, Ollama/Qwen editorial selection, schema-validated editing plans, deterministic 9:16 FFmpeg rendering, customizable animated subtitles, and a small review UI. Human approval is required before final rendering. Exports preserve the complete source frame over a soft 9:16 background by default; center-crop remains available per clip.
+The current vertical slice provides secure local upload and allowlisted URL import through `yt-dlp`, media probing, durable stage state, provider-based `faster-whisper` transcription, Ollama/Qwen editorial selection, schema-validated editing plans, deterministic 9:16 FFmpeg rendering, customizable animated subtitles, and a project-based review UI. Human approval is required before final rendering. Exports preserve the complete source frame over a soft 9:16 background by default; center-crop remains available per clip.
 
 For Urdu and other non-English media, select the spoken language before analysis. The default `large-v3-turbo` Whisper model substantially improves multilingual recognition, while ASS/libass captions preserve Unicode/RTL shaping. Caption position, font, size, colors, highlighted words, line length, and pop/karaoke animation can be reviewed and changed on each generated clip.
 
@@ -31,6 +31,8 @@ docker compose -f compose.yaml -f compose.ollama.yaml up --build -d
 
 Open [http://localhost:3000](http://localhost:3000). The first command explicitly downloads the configured editorial model into a persistent Docker volume. Whisper downloads its configured model on the first transcription and caches it in a separate volume. Application projects and exports persist in `clipper-data`.
 
+The API image includes the locked `yt-dlp` package. For native development, `CLIPPER_YT_DLP_REPOSITORY=../yt-dlp` runs the sibling checkout directly; clear that setting to use the installed package. URL import accepts HTTPS links from `CLIPPER_YT_DLP_ALLOWED_HOSTS` and always requires rights confirmation.
+
 ```bash
 docker compose -f compose.yaml -f compose.ollama.yaml logs -f
 docker compose -f compose.yaml -f compose.ollama.yaml down
@@ -56,8 +58,253 @@ pnpm test
 
 The data directory contains the SQLite database, private source media, stage artifacts, and exports. Back it up to preserve completed work.
 
+## Social publishing setup
+
+Clipper supports one-click account authorization for YouTube, TikTok, Instagram,
+Facebook, and X. The person using Clipper never pastes a user access token, refresh
+token, Page ID, or Instagram account ID. The workspace owner must still register a
+developer app with each provider once and place that app's client credentials in the
+private `.env` file.
+
+If a platform says **Setup required** under **Settings → Connected accounts**, its
+required environment variables are empty. Clipper only reports that a provider is
+ready when its client ID/key, client secret, and redirect URI are present.
+
+### Callback URLs and environment variables
+
+For the default local setup, the web application is at `http://127.0.0.1:3000` and
+the API is at `http://127.0.0.1:8000`. OAuth callbacks go to the API, not the web
+application.
+
+| Platform  | Registered callback                                      | Required `.env` values                                                                       |
+| --------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| YouTube   | `http://127.0.0.1:8000/api/oauth/youtube/callback`       | `CLIPPER_YOUTUBE_CLIENT_ID`, `CLIPPER_YOUTUBE_CLIENT_SECRET`, `CLIPPER_YOUTUBE_REDIRECT_URI` |
+| TikTok    | `https://YOUR-PUBLIC-API-HOST/api/oauth/tiktok/callback` | `CLIPPER_TIKTOK_CLIENT_KEY`, `CLIPPER_TIKTOK_CLIENT_SECRET`, `CLIPPER_TIKTOK_REDIRECT_URI`   |
+| Instagram | `http://127.0.0.1:8000/api/oauth/meta/callback`          | `CLIPPER_META_APP_ID`, `CLIPPER_META_APP_SECRET`, `CLIPPER_META_REDIRECT_URI`                |
+| Facebook  | Same Meta callback as Instagram                          | Same Meta variables as Instagram                                                             |
+| X         | `http://127.0.0.1:8000/api/oauth/x/callback`             | `CLIPPER_X_CLIENT_ID`, `CLIPPER_X_CLIENT_SECRET`, `CLIPPER_X_REDIRECT_URI`                   |
+
+TikTok Login Kit for web requires an absolute, static HTTPS redirect URI. For local
+development, expose port 8000 through an HTTPS reverse proxy or temporary tunnel and
+register the resulting callback URL. The tunnel must forward the full
+`/api/oauth/tiktok/callback` path to the Clipper API. Use HTTPS callbacks for every
+provider in a deployed environment.
+
+Set `CLIPPER_WEB_BASE_URL` to the URL users open in their browser. Clipper redirects
+back to `${CLIPPER_WEB_BASE_URL}/settings/accounts` after authorization. A deployed
+configuration therefore resembles:
+
+```dotenv
+CLIPPER_WEB_BASE_URL=https://clipper.example.com
+
+CLIPPER_YOUTUBE_CLIENT_ID=
+CLIPPER_YOUTUBE_CLIENT_SECRET=
+CLIPPER_YOUTUBE_REDIRECT_URI=https://api.clipper.example.com/api/oauth/youtube/callback
+
+CLIPPER_TIKTOK_CLIENT_KEY=
+CLIPPER_TIKTOK_CLIENT_SECRET=
+CLIPPER_TIKTOK_REDIRECT_URI=https://api.clipper.example.com/api/oauth/tiktok/callback
+
+CLIPPER_META_APP_ID=
+CLIPPER_META_APP_SECRET=
+CLIPPER_META_REDIRECT_URI=https://api.clipper.example.com/api/oauth/meta/callback
+
+CLIPPER_X_CLIENT_ID=
+CLIPPER_X_CLIENT_SECRET=
+CLIPPER_X_REDIRECT_URI=https://api.clipper.example.com/api/oauth/x/callback
+```
+
+Redirect URIs must match the provider dashboard exactly, including the scheme, host,
+port, path, and trailing slash. Do not commit `.env` or put provider secrets in
+`.env.example`, frontend variables, screenshots, issue reports, or logs.
+
+### YouTube Shorts
+
+Official references: [YouTube Data API setup](https://developers.google.com/youtube/v3/getting-started),
+[OAuth credentials](https://developers.google.com/youtube/registering_an_application),
+and [web-server OAuth](https://developers.google.com/youtube/v3/guides/auth/server-side-web-apps).
+
+1. Open Google Cloud Console, create or select a project, and enable **YouTube Data
+   API v3** in **APIs & Services → Library**.
+2. Configure the Google Auth Platform branding/consent screen. For a private test,
+   keep the app in **Testing** and add every Google account that will connect as a
+   test user. For an organization-only deployment, use **Internal** if your Google
+   Workspace configuration permits it.
+3. In **Google Auth Platform → Clients**, create an OAuth client with application
+   type **Web application**.
+4. Add the exact authorized redirect URI:
+   `http://127.0.0.1:8000/api/oauth/youtube/callback`. Google permits loopback HTTP
+   callbacks for local development. Use your HTTPS API URL in production.
+5. Copy the client ID and client secret into:
+
+   ```dotenv
+   CLIPPER_YOUTUBE_CLIENT_ID=your-google-client-id
+   CLIPPER_YOUTUBE_CLIENT_SECRET=your-google-client-secret
+   CLIPPER_YOUTUBE_REDIRECT_URI=http://127.0.0.1:8000/api/oauth/youtube/callback
+   ```
+
+6. Clipper requests `youtube.upload` to publish videos and `youtube.readonly` to
+   synchronize views, likes, and comments. Declare both scopes in the Google Auth
+   Platform data-access configuration when required.
+7. Restart Clipper, open **Settings → Connected accounts**, select **YouTube**, and
+   approve the consent screen. If an older connection was created before metrics
+   support, select **Reconnect** once to grant the read-only scope.
+
+Testing users can connect without completing public verification, subject to Google's
+testing restrictions and refresh-token lifetime. A public external app may require
+brand and sensitive-scope verification before arbitrary Google accounts can connect.
+
+### TikTok
+
+Official references: [create a TikTok app](https://developers.tiktok.com/doc/getting-started-create-an-app),
+[Login Kit for web](https://developers.tiktok.com/docs/en/login-kit-web), and
+[Content Posting API Direct Post](https://developers.tiktok.com/docs/en/content-posting-api-get-started).
+
+1. Create an app in TikTok for Developers. Complete its basic information, website,
+   terms-of-service URL, privacy-policy URL, and any URL ownership checks requested
+   by the portal.
+2. Add the **Login Kit** and **Content Posting API** products.
+3. Enable **Direct Post** in the Content Posting API configuration.
+4. Register an HTTPS Login Kit redirect URI such as
+   `https://YOUR-PUBLIC-API-HOST/api/oauth/tiktok/callback`. Plain HTTP loopback URLs
+   are not accepted for TikTok's web flow.
+5. Request/enable the scopes used by Clipper: `user.info.basic`, `video.publish`, and
+   `video.upload`. The TikTok account owner must grant the publishing scope during
+   connection.
+6. Copy the app's **Client key** and **Client secret** into:
+
+   ```dotenv
+   CLIPPER_TIKTOK_CLIENT_KEY=your-tiktok-client-key
+   CLIPPER_TIKTOK_CLIENT_SECRET=your-tiktok-client-secret
+   CLIPPER_TIKTOK_REDIRECT_URI=https://YOUR-PUBLIC-API-HOST/api/oauth/tiktok/callback
+   ```
+
+7. Restart Clipper, select **TikTok** under connected accounts, and authorize the
+   account. Clipper stores the returned access/refresh tokens and Open ID in its
+   encrypted credential store.
+
+TikTok apps must be reviewed for the requested products and scopes. Direct posts from
+an unaudited client are restricted to private visibility. Complete TikTok's Content
+Posting API audit before expecting public posts from production accounts.
+
+### Instagram Reels
+
+Official references: [Instagram API with Facebook Login](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-facebook-login/get-started)
+and Meta's [Instagram Reels publishing sample](https://github.com/fbsamples/reels_publishing_apis/tree/main/insta_reels_publishing_api_sample).
+
+1. The destination Instagram account must be a **professional Business account** and
+   must be connected to a Facebook Page. The Facebook user authorizing Clipper must
+   have sufficient Page access to create content.
+2. Create an app in Meta for Developers using a business-oriented use case that
+   provides Facebook Login and the Instagram Graph API.
+3. Add/configure **Facebook Login** and register this exact valid OAuth redirect URI:
+   `http://127.0.0.1:8000/api/oauth/meta/callback`. Use the public HTTPS API URL for
+   production. Instagram and Facebook connections intentionally share this callback.
+4. Enable/request the permissions used by Clipper:
+   `instagram_basic`, `instagram_content_publish`, `pages_show_list`, and
+   `pages_read_engagement`.
+5. Add the Facebook account as an app administrator, developer, or tester while the
+   Meta app is in Development mode. For accounts without an app role, switch the app
+   Live only after obtaining the required Advanced Access/App Review approvals and
+   completing any requested business verification.
+6. Copy the Meta App ID and App Secret into:
+
+   ```dotenv
+   CLIPPER_META_APP_ID=your-meta-app-id
+   CLIPPER_META_APP_SECRET=your-meta-app-secret
+   CLIPPER_META_REDIRECT_URI=http://127.0.0.1:8000/api/oauth/meta/callback
+   CLIPPER_META_GRAPH_VERSION=v24.0
+   ```
+
+7. Restart Clipper, select **Instagram**, and authorize with the Facebook account
+   that manages the linked Page. Clipper obtains the Page token and linked Instagram
+   professional-account ID automatically; neither is entered in the UI.
+
+If the login succeeds but no Instagram destination is found, verify the account is a
+professional Business account, the Page is linked, and the authorizing Facebook user
+can manage that Page. The current connection flow selects the first eligible linked
+Instagram account returned by Meta.
+
+### Facebook Reels
+
+Official reference: Meta's [Facebook Reels publishing sample](https://github.com/fbsamples/reels_publishing_apis/tree/main/fb_reels_publishing_api_sample).
+
+1. Reuse the Meta app and callback configured for Instagram, or create a dedicated
+   Meta app if you need separate review and release lifecycles.
+2. The authorizing Facebook user must have sufficient access to the destination Page.
+   Personal profiles are not publishing destinations for this adapter.
+3. Enable/request `pages_show_list`, `pages_read_engagement`, and
+   `pages_manage_posts`. Complete App Review/Advanced Access and business verification
+   when publishing for users who do not hold a role on the Meta app.
+4. Set the same `CLIPPER_META_APP_ID`, `CLIPPER_META_APP_SECRET`, and
+   `CLIPPER_META_REDIRECT_URI` values shown in the Instagram section.
+5. Restart Clipper, select **Facebook**, and authorize the Facebook account that
+   manages the Page. Clipper resolves and encrypts the Page access token and Page ID.
+
+The current connection flow selects the first eligible Page returned by Meta. Use a
+Facebook login that only manages the intended Page if deterministic selection matters.
+
+### X
+
+Official reference: [OAuth 2.0 Authorization Code Flow with PKCE](https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code).
+
+1. Create or select a Project and App in the X Developer Console. Ensure the selected
+   X API access tier includes posting and media-upload endpoints.
+2. Open the app's **User authentication settings**, enable **OAuth 2.0**, and choose a
+   confidential **Web App** client so the app has a Client ID and Client Secret.
+3. Register the exact callback URL
+   `http://127.0.0.1:8000/api/oauth/x/callback`, plus the required website URL. Use an
+   HTTPS callback for a deployed Clipper instance.
+4. Enable the read/write permissions corresponding to the scopes Clipper requests:
+   `tweet.read`, `tweet.write`, `users.read`, `media.write`, and `offline.access`.
+   `offline.access` is required for X to issue a refresh token.
+5. Copy the OAuth 2.0 Client ID and Client Secret—not the app-only bearer token—into:
+
+   ```dotenv
+   CLIPPER_X_CLIENT_ID=your-x-oauth2-client-id
+   CLIPPER_X_CLIENT_SECRET=your-x-oauth2-client-secret
+   CLIPPER_X_REDIRECT_URI=http://127.0.0.1:8000/api/oauth/x/callback
+   ```
+
+6. Restart Clipper, select **X**, and authorize the account. Clipper uses OAuth 2.0
+   Authorization Code with PKCE and stores the refresh token for future publishing.
+
+### Restart and verify
+
+After changing `.env`, restart the API so provider clients are rebuilt with the new
+configuration:
+
+```bash
+# Docker Compose
+docker compose up -d --build api
+
+# Native development: stop pnpm dev, then start it again
+pnpm dev
+```
+
+Check what Clipper detected without displaying any secrets:
+
+```bash
+curl -s http://127.0.0.1:8000/api/publishing/capabilities
+```
+
+The `configured_platforms` array should contain every configured provider. Instagram
+and Facebook appear together because they share the same Meta app credentials. This
+endpoint only checks that configuration values exist; the provider validates the
+redirect URI, scopes, review status, and account eligibility during authorization.
+
+Finally, open **Settings → Connected accounts**, select a platform, approve access on
+the provider's site, then return to Clipper. Approve and render a clip before using
+**Publish with Clipper**.
+
+Provider access and refresh tokens are encrypted under the private data directory and
+are not stored in SQLite. Keep both `credentials.key` and the `credentials/` directory
+together when backing up or restoring. TikTok returns an asynchronous publishing ID,
+so Clipper records the upload as processing and provides a status refresh action until
+the final post URL is available.
+
 For an end-to-end, function-by-function walkthrough, start with [docs/code-flow.md](docs/code-flow.md). Architectural boundaries and change ownership are documented in [docs/architecture.md](docs/architecture.md) and [docs/module-ownership.md](docs/module-ownership.md). See also [docs/security.md](docs/security.md) and [docs/troubleshooting.md](docs/troubleshooting.md).
 
 ## Scope
 
-This repository intentionally focuses on the local clipping workflow. Publishing remains an adapter boundary and has no browser automation. Phase-two Remotion templates, face tracking, VLM reranking, and publishing adapters are described in the architecture plan but are not claimed as complete.
+This repository focuses on the local clipping workflow. Public social-account profiles and publishing defaults can be configured once without storing passwords. Approved, rendered clips can be uploaded through official YouTube, TikTok, Instagram, Facebook, and X APIs, linked to their resulting post URLs, and tracked with timestamped performance and revenue snapshots. YouTube views, likes, and comments synchronize when a project opens and every minute while it remains open; manual snapshot fields preserve revenue, conversions, and other business metrics. Automatic analytics for the other social platforms, Remotion templates, face tracking, and VLM reranking are not yet claimed as complete.

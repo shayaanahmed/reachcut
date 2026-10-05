@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from clipper.api.routes import router
+from clipper.config import settings
 from clipper.persistence import create_schema
 
 
@@ -23,9 +24,12 @@ app = FastAPI(
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:3000", "http://localhost:3000"],
+    allow_origins=[
+        f"http://127.0.0.1:{settings.web_port}",
+        f"http://localhost:{settings.web_port}",
+    ],
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT"],
+    allow_methods=["DELETE", "GET", "POST", "PUT"],
     allow_headers=["Content-Type"],
 )
 app.include_router(router)

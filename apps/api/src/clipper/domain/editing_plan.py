@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 Seconds = Annotated[float, Field(ge=0)]
 Score = Annotated[int, Field(ge=0, le=100)]
+Hashtag = Annotated[str, Field(pattern=r"^#[^\s#]{1,39}$")]
 
 
 class StrictModel(BaseModel):
@@ -74,6 +75,7 @@ class CTA(TimeRange):
 
 
 class CaptionConfig(StrictModel):
+    enabled: bool = True
     position: Literal["top", "middle", "bottom"] = "bottom"
     font_family: Annotated[str, Field(min_length=1, max_length=80)] = "Noto Sans"
     font_size: Annotated[int, Field(ge=28, le=96)] = 58
@@ -92,6 +94,8 @@ class EditingPlanV1(StrictModel):
     source: TimeRange
     scores: Scores
     rationale: Annotated[str, Field(min_length=1, max_length=600)]
+    suggested_title: Annotated[str, Field(min_length=1, max_length=100)] | None = None
+    hashtags: list[Hashtag] = Field(default_factory=list, max_length=8)
     hook: Hook | None = None
     caption_style: Literal["clean", "kinetic_highlight", "karaoke"] = "clean"
     caption_config: CaptionConfig = Field(default_factory=CaptionConfig)

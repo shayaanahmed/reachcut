@@ -5,6 +5,18 @@
 The API and web UI are delivery adapters. Project application services coordinate
 feature modules. Feature modules contain pure policy wherever possible, while
 SQLAlchemy, model providers, and subprocess execution remain adapters at the edge.
+Publication tracking is coordinated by the project application layer: a
+publication links one rendered clip to one platform post, while immutable metric
+snapshots retain performance history. Provider adapters own OAuth/token and upload
+HTTP calls; the project service requires explicit approval and records provider IDs,
+processing state, and the final provider-returned post URL. Metrics use a separate
+provider adapter: YouTube statistics sync into immutable snapshots, while other
+platform adapters can add analytics without changing publication workflows.
+Reusable social-account records contain public identity, metadata defaults, and a
+connection state. Encrypted OAuth credentials remain outside SQLite under the private
+data directory. Publications use a separate immutable account link so old
+records remain valid when an account is renamed or archived, without altering an
+existing publications table during local schema creation.
 
 ```text
 Next.js page -> feature components/hooks -> feature API clients -> HTTP contracts
@@ -28,6 +40,13 @@ The Next.js client is a review surface. FastAPI is the control plane and owns au
 
 Model and media integrations sit behind typed providers. Project services depend on those interfaces, not model names. Every candidate becomes an `EditingPlanV1`; only validated plans may reach FFmpeg or, later, Remotion. Subprocesses receive argument arrays and never use a shell.
 
+Topic discovery follows the same boundary: the pure `discovery` module owns typed
+topic, category, trend, and source results, while the Google Trends/YouTube network
+adapter lives in `providers`. A discovered source enters the existing authorized URL-import workflow;
+discovery never bypasses media-rights confirmation. Publish-potential recommendations
+are deterministic editorial guidance based on candidate signals and never guarantee
+views or revenue.
+
 ```text
 Next.js review UI
        │ HTTP/SSE (planned for progress)
@@ -44,7 +63,7 @@ private data/artifact directory
 
 ## Smallest complete vertical slice
 
-An authorized local upload is signature-checked and copied to a project-owned directory, probed, transcribed with word timestamps, chunked, scored by a local Qwen model through Ollama, converted to validated plans, reviewed, approved, and rendered to a 9:16 MP4 plus SRT, VTT, and plan/manifest JSON. Tests replace heavyweight providers with deterministic fakes; production does not silently replace missing local models.
+An authorized local upload or allowlisted URL import is signature-checked and stored in a project-owned directory, probed, transcribed with word timestamps, chunked, scored by a local Qwen model through Ollama, converted to validated plans, reviewed, approved, and rendered to a 9:16 MP4 plus SRT, VTT, and plan/manifest JSON. The URL adapter invokes yt-dlp with a fixed argument vector and never through a shell. Tests replace heavyweight providers with deterministic fakes; production does not silently replace missing local models.
 
 ## Stages and resumability
 
@@ -66,4 +85,4 @@ Stages are persisted as independent rows with `pending`, `running`, `succeeded`,
 - Transcription provider: implement `clipper.transcription.TranscriptionProvider`, add configuration and a health check, then register it in `clipper.api.dependencies`.
 - Editorial provider: implement `clipper.editorial.EditorialLLMProvider` and register it in `clipper.api.dependencies`.
 - Editing template: add a versioned JSON/Zod configuration. Templates may reference only registered assets/effects; they cannot execute code.
-- Publishing adapter: implement draft/schedule validation and OAuth token storage. Require an approved clip and a separate explicit publish action. If an official API is unavailable, export a package.
+- Publishing adapter: implement `clipper.publishing.PublishingAdapter`, keep network calls in `providers/`, and orchestrate approval, credentials, processing-state refresh, and publication persistence in `projects/`. Current adapters cover YouTube, TikTok, Instagram Reels, Facebook Reels, and X.
