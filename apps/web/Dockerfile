@@ -9,7 +9,7 @@ FROM base AS dependencies
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json ./apps/web/package.json
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm install --frozen-lockfile --filter @clipper/web...
+    pnpm install --frozen-lockfile --filter @reachcut/web...
 
 FROM dependencies AS build
 COPY apps/web ./apps/web

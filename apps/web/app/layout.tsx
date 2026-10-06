@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import "./styles.css";
 
 export const metadata: Metadata = {
-  title: "Clipper — Video repurposing workspace",
+  title: "ReachCut — Video repurposing workspace",
   description: "A private, local-first workspace for creating vertical clips",
 };
 
@@ -16,10 +16,10 @@ export default function RootLayout({
       <body>
         <div className="app-shell">
           <aside className="sidebar">
-            <Link className="brand" href="/" aria-label="Clipper dashboard">
-              <span className="brand-mark">C</span>
+            <Link className="brand" href="/" aria-label="ReachCut dashboard">
+              <span className="brand-mark">R</span>
               <span>
-                <strong>Clipper</strong>
+                <strong>ReachCut</strong>
                 <small>Local studio</small>
               </span>
             </Link>

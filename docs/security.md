@@ -1,6 +1,6 @@
 # Security and media rights
 
-Only submit media you own, license, or are authorized to repurpose. Accessibility of a URL is not evidence of publication rights. Clipper records the user's confirmation and source provenance; it does not determine ownership.
+Only submit media you own, license, or are authorized to repurpose. Accessibility of a URL is not evidence of publication rights. ReachCut records the user's confirmation and source provenance; it does not determine ownership.
 
 Uploads are streamed with byte limits, sanitized names, signature checks, and project-generated storage paths. URL import requires HTTPS, an explicit host allowlist, DNS resolution checks, private/link-local address blocking, a single-item yt-dlp download, and a downloader subprocess with fixed arguments. Imported files receive the same size, signature, project-directory, probe, and rights-confirmation controls as uploads. Add hosts deliberately through `CLIPPER_YT_DLP_ALLOWED_HOSTS`; trusted local-network targets are not supported.
 

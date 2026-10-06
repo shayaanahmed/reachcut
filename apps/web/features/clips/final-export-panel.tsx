@@ -74,7 +74,7 @@ export function FinalExportPanel({
               ? "Download the MP4 or continue to the dedicated publishing workspace."
               : renderState
                 ? "You can keep reviewing this page. The export status updates here automatically."
-                : "Clipper uses the saved preview settings to create a full-quality vertical MP4."}
+                : "ReachCut uses the saved preview settings to create a full-quality vertical MP4."}
           </p>
         </div>
       </div>

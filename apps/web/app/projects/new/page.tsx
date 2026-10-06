@@ -21,7 +21,7 @@ export default function NewProjectPage() {
           <span className="eyebrow">NEW PRODUCTION</span>
           <h1>Turn one video into a clip campaign</h1>
           <p>
-            Add a source you can repurpose. Clipper will analyze it locally and
+            Add a source you can repurpose. ReachCut will analyze it locally and
             prepare reviewable views and revenue cuts.
           </p>
         </div>

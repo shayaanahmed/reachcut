@@ -67,7 +67,7 @@ class GoogleYouTubeDiscoveryProvider:
             response = self._http_get(
                 "https://trends.google.com/trending/rss",
                 params={"geo": country.code},
-                headers={"User-Agent": "Clipper/0.1 trend discovery"},
+                headers={"User-Agent": "ReachCut/0.1 trend discovery"},
                 timeout=self.timeout_seconds,
             )
             response.raise_for_status()

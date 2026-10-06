@@ -1,1 +1,1 @@
-"""Clipper local control plane."""
+"""ReachCut local control plane."""

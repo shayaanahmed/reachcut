@@ -335,7 +335,7 @@ function ImportJourney({
           {state === "failed"
             ? error ||
               "The source could not be imported. Check the link and try again."
-            : "Keep this page open while Clipper prepares your source."}
+            : "Keep this page open while ReachCut prepares your source."}
         </p>
       </div>
       <div className="journey-progress" aria-hidden="true">

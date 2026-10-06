@@ -1,6 +1,6 @@
-# Clipper
+# ReachCut
 
-Clipper is a local-first application for turning media you are authorized to repurpose into reviewable vertical clips. The core pipeline uses local models and local FFmpeg processes. Official API adapters can upload approved clips to YouTube, TikTok, Instagram Reels, Facebook Reels, and X without opening each platform's upload interface.
+ReachCut is a local-first application for turning media you are authorized to repurpose into reviewable vertical clips. The core pipeline uses local models and local FFmpeg processes. Official API adapters can upload approved clips to YouTube, TikTok, Instagram Reels, Facebook Reels, and X without opening each platform's upload interface.
 
 The current vertical slice provides secure local upload and allowlisted URL import through `yt-dlp`, media probing, durable stage state, provider-based `faster-whisper` transcription, Ollama/Qwen editorial selection, and schema-validated views- and revenue-oriented editing plans. The Creative Studio adds auto-curated source slices, content modes, OpenCV face/action tracking, caption presets and translation, hook/CTA/card overlays, transitions, zoom/progress effects, gameplay split-screen, B-roll, reaction PIP, SFX, music, and alternate source-audio selection. Deterministic FFmpeg rendering produces review previews and final 9:16 exports. Human approval is required before final rendering.
 
@@ -56,6 +56,10 @@ pnpm dev
 
 `pnpm dev` starts the API on port 8000 and web client on port 3000. Run `pnpm doctor` before processing media. Model downloads are explicit user actions; see [docs/models.md](docs/models.md).
 
+ReachCut retains the existing `CLIPPER_*` environment-variable prefix, `clipper`
+Python import package, database filename, and Docker data-volume name for backward
+compatibility. The product rename does not require a configuration or data migration.
+
 ```bash
 pnpm check
 pnpm test
@@ -65,14 +69,14 @@ The data directory contains the SQLite database, private source media, stage art
 
 ## Social publishing setup
 
-Clipper supports one-click account authorization for YouTube, TikTok, Instagram,
-Facebook, and X. The person using Clipper never pastes a user access token, refresh
+ReachCut supports one-click account authorization for YouTube, TikTok, Instagram,
+Facebook, and X. The person using ReachCut never pastes a user access token, refresh
 token, Page ID, or Instagram account ID. The workspace owner must still register a
 developer app with each provider once and place that app's client credentials in the
 private `.env` file.
 
 If a platform says **Setup required** under **Settings → Connected accounts**, its
-required environment variables are empty. Clipper only reports that a provider is
+required environment variables are empty. ReachCut only reports that a provider is
 ready when its client ID/key, client secret, and redirect URI are present.
 
 ### Callback URLs and environment variables
@@ -92,31 +96,31 @@ application.
 TikTok Login Kit for web requires an absolute, static HTTPS redirect URI. For local
 development, expose port 8000 through an HTTPS reverse proxy or temporary tunnel and
 register the resulting callback URL. The tunnel must forward the full
-`/api/oauth/tiktok/callback` path to the Clipper API. Use HTTPS callbacks for every
+`/api/oauth/tiktok/callback` path to the ReachCut API. Use HTTPS callbacks for every
 provider in a deployed environment.
 
-Set `CLIPPER_WEB_BASE_URL` to the URL users open in their browser. Clipper redirects
+Set `CLIPPER_WEB_BASE_URL` to the URL users open in their browser. ReachCut redirects
 back to `${CLIPPER_WEB_BASE_URL}/settings/accounts` after authorization. A deployed
 configuration therefore resembles:
 
 ```dotenv
-CLIPPER_WEB_BASE_URL=https://clipper.example.com
+CLIPPER_WEB_BASE_URL=https://reachcut.example.com
 
 CLIPPER_YOUTUBE_CLIENT_ID=
 CLIPPER_YOUTUBE_CLIENT_SECRET=
-CLIPPER_YOUTUBE_REDIRECT_URI=https://api.clipper.example.com/api/oauth/youtube/callback
+CLIPPER_YOUTUBE_REDIRECT_URI=https://api.reachcut.example.com/api/oauth/youtube/callback
 
 CLIPPER_TIKTOK_CLIENT_KEY=
 CLIPPER_TIKTOK_CLIENT_SECRET=
-CLIPPER_TIKTOK_REDIRECT_URI=https://api.clipper.example.com/api/oauth/tiktok/callback
+CLIPPER_TIKTOK_REDIRECT_URI=https://api.reachcut.example.com/api/oauth/tiktok/callback
 
 CLIPPER_META_APP_ID=
 CLIPPER_META_APP_SECRET=
-CLIPPER_META_REDIRECT_URI=https://api.clipper.example.com/api/oauth/meta/callback
+CLIPPER_META_REDIRECT_URI=https://api.reachcut.example.com/api/oauth/meta/callback
 
 CLIPPER_X_CLIENT_ID=
 CLIPPER_X_CLIENT_SECRET=
-CLIPPER_X_REDIRECT_URI=https://api.clipper.example.com/api/oauth/x/callback
+CLIPPER_X_REDIRECT_URI=https://api.reachcut.example.com/api/oauth/x/callback
 ```
 
 Redirect URIs must match the provider dashboard exactly, including the scheme, host,
@@ -148,10 +152,10 @@ and [web-server OAuth](https://developers.google.com/youtube/v3/guides/auth/serv
    CLIPPER_YOUTUBE_REDIRECT_URI=http://127.0.0.1:8000/api/oauth/youtube/callback
    ```
 
-6. Clipper requests `youtube.upload` to publish videos and `youtube.readonly` to
+6. ReachCut requests `youtube.upload` to publish videos and `youtube.readonly` to
    synchronize views, likes, and comments. Declare both scopes in the Google Auth
    Platform data-access configuration when required.
-7. Restart Clipper, open **Settings → Connected accounts**, select **YouTube**, and
+7. Restart ReachCut, open **Settings → Connected accounts**, select **YouTube**, and
    approve the consent screen. If an older connection was created before metrics
    support, select **Reconnect** once to grant the read-only scope.
 
@@ -173,7 +177,7 @@ Official references: [create a TikTok app](https://developers.tiktok.com/doc/get
 4. Register an HTTPS Login Kit redirect URI such as
    `https://YOUR-PUBLIC-API-HOST/api/oauth/tiktok/callback`. Plain HTTP loopback URLs
    are not accepted for TikTok's web flow.
-5. Request/enable the scopes used by Clipper: `user.info.basic`, `video.publish`, and
+5. Request/enable the scopes used by ReachCut: `user.info.basic`, `video.publish`, and
    `video.upload`. The TikTok account owner must grant the publishing scope during
    connection.
 6. Copy the app's **Client key** and **Client secret** into:
@@ -184,8 +188,8 @@ Official references: [create a TikTok app](https://developers.tiktok.com/doc/get
    CLIPPER_TIKTOK_REDIRECT_URI=https://YOUR-PUBLIC-API-HOST/api/oauth/tiktok/callback
    ```
 
-7. Restart Clipper, select **TikTok** under connected accounts, and authorize the
-   account. Clipper stores the returned access/refresh tokens and Open ID in its
+7. Restart ReachCut, select **TikTok** under connected accounts, and authorize the
+   account. ReachCut stores the returned access/refresh tokens and Open ID in its
    encrypted credential store.
 
 TikTok apps must be reviewed for the requested products and scopes. Direct posts from
@@ -198,14 +202,14 @@ Official references: [Instagram API with Facebook Login](https://developers.face
 and Meta's [Instagram Reels publishing sample](https://github.com/fbsamples/reels_publishing_apis/tree/main/insta_reels_publishing_api_sample).
 
 1. The destination Instagram account must be a **professional Business account** and
-   must be connected to a Facebook Page. The Facebook user authorizing Clipper must
+   must be connected to a Facebook Page. The Facebook user authorizing ReachCut must
    have sufficient Page access to create content.
 2. Create an app in Meta for Developers using a business-oriented use case that
    provides Facebook Login and the Instagram Graph API.
 3. Add/configure **Facebook Login** and register this exact valid OAuth redirect URI:
    `http://127.0.0.1:8000/api/oauth/meta/callback`. Use the public HTTPS API URL for
    production. Instagram and Facebook connections intentionally share this callback.
-4. Enable/request the permissions used by Clipper:
+4. Enable/request the permissions used by ReachCut:
    `instagram_basic`, `instagram_content_publish`, `pages_show_list`, and
    `pages_read_engagement`.
 5. Add the Facebook account as an app administrator, developer, or tester while the
@@ -221,8 +225,8 @@ and Meta's [Instagram Reels publishing sample](https://github.com/fbsamples/reel
    CLIPPER_META_GRAPH_VERSION=v24.0
    ```
 
-7. Restart Clipper, select **Instagram**, and authorize with the Facebook account
-   that manages the linked Page. Clipper obtains the Page token and linked Instagram
+7. Restart ReachCut, select **Instagram**, and authorize with the Facebook account
+   that manages the linked Page. ReachCut obtains the Page token and linked Instagram
    professional-account ID automatically; neither is entered in the UI.
 
 If the login succeeds but no Instagram destination is found, verify the account is a
@@ -243,8 +247,8 @@ Official reference: Meta's [Facebook Reels publishing sample](https://github.com
    when publishing for users who do not hold a role on the Meta app.
 4. Set the same `CLIPPER_META_APP_ID`, `CLIPPER_META_APP_SECRET`, and
    `CLIPPER_META_REDIRECT_URI` values shown in the Instagram section.
-5. Restart Clipper, select **Facebook**, and authorize the Facebook account that
-   manages the Page. Clipper resolves and encrypts the Page access token and Page ID.
+5. Restart ReachCut, select **Facebook**, and authorize the Facebook account that
+   manages the Page. ReachCut resolves and encrypts the Page access token and Page ID.
 
 The current connection flow selects the first eligible Page returned by Meta. Use a
 Facebook login that only manages the intended Page if deterministic selection matters.
@@ -259,8 +263,8 @@ Official reference: [OAuth 2.0 Authorization Code Flow with PKCE](https://docs.x
    confidential **Web App** client so the app has a Client ID and Client Secret.
 3. Register the exact callback URL
    `http://127.0.0.1:8000/api/oauth/x/callback`, plus the required website URL. Use an
-   HTTPS callback for a deployed Clipper instance.
-4. Enable the read/write permissions corresponding to the scopes Clipper requests:
+   HTTPS callback for a deployed ReachCut instance.
+4. Enable the read/write permissions corresponding to the scopes ReachCut requests:
    `tweet.read`, `tweet.write`, `users.read`, `media.write`, and `offline.access`.
    `offline.access` is required for X to issue a refresh token.
 5. Copy the OAuth 2.0 Client ID and Client Secret—not the app-only bearer token—into:
@@ -271,7 +275,7 @@ Official reference: [OAuth 2.0 Authorization Code Flow with PKCE](https://docs.x
    CLIPPER_X_REDIRECT_URI=http://127.0.0.1:8000/api/oauth/x/callback
    ```
 
-6. Restart Clipper, select **X**, and authorize the account. Clipper uses OAuth 2.0
+6. Restart ReachCut, select **X**, and authorize the account. ReachCut uses OAuth 2.0
    Authorization Code with PKCE and stores the refresh token for future publishing.
 
 ### Restart and verify
@@ -287,7 +291,7 @@ docker compose up -d --build api
 pnpm dev
 ```
 
-Check what Clipper detected without displaying any secrets:
+Check what ReachCut detected without displaying any secrets:
 
 ```bash
 curl -s http://127.0.0.1:8000/api/publishing/capabilities
@@ -299,13 +303,13 @@ endpoint only checks that configuration values exist; the provider validates the
 redirect URI, scopes, review status, and account eligibility during authorization.
 
 Finally, open **Settings → Connected accounts**, select a platform, approve access on
-the provider's site, then return to Clipper. Approve and render a clip before using
-**Publish with Clipper**.
+the provider's site, then return to ReachCut. Approve and render a clip before using
+**Publish with ReachCut**.
 
 Provider access and refresh tokens are encrypted under the private data directory and
 are not stored in SQLite. Keep both `credentials.key` and the `credentials/` directory
 together when backing up or restoring. TikTok returns an asynchronous publishing ID,
-so Clipper records the upload as processing and provides a status refresh action until
+so ReachCut records the upload as processing and provides a status refresh action until
 the final post URL is available.
 
 For an end-to-end, function-by-function walkthrough, start with [docs/code-flow.md](docs/code-flow.md). Architectural boundaries and change ownership are documented in [docs/architecture.md](docs/architecture.md) and [docs/module-ownership.md](docs/module-ownership.md). See also [docs/security.md](docs/security.md) and [docs/troubleshooting.md](docs/troubleshooting.md).

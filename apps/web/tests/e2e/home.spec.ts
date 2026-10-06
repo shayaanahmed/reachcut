@@ -8,6 +8,9 @@ test("shows the tool dashboard and local project workflow", async ({
   await expect(
     page.getByRole("heading", { name: "Content command center" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "ReachCut dashboard" }),
+  ).toBeVisible();
   await expect(page.getByRole("link", { name: "New project" })).toBeVisible();
   await expect(page.getByText("Local processing")).toBeVisible();
 });

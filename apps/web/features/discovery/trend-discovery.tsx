@@ -225,7 +225,7 @@ export function TrendDiscovery({
           <span aria-hidden="true">✦</span>
           <h2>Find ideas beyond your feed</h2>
           <p>
-            Choose a category or search any topic. Clipper will surface recent,
+            Choose a category or search any topic. ReachCut will surface recent,
             publicly available source ideas for you to review.
           </p>
         </div>

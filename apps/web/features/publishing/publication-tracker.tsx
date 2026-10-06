@@ -412,7 +412,7 @@ function PublishComposer({
         <i aria-hidden="true">→</i>
       </button>
       <small className="publish-assurance wide">
-        Clipper uploads the rendered MP4, applies this copy, and saves the post
+        ReachCut uploads the rendered MP4, applies this copy, and saves the post
         URL for performance tracking.
       </small>
     </form>
@@ -496,7 +496,7 @@ function PublicationRow({
           </span>
           <p>
             <strong>Platform processing is underway</strong>
-            Clipper checks automatically, or you can refresh now.
+            ReachCut checks automatically, or you can refresh now.
           </p>
           <button
             type="button"

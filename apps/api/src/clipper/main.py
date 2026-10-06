@@ -16,7 +16,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(
-    title="Clipper Local API",
+    title="ReachCut Local API",
     version="0.1.0",
     lifespan=lifespan,
     docs_url="/api/docs",
