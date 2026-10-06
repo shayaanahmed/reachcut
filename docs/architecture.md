@@ -32,6 +32,30 @@ caption text, and caption modules never execute FFmpeg. Provider adapters implem
 the transcription/editorial protocols. The project pipeline is the composition
 boundary for these capabilities.
 
+The web review workflow deliberately separates triage from detailed editing. Project
+pages present a compact review queue for comparing candidates and making approval
+decisions; each candidate opens a dedicated clip studio for plan editing, media
+attachments, preview, and rendering. Publishing is a separate route and workspace that
+only becomes the primary handoff after a final master exists. The studio's browser preview mirrors
+layout and overlay choices immediately, while the saved server preview remains the
+authoritative FFmpeg result. Client operations are keyed by resource and action so an
+approval on one clip does not block another. Final renders use a visible local queue to
+avoid competing media jobs while keeping unrelated review controls responsive. Routes
+request only the project and social-account data they use, preventing library-wide
+fetches when opening one studio or the creation form.
+
+The Studio is the core creative workspace and treats preview rendering and final export
+as distinct states. Unsaved design changes gate final export so a publishing master cannot silently
+use stale settings. Approval and final rendering can be completed as one managed action;
+the render queue remains visible. The dedicated publishing layer owns social-account
+loading, post composition, delivery, and measurement. Publishing operations are keyed per clip, publication,
+and action, allowing status refreshes, metric syncs, and other posts to remain responsive
+while one provider request is active.
+
+Account readiness is computed server-side from both provider configuration and encrypted
+credential availability. The web Accounts view consumes that non-secret health contract
+instead of treating a persisted connection label as proof that an upload can succeed.
+
 See [module ownership](module-ownership.md) for public interfaces and change routing.
 
 ## Boundaries

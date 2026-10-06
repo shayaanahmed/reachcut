@@ -7,7 +7,7 @@ import { ProjectCard } from "./project-card";
 import { useProjectWorkbench } from "./use-project-workbench";
 
 export function ProjectWorkspace({ projectId }: { projectId: string }) {
-  const workbench = useProjectWorkbench();
+  const workbench = useProjectWorkbench(projectId);
   const router = useRouter();
   const project = workbench.projects.find((item) => item.id === projectId);
 
@@ -44,23 +44,13 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
       )}
       <ProjectCard
         project={project}
-        accounts={workbench.accounts}
-        busy={workbench.busy}
         language={workbench.languages[project.id] ?? ""}
         setLanguages={workbench.setLanguages}
+        isPending={workbench.isPending}
+        operationState={workbench.operationState}
         onProcess={workbench.process}
         onApprove={workbench.approve}
         onRender={workbench.render}
-        onSaveStyle={workbench.saveStyle}
-        onTranslate={workbench.translate}
-        onTrack={workbench.analyzeTracking}
-        onUploadAsset={workbench.uploadSecondaryMedia}
-        onRemoveAsset={workbench.removeSecondaryMedia}
-        onPublish={workbench.publish}
-        onRecordMetrics={workbench.recordMetrics}
-        onRefreshPublication={workbench.refreshPublishedPost}
-        onSyncMetrics={workbench.syncPublishedMetrics}
-        onDeletePublication={workbench.removePublication}
         onRename={workbench.rename}
         onDelete={async (id) => {
           const removed = await workbench.remove(id);

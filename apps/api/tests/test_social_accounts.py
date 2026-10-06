@@ -95,6 +95,12 @@ def test_social_account_routes_create_update_and_archive() -> None:
             assert updated.json()["label"] == "Primary TikTok"
             assert updated.json()["default_cta"] == "Follow for more"
 
+            readiness = client.get("/api/social-accounts/readiness")
+            assert readiness.status_code == 200
+            assert readiness.json()[0]["account_id"] == account_id
+            assert readiness.json()[0]["publishing_ready"] is False
+            assert "credentials_missing" in readiness.json()[0]["issues"]
+
             archived = client.delete(f"/api/social-accounts/{account_id}")
             assert archived.status_code == 204
             assert client.get("/api/social-accounts").json() == []
@@ -131,3 +137,35 @@ def test_non_youtube_connection_is_encrypted_and_marked_connected(tmp_path: Path
             access_token="test-access-value",  # noqa: S106
             external_account_id="ig-user-1",
         )
+
+
+def test_connection_readiness_detects_missing_and_available_credentials(tmp_path: Path) -> None:
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    accounts = SocialAccountService()
+    credentials = EncryptedCredentialStore(tmp_path)
+    connections = PublishingConnectionService(
+        {
+            "youtube": YouTubeOAuthClient(
+                YouTubeOAuthConfig("client", "secret", "https://example.com/callback")
+            )
+        },
+        credentials,
+    )
+
+    with Session(engine) as session:
+        account = accounts.create(session, account_request("Main"))
+        missing = connections.connection_readiness(session, account.id)
+        assert missing.publishing_ready is False
+        assert missing.issues == ("account_not_connected", "credentials_missing")
+
+        connections.save_api_connection(
+            session,
+            account.id,
+            OAuthConnection(access_token="test-access-value"),  # noqa: S106
+        )
+        ready = connections.connection_readiness(session, account.id)
+        assert ready.publishing_ready is True
+        assert ready.provider_configured is True
+        assert ready.credentials_available is True
+        assert ready.issues == ()

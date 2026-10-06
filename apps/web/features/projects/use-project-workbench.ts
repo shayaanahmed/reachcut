@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   analyzeClipTracking,
@@ -25,6 +25,7 @@ import {
 } from "../publishing/api";
 import {
   deleteProject,
+  getProject,
   importProjectUrl,
   listProjects,
   processProject,
@@ -34,6 +35,20 @@ import {
 } from "./api";
 
 type Clip = Project["clips"][number];
+export type OperationState = "queued" | "working";
+
+export function updateClipApproval(
+  projects: Project[],
+  clipId: string,
+  approvalStatus: string,
+): Project[] {
+  return projects.map((project) => ({
+    ...project,
+    clips: project.clips.map((clip) =>
+      clip.id === clipId ? { ...clip, approval_status: approvalStatus } : clip,
+    ),
+  }));
+}
 
 function sourceSlices(value: FormDataEntryValue | null) {
   const slices = String(value ?? "")
@@ -154,13 +169,22 @@ function styleUpdate(form: HTMLFormElement, clip: Clip): ClipStyleUpdate {
   };
 }
 
-export function useProjectWorkbench() {
+export function useProjectWorkbench(
+  projectId?: string,
+  options: { loadProjects?: boolean; loadAccounts?: boolean } = {},
+) {
+  const loadProjects = options.loadProjects ?? true;
+  const loadAccounts = options.loadAccounts ?? false;
   const [projects, setProjects] = useState<Project[]>([]);
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [operations, setOperations] = useState<Record<string, OperationState>>(
+    {},
+  );
+  const [loading, setLoading] = useState(loadProjects);
   const [error, setError] = useState<string | null>(null);
   const [languages, setLanguages] = useState<Record<string, string>>({});
+  const renderQueue = useRef<Promise<void>>(Promise.resolve());
+  const busy = Object.keys(operations).length > 0;
   const hasProcessingProjects = projects.some(
     (project) => project.status === "processing",
   );
@@ -189,23 +213,31 @@ export function useProjectWorkbench() {
     .join(",");
 
   useEffect(() => {
-    void listProjects()
+    if (!loadProjects) return;
+    const load = projectId
+      ? getProject(projectId).then((project) => [project])
+      : listProjects();
+    void load
       .then(setProjects)
       .catch((caught: Error) => setError(caught.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [loadProjects, projectId]);
 
   useEffect(() => {
+    if (!loadAccounts) return;
     void listSocialAccounts()
       .then(setAccounts)
       .catch((caught: Error) => setError(caught.message));
-  }, []);
+  }, [loadAccounts]);
 
   useEffect(() => {
     if (!hasProcessingProjects) return;
     let active = true;
     const refresh = () => {
-      void listProjects()
+      const load = projectId
+        ? getProject(projectId).then((project) => [project])
+        : listProjects();
+      void load
         .then((updated) => {
           if (active) setProjects(updated);
         })
@@ -219,7 +251,7 @@ export function useProjectWorkbench() {
       active = false;
       window.clearInterval(timer);
     };
-  }, [hasProcessingProjects]);
+  }, [hasProcessingProjects, projectId]);
 
   useEffect(() => {
     if (!processingPublicationKey) return;
@@ -281,174 +313,259 @@ export function useProjectWorkbench() {
     };
   }, [metricsPublicationKey]);
 
-  async function withBusy<Result>(
+  function setOperation(key: string, state?: OperationState) {
+    setOperations((current) => {
+      if (state) return { ...current, [key]: state };
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  }
+
+  function replaceProject(updated: Project) {
+    setProjects((items) =>
+      items.map((item) => (item.id === updated.id ? updated : item)),
+    );
+  }
+
+  async function withOperation<Result>(
+    key: string,
     operation: () => Promise<Result>,
     fallback: string,
   ): Promise<Result | undefined> {
-    setBusy(true);
+    setOperation(key, "working");
     setError(null);
     try {
       return await operation();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : fallback);
     } finally {
-      setBusy(false);
+      setOperation(key);
     }
   }
 
   const upload = (data: FormData) =>
-    withBusy(async () => {
-      const created = await uploadProject(data);
-      setProjects((current) => [created, ...current]);
-      return created;
-    }, "Upload failed");
+    withOperation(
+      "project:create",
+      async () => {
+        const created = await uploadProject(data);
+        setProjects((current) => [created, ...current]);
+        return created;
+      },
+      "Upload failed",
+    );
 
   const importUrl = (request: UrlImportRequest) =>
-    withBusy(async () => {
-      const created = await importProjectUrl(request);
-      setProjects((current) => [created, ...current]);
-      return created;
-    }, "URL import failed");
+    withOperation(
+      "project:create",
+      async () => {
+        const created = await importProjectUrl(request);
+        setProjects((current) => [created, ...current]);
+        return created;
+      },
+      "URL import failed",
+    );
 
   const rename = (id: string, title: string) =>
-    withBusy(async () => {
-      const updated = await updateProject(id, title);
-      setProjects((items) =>
-        items.map((item) => (item.id === id ? updated : item)),
-      );
-      return updated;
-    }, "Project update failed");
+    withOperation(
+      `project:${id}:rename`,
+      async () => {
+        const updated = await updateProject(id, title);
+        replaceProject(updated);
+        return updated;
+      },
+      "Project update failed",
+    );
 
   const remove = (id: string) =>
-    withBusy(async () => {
-      await deleteProject(id);
-      setProjects((items) => items.filter((item) => item.id !== id));
-      return true;
-    }, "Project deletion failed");
+    withOperation(
+      `project:${id}:delete`,
+      async () => {
+        await deleteProject(id);
+        setProjects((items) => items.filter((item) => item.id !== id));
+        return true;
+      },
+      "Project deletion failed",
+    );
 
   const process = (id: string) =>
-    withBusy(async () => {
-      await processProject(id, languages[id]);
-      setProjects((items) =>
-        items.map((item) =>
-          item.id === id ? { ...item, status: "processing" } : item,
-        ),
-      );
-    }, "Processing failed");
+    withOperation(
+      `project:${id}:process`,
+      async () => {
+        await processProject(id, languages[id]);
+        setProjects((items) =>
+          items.map((item) =>
+            item.id === id ? { ...item, status: "processing" } : item,
+          ),
+        );
+      },
+      "Processing failed",
+    );
 
   const saveStyle = (clipId: string, form: HTMLFormElement) =>
-    withBusy(async () => {
-      const clip = projects
-        .flatMap((project) => project.clips)
-        .find((item) => item.id === clipId);
-      if (!clip) throw new Error("Clip is no longer available");
-      const updated = await updateClipStyle(clipId, styleUpdate(form, clip));
-      setProjects((items) =>
-        items.map((item) => (item.id === updated.id ? updated : item)),
-      );
-    }, "Style update failed");
+    withOperation(
+      `clip:${clipId}:style`,
+      async () => {
+        const clip = projects
+          .flatMap((project) => project.clips)
+          .find((item) => item.id === clipId);
+        if (!clip) throw new Error("Clip is no longer available");
+        const updated = await updateClipStyle(clipId, styleUpdate(form, clip));
+        replaceProject(updated);
+        return updated;
+      },
+      "Style update failed",
+    );
 
   const translate = (
     clipId: string,
     targetLanguage: string,
     mode: "translated" | "bilingual",
   ) =>
-    withBusy(async () => {
-      const updated = await translateClip(clipId, targetLanguage, mode);
-      setProjects((items) =>
-        items.map((item) => (item.id === updated.id ? updated : item)),
-      );
-    }, "Caption translation failed");
+    withOperation(
+      `clip:${clipId}:translate`,
+      async () => {
+        const updated = await translateClip(clipId, targetLanguage, mode);
+        replaceProject(updated);
+      },
+      "Caption translation failed",
+    );
 
   const analyzeTracking = (clipId: string) =>
-    withBusy(async () => {
-      const updated = await analyzeClipTracking(clipId);
-      setProjects((items) =>
-        items.map((item) => (item.id === updated.id ? updated : item)),
-      );
-    }, "Visual tracking failed");
+    withOperation(
+      `clip:${clipId}:tracking`,
+      async () => {
+        const updated = await analyzeClipTracking(clipId);
+        replaceProject(updated);
+      },
+      "Visual tracking failed",
+    );
 
   const uploadSecondaryMedia = (clipId: string, form: HTMLFormElement) =>
-    withBusy(async () => {
-      const data = new FormData(form);
-      for (const field of ["start_seconds", "end_seconds"])
-        if (!String(data.get(field) ?? "").trim()) data.delete(field);
-      const updated = await uploadClipSecondaryMedia(clipId, data);
-      setProjects((items) =>
-        items.map((item) => (item.id === updated.id ? updated : item)),
-      );
-      form.reset();
-    }, "Secondary media upload failed");
+    withOperation(
+      `clip:${clipId}:asset`,
+      async () => {
+        const data = new FormData(form);
+        for (const field of ["start_seconds", "end_seconds"])
+          if (!String(data.get(field) ?? "").trim()) data.delete(field);
+        const updated = await uploadClipSecondaryMedia(clipId, data);
+        replaceProject(updated);
+        form.reset();
+      },
+      "Secondary media upload failed",
+    );
 
   const removeSecondaryMedia = (clipId: string, assetId: string) =>
-    withBusy(async () => {
-      const updated = await deleteClipSecondaryMedia(clipId, assetId);
-      setProjects((items) =>
-        items.map((item) => (item.id === updated.id ? updated : item)),
-      );
-    }, "Secondary media removal failed");
+    withOperation(
+      `clip:${clipId}:asset:${assetId}`,
+      async () => {
+        const updated = await deleteClipSecondaryMedia(clipId, assetId);
+        replaceProject(updated);
+      },
+      "Secondary media removal failed",
+    );
 
   async function approve(clipId: string, approved: boolean) {
+    const key = `clip:${clipId}:approval`;
+    const previousStatus = projects
+      .flatMap((project) => project.clips)
+      .find((clip) => clip.id === clipId)?.approval_status;
+    const nextStatus = approved ? "approved" : "rejected";
+    setProjects((items) => updateClipApproval(items, clipId, nextStatus));
+    setOperation(key, "working");
+    setError(null);
     try {
-      const updated = await setApproval(clipId, approved);
-      setProjects((items) =>
-        items.map((item) => (item.id === updated.id ? updated : item)),
-      );
+      await setApproval(clipId, approved);
+      setProjects((items) => updateClipApproval(items, clipId, nextStatus));
+      return true;
     } catch (caught) {
+      if (previousStatus)
+        setProjects((items) =>
+          updateClipApproval(items, clipId, previousStatus),
+        );
       setError(caught instanceof Error ? caught.message : "Approval failed");
+      return false;
+    } finally {
+      setOperation(key);
     }
   }
 
-  const render = (clipId: string) =>
-    withBusy(async () => {
-      await renderClip(clipId);
-      setProjects(await listProjects());
-    }, "Render failed");
+  function render(clipId: string): Promise<void> {
+    const key = `clip:${clipId}:render`;
+    setOperation(key, "queued");
+    const task = renderQueue.current
+      .catch(() => undefined)
+      .then(async () => {
+        setOperation(key, "working");
+        setError(null);
+        try {
+          await renderClip(clipId);
+          if (projectId) setProjects([await getProject(projectId)]);
+          else setProjects(await listProjects());
+        } catch (caught) {
+          setError(caught instanceof Error ? caught.message : "Render failed");
+        } finally {
+          setOperation(key);
+        }
+      });
+    renderQueue.current = task;
+    return task;
+  }
 
   const publish = (clipId: string, data: PublicationCreate) =>
-    withBusy(async () => {
-      const updated = await createPublication(clipId, data);
-      setProjects((items) =>
-        items.map((item) => (item.id === updated.id ? updated : item)),
-      );
-      return updated;
-    }, "Could not save publication");
+    withOperation(
+      `clip:${clipId}:publish`,
+      async () => {
+        const updated = await createPublication(clipId, data);
+        replaceProject(updated);
+        return updated;
+      },
+      "Could not save publication",
+    );
 
   const recordMetrics = (publicationId: string, data: MetricCreate) =>
-    withBusy(async () => {
-      const updated = await addMetricSnapshot(publicationId, data);
-      setProjects((items) =>
-        items.map((item) => (item.id === updated.id ? updated : item)),
-      );
-      return updated;
-    }, "Could not save performance metrics");
+    withOperation(
+      `publication:${publicationId}:metrics`,
+      async () => {
+        const updated = await addMetricSnapshot(publicationId, data);
+        replaceProject(updated);
+        return updated;
+      },
+      "Could not save performance metrics",
+    );
 
   const removePublication = (publicationId: string) =>
-    withBusy(async () => {
-      const updated = await deletePublication(publicationId);
-      setProjects((items) =>
-        items.map((item) => (item.id === updated.id ? updated : item)),
-      );
-      return updated;
-    }, "Could not remove publication");
+    withOperation(
+      `publication:${publicationId}:delete`,
+      async () => {
+        const updated = await deletePublication(publicationId);
+        replaceProject(updated);
+        return updated;
+      },
+      "Could not remove publication",
+    );
 
   const refreshPublishedPost = (publicationId: string) =>
-    withBusy(async () => {
-      const updated = await refreshPublication(publicationId);
-      setProjects((items) =>
-        items.map((item) => (item.id === updated.id ? updated : item)),
-      );
-      return updated;
-    }, "Could not refresh publication status");
+    withOperation(
+      `publication:${publicationId}:refresh`,
+      async () => {
+        const updated = await refreshPublication(publicationId);
+        replaceProject(updated);
+        return updated;
+      },
+      "Could not refresh publication status",
+    );
 
   const syncPublishedMetrics = (publicationId: string) =>
-    withBusy(async () => {
-      const updated = await syncMetricSnapshot(publicationId);
-      setProjects((items) =>
-        items.map((item) => (item.id === updated.id ? updated : item)),
-      );
-      return updated;
-    }, "Could not sync platform metrics");
+    withOperation(
+      `publication:${publicationId}:sync`,
+      async () => {
+        const updated = await syncMetricSnapshot(publicationId);
+        replaceProject(updated);
+        return updated;
+      },
+      "Could not sync platform metrics",
+    );
 
   return {
     accounts,
@@ -457,6 +574,9 @@ export function useProjectWorkbench() {
     error,
     languages,
     loading,
+    operations,
+    operationState: (key: string) => operations[key],
+    isPending: (key: string) => Boolean(operations[key]),
     importUrl,
     process,
     projects,

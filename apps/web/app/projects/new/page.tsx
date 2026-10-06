@@ -7,10 +7,10 @@ import { ProjectUpload } from "../../../features/projects/project-upload";
 import { useProjectWorkbench } from "../../../features/projects/use-project-workbench";
 
 export default function NewProjectPage() {
-  const workbench = useProjectWorkbench();
+  const workbench = useProjectWorkbench(undefined, { loadProjects: false });
   const router = useRouter();
   return (
-    <main className="page narrow-page">
+    <main className="page create-project-page">
       <div className="breadcrumbs">
         <Link href="/projects">Projects</Link>
         <span>/</span>
@@ -18,11 +18,11 @@ export default function NewProjectPage() {
       </div>
       <div className="topbar compact">
         <div>
-          <span className="eyebrow">CREATE</span>
-          <h1>New project</h1>
+          <span className="eyebrow">NEW PRODUCTION</span>
+          <h1>Turn one video into a clip campaign</h1>
           <p>
-            Bring in a local file or a public video URL you are authorized to
-            use.
+            Add a source you can repurpose. Clipper will analyze it locally and
+            prepare reviewable views and revenue cuts.
           </p>
         </div>
       </div>
@@ -32,7 +32,7 @@ export default function NewProjectPage() {
         </p>
       )}
       <ProjectUpload
-        busy={workbench.busy}
+        busy={workbench.isPending("project:create")}
         onUpload={workbench.upload}
         onImportUrl={workbench.importUrl}
         onCreated={(project) => router.push(`/projects/${project.id}`)}

@@ -28,7 +28,8 @@ describe("project progress", () => {
   it("presents persisted stage progress in pipeline order", () => {
     render(<ProjectProgress project={project} />);
 
-    expect(screen.getByText("38%")).toBeTruthy();
+    expect(screen.getByText("30%")).toBeTruthy();
+    expect(screen.getByText("Track faces & action")).toBeTruthy();
     expect(screen.getByText("Transcribe locally")).toBeTruthy();
     expect(screen.getByText("50% · attempt 1")).toBeTruthy();
   });

@@ -2,6 +2,7 @@ import type { Project } from "../../lib/contracts";
 
 const STAGE_ORDER = [
   "probe",
+  "analyze_visuals",
   "transcribe",
   "select_candidates",
   "render_previews",
@@ -9,6 +10,7 @@ const STAGE_ORDER = [
 
 const STAGE_LABELS: Record<(typeof STAGE_ORDER)[number], string> = {
   probe: "Inspect media",
+  analyze_visuals: "Track faces & action",
   transcribe: "Transcribe locally",
   select_candidates: "Find highlights",
   render_previews: "Render previews",

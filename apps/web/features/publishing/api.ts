@@ -1,6 +1,8 @@
 import {
+  accountConnectionReadinessSchema,
   projectSchema,
   socialAccountSchema,
+  type AccountConnectionReadiness,
   type Project,
   type SocialAccount,
   type SocialPlatform,
@@ -124,6 +126,17 @@ export async function listSocialAccounts(): Promise<SocialAccount[]> {
   if (!response.ok)
     throw await responseError(response, "Could not load social accounts");
   return socialAccountSchema.array().parse(await response.json());
+}
+
+export async function socialAccountReadiness(): Promise<
+  AccountConnectionReadiness[]
+> {
+  const response = await fetch(`${API_URL}/social-accounts/readiness`, {
+    cache: "no-store",
+  });
+  if (!response.ok)
+    throw await responseError(response, "Could not verify account readiness");
+  return accountConnectionReadinessSchema.array().parse(await response.json());
 }
 
 export async function createSocialAccount(

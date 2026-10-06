@@ -39,6 +39,8 @@ export function ProjectUpload({
 }) {
   const [mode, setMode] = useState<ImportMode>("file");
   const [url, setUrl] = useState("");
+  const [title, setTitle] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [importState, setImportState] = useState<ImportState>("idle");
   const [activeStep, setActiveStep] = useState(0);
   const stepTimer = useRef<number | null>(null);
@@ -108,35 +110,70 @@ export function ProjectUpload({
       </div>
 
       {mode === "file" ? (
-        <form
-          className="import-form"
-          action={async (data) => {
-            const created = await onUpload(data);
-            if (created) onCreated(created);
-          }}
-        >
-          <label>
-            Project name
-            <input
-              name="title"
-              required
-              maxLength={200}
-              placeholder="Founder interview — August"
-            />
-          </label>
-          <label className="file-drop">
-            Source video
-            <input name="media" type="file" accept="video/*,.mkv" required />
-            <span>Choose a video from your computer</span>
-            <small>
-              MP4, MOV, MKV, WebM · up to the configured upload limit
-            </small>
-          </label>
-          <Authorization disabled={busy} />
-          <button className="primary-button" disabled={busy}>
-            {busy ? "Importing…" : "Create project"}
-          </button>
-        </form>
+        <div className="file-import-layout">
+          <form
+            className="import-form modern-import-form"
+            action={async (data) => {
+              const created = await onUpload(data);
+              if (created) onCreated(created);
+            }}
+          >
+            <label
+              className={`file-drop-zone ${selectedFile ? "selected" : ""}`}
+            >
+              <input
+                name="media"
+                type="file"
+                accept="video/*,.mkv"
+                required
+                disabled={busy}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0] ?? null;
+                  setSelectedFile(file);
+                  if (file && !title)
+                    setTitle(
+                      file.name
+                        .replace(/\.[^.]+$/, "")
+                        .replaceAll(/[-_]+/g, " "),
+                    );
+                }}
+              />
+              <span className="file-drop-icon" aria-hidden="true">
+                ↑
+              </span>
+              <strong>
+                {selectedFile
+                  ? selectedFile.name
+                  : "Drop your source video here"}
+              </strong>
+              <small>
+                {selectedFile
+                  ? `${(selectedFile.size / 1024 / 1024).toFixed(1)} MB · ready to import`
+                  : "or click to browse · MP4, MOV, MKV or WebM"}
+              </small>
+              <span className="file-drop-action">
+                {selectedFile ? "Choose another" : "Browse files"}
+              </span>
+            </label>
+            <label>
+              Project name
+              <input
+                name="title"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                required
+                maxLength={200}
+                placeholder="Founder interview — August"
+              />
+            </label>
+            <Authorization disabled={busy} />
+            <button className="primary-button import-action" disabled={busy}>
+              {busy ? "Creating your workspace…" : "Create project"}
+              <span aria-hidden="true">→</span>
+            </button>
+          </form>
+          <CreationOutcome />
+        </div>
       ) : (
         <div className="url-import-layout">
           <form
@@ -191,6 +228,8 @@ export function ProjectUpload({
               Project name
               <input
                 name="title"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
                 required
                 disabled={busy}
                 maxLength={200}
@@ -225,6 +264,42 @@ export function ProjectUpload({
         runtime. A public link does not grant publication rights.
       </p>
     </section>
+  );
+}
+
+function CreationOutcome() {
+  return (
+    <aside className="creation-outcome">
+      <span className="eyebrow">YOUR OUTPUT</span>
+      <h3>One source. A complete clip pipeline.</h3>
+      <div>
+        <article>
+          <span>01</span>
+          <div>
+            <strong>Local analysis</strong>
+            <small>Transcript, visual signals and content mode.</small>
+          </div>
+        </article>
+        <article>
+          <span>02</span>
+          <div>
+            <strong>Two growth goals</strong>
+            <small>Views and revenue-oriented candidates.</small>
+          </div>
+        </article>
+        <article>
+          <span>03</span>
+          <div>
+            <strong>Editable previews</strong>
+            <small>Review every decision before publishing.</small>
+          </div>
+        </article>
+      </div>
+      <p>
+        Nothing is published automatically. Your source and outputs stay in the
+        configured local data directory.
+      </p>
+    </aside>
   );
 }
 

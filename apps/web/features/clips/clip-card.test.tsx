@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { Project } from "../../lib/contracts";
@@ -67,51 +67,54 @@ const clip = {
 } as Project["clips"][number];
 
 describe("clip card", () => {
-  it("shows the suggested social title and hashtags", () => {
+  it("keeps project review compact and links to the dedicated studio", () => {
     render(
       <ClipCard
+        projectId="project-1"
         clip={clip}
-        accounts={[]}
         index={0}
         bestToPublish={true}
-        busy={false}
+        approvalPending={false}
         onApprove={vi.fn()}
         onRender={vi.fn()}
-        onSaveStyle={vi.fn()}
-        onTranslate={vi.fn()}
-        onTrack={vi.fn()}
-        onUploadAsset={vi.fn()}
-        onRemoveAsset={vi.fn()}
-        onPublish={vi.fn()}
-        onRecordMetrics={vi.fn()}
-        onRefreshPublication={vi.fn()}
-        onSyncMetrics={vi.fn()}
-        onDeletePublication={vi.fn()}
       />,
     );
 
     expect(screen.getByText("The Detail Everyone Missed")).toBeTruthy();
-    expect(screen.getByText("#UsefulTips #MustWatch #VideoClip")).toBeTruthy();
-    expect(screen.getByText("Best to publish")).toBeTruthy();
-    expect(screen.getByText("Views version")).toBeTruthy();
-    expect(screen.getByText(/30.0s render/)).toBeTruthy();
-    expect(screen.getByText(/Publish potential 91\/100/)).toBeTruthy();
+    expect(screen.getByText("Top pick")).toBeTruthy();
+    expect(screen.getByText("91")).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: /Open studio/ }).getAttribute("href"),
+    ).toBe("/projects/project-1/clips/clip-1");
+    expect(screen.getByRole("button", { name: "Approve" })).toBeTruthy();
+    expect(screen.queryByText("#UsefulTips #MustWatch #VideoClip")).toBeNull();
+  });
+
+  it("shows a per-clip queued render without blocking unrelated review actions", () => {
+    const { container } = render(
+      <ClipCard
+        projectId="project-1"
+        clip={{ ...clip, approval_status: "approved" }}
+        index={0}
+        bestToPublish={false}
+        approvalPending={false}
+        renderState="queued"
+        onApprove={vi.fn()}
+        onRender={vi.fn()}
+      />,
+    );
+
+    const card = within(container);
     expect(
       (
-        screen.getByRole("checkbox", {
-          name: /Burn subtitles into this clip/,
-        }) as HTMLInputElement
-      ).checked,
+        card.getByRole("button", {
+          name: "Final export queued",
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(true);
-    expect(screen.getByLabelText(/Source slices/)).toBeTruthy();
-    expect(screen.getByLabelText(/Corrected caption text/)).toBeTruthy();
-    expect(screen.getByLabelText(/Content mode/)).toBeTruthy();
-    expect(screen.getByLabelText(/Caption preset/)).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: /Analyze face\/action tracking/ }),
-    ).toBeTruthy();
-    expect(
-      screen.getByText(/Add gameplay, B-roll, reaction, SFX or music/),
-    ).toBeTruthy();
+      (card.getByRole("button", { name: "Reject" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
   });
 });

@@ -1,17 +1,28 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import cast
 
 from sqlalchemy.orm import Session
 
 from clipper.persistence import SocialAccount
-from clipper.providers.credentials import EncryptedCredentialStore
+from clipper.providers.credentials import CredentialStoreError, EncryptedCredentialStore
 from clipper.publishing import OAuthClient, OAuthConnection, PublishingPlatform
 
 
 class PublishingConnectionError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class AccountConnectionReadiness:
+    account_id: str
+    platform: str
+    provider_configured: bool
+    credentials_available: bool
+    publishing_ready: bool
+    issues: tuple[str, ...]
 
 
 class PublishingConnectionService:
@@ -79,6 +90,39 @@ class PublishingConnectionService:
         account.connection_status = "connected"
         session.commit()
         return account
+
+    def connection_readiness(
+        self,
+        session: Session,
+        account_id: str,
+    ) -> AccountConnectionReadiness:
+        """Report publish readiness without exposing credential contents."""
+        account = self._account(session, account_id)
+        provider_configured = account.platform in self.configured_platforms
+        credentials_available = False
+        credential_error = False
+        try:
+            credentials_available = self._credentials.load(account.id) is not None
+        except CredentialStoreError:
+            credential_error = True
+
+        issues: list[str] = []
+        if not provider_configured:
+            issues.append("provider_not_configured")
+        if account.connection_status != "connected":
+            issues.append("account_not_connected")
+        if credential_error:
+            issues.append("credentials_unreadable")
+        elif not credentials_available:
+            issues.append("credentials_missing")
+        return AccountConnectionReadiness(
+            account_id=account.id,
+            platform=account.platform,
+            provider_configured=provider_configured,
+            credentials_available=credentials_available,
+            publishing_ready=not issues,
+            issues=tuple(issues),
+        )
 
     def _client(self, platform: str) -> OAuthClient:
         if platform not in self._oauth_clients:

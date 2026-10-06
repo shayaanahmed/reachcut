@@ -30,7 +30,7 @@ export default function ProjectsPage() {
         ) : (
           <ProjectList
             projects={workbench.projects}
-            busy={workbench.busy}
+            isPending={workbench.isPending}
             onDelete={workbench.remove}
           />
         )}

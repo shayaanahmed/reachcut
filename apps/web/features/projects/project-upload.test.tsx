@@ -14,6 +14,11 @@ describe("project import", () => {
       />,
     );
 
+    expect(screen.getByText("Drop your source video here")).toBeTruthy();
+    expect(
+      screen.getByText("One source. A complete clip pipeline."),
+    ).toBeTruthy();
+
     fireEvent.click(screen.getByRole("tab", { name: "Import URL" }));
     fireEvent.change(screen.getByLabelText("Public video URL"), {
       target: { value: "https://www.youtube.com/watch?v=abc" },

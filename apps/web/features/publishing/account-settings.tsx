@@ -2,13 +2,18 @@
 
 import { useEffect, useState } from "react";
 
-import type { SocialAccount, SocialPlatform } from "../../lib/contracts";
+import type {
+  AccountConnectionReadiness,
+  SocialAccount,
+  SocialPlatform,
+} from "../../lib/contracts";
 import {
   archiveSocialAccount,
   createSocialAccount,
   disconnectSocialAccount,
   listSocialAccounts,
   publishingCapabilities,
+  socialAccountReadiness,
   socialConnectUrl,
   updateSocialAccount,
   type PublishingCapabilities,
@@ -47,8 +52,9 @@ function accountData(data: FormData): SocialAccountUpdate {
 
 export function AccountSettings() {
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
+  const [readiness, setReadiness] = useState<AccountConnectionReadiness[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const [operations, setOperations] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
   const [capabilities, setCapabilities] = useState<PublishingCapabilities>({
     youtube_configured: false,
@@ -57,21 +63,35 @@ export function AccountSettings() {
   });
 
   async function refresh() {
-    setAccounts(await listSocialAccounts());
+    const [items, states] = await Promise.all([
+      listSocialAccounts(),
+      socialAccountReadiness(),
+    ]);
+    setAccounts(items);
+    setReadiness(states);
   }
 
   useEffect(() => {
-    void Promise.all([listSocialAccounts(), publishingCapabilities()])
-      .then(([items, available]) => {
+    void Promise.all([
+      listSocialAccounts(),
+      publishingCapabilities(),
+      socialAccountReadiness(),
+    ])
+      .then(([items, available, states]) => {
         setAccounts(items);
         setCapabilities(available);
+        setReadiness(states);
       })
       .catch((caught: Error) => setError(caught.message))
       .finally(() => setLoading(false));
   }, []);
 
-  async function mutate(operation: () => Promise<unknown>) {
-    setBusy(true);
+  function isPending(key: string) {
+    return Boolean(operations[key]);
+  }
+
+  async function mutate(key: string, operation: () => Promise<unknown>) {
+    setOperations((current) => ({ ...current, [key]: true }));
     setError(null);
     try {
       await operation();
@@ -81,12 +101,13 @@ export function AccountSettings() {
         caught instanceof Error ? caught.message : "Account update failed",
       );
     } finally {
-      setBusy(false);
+      setOperations((current) => ({ ...current, [key]: false }));
     }
   }
 
   async function addAndConnect(platform: SocialPlatform) {
-    setBusy(true);
+    const operationKey = `platform:${platform}:connect`;
+    setOperations((current) => ({ ...current, [operationKey]: true }));
     setError(null);
     try {
       const created = await createSocialAccount({
@@ -105,19 +126,28 @@ export function AccountSettings() {
       setError(
         caught instanceof Error ? caught.message : "Could not add account",
       );
-      setBusy(false);
+      setOperations((current) => ({ ...current, [operationKey]: false }));
     }
   }
 
+  const readyCount = readiness.filter((state) => state.publishing_ready).length;
+  const configuredCount = capabilities.configured_platforms.length;
+  const defaultsCount = accounts.filter(
+    (account) => account.default_cta || account.default_hashtags.length > 0,
+  ).length;
+  const readinessById = new Map(
+    readiness.map((state) => [state.account_id, state]),
+  );
+
   return (
     <main className="page accounts-page">
-      <div className="topbar">
+      <div className="topbar accounts-topbar">
         <div>
-          <span className="eyebrow">SETTINGS</span>
-          <h1>Connected accounts</h1>
+          <span className="eyebrow">DISTRIBUTION SETTINGS</span>
+          <h1>Publishing accounts</h1>
           <p>
-            Choose a platform, approve access there, and come straight back to
-            Clipper. No tokens to copy or account IDs to hunt down.
+            Connect destinations once, verify their publishing health, and set
+            reusable campaign defaults for every export.
           </p>
         </div>
       </div>
@@ -126,6 +156,32 @@ export function AccountSettings() {
           {error}
         </p>
       )}
+      <section className="account-health-grid" aria-label="Account health">
+        <article>
+          <span>Ready to publish</span>
+          <strong>{readyCount}</strong>
+          <small>Backend-verified connections</small>
+        </article>
+        <article>
+          <span>Accounts added</span>
+          <strong>{accounts.length}</strong>
+          <small>Active destinations</small>
+        </article>
+        <article>
+          <span>Providers enabled</span>
+          <strong>
+            {configuredCount}/{platforms.length}
+          </strong>
+          <small>OAuth configuration</small>
+        </article>
+        <article>
+          <span>Defaults prepared</span>
+          <strong>
+            {defaultsCount}/{accounts.length || 0}
+          </strong>
+          <small>CTA or hashtag presets</small>
+        </article>
+      </section>
       <section className="connect-panel" aria-labelledby="connect-heading">
         <div className="connect-panel-heading">
           <div>
@@ -141,12 +197,16 @@ export function AccountSettings() {
             const detail = platformDetails[platform];
             const configured =
               capabilities.configured_platforms.includes(platform);
+            const pending = isPending(`platform:${platform}:connect`);
+            const accountCount = accounts.filter(
+              (account) => account.platform === platform,
+            ).length;
             return (
               <button
                 key={platform}
                 type="button"
                 className={`platform-choice ${platform}`}
-                disabled={busy || !configured}
+                disabled={pending || !configured}
                 title={
                   configured
                     ? `Connect ${detail.short}`
@@ -156,7 +216,15 @@ export function AccountSettings() {
               >
                 <span aria-hidden="true">{detail.mark}</span>
                 <strong>{detail.short}</strong>
-                <small>{configured ? "Connect →" : "Setup required"}</small>
+                <small>
+                  {pending
+                    ? "Opening…"
+                    : !configured
+                      ? "Provider setup required"
+                      : accountCount > 0
+                        ? `Add another · ${accountCount} active`
+                        : "Connect account →"}
+                </small>
               </button>
             );
           })}
@@ -165,10 +233,10 @@ export function AccountSettings() {
       <section className="section-block" aria-labelledby="configured-accounts">
         <div className="section-heading">
           <div>
-            <span className="eyebrow">PUBLISHING DESTINATIONS</span>
-            <h2 id="configured-accounts">Your accounts</h2>
+            <span className="eyebrow">ACCOUNT OPERATIONS</span>
+            <h2 id="configured-accounts">Destinations and readiness</h2>
           </div>
-          <span>{accounts.length} added</span>
+          <span>{readyCount} ready now</span>
         </div>
         {loading ? (
           <div className="loading-card">Loading accounts…</div>
@@ -180,10 +248,15 @@ export function AccountSettings() {
         ) : (
           <div className="account-list">
             {accounts.map((account) => {
-              const connected = account.connection_status === "connected";
+              const state = readinessById.get(account.id);
+              const connected = state?.credentials_available ?? false;
+              const ready = state?.publishing_ready ?? false;
               const configured = capabilities.configured_platforms.includes(
                 account.platform,
               );
+              const disconnectKey = `account:${account.id}:disconnect`;
+              const archiveKey = `account:${account.id}:archive`;
+              const updateKey = `account:${account.id}:update`;
               return (
                 <article className="account-card" key={account.id}>
                   <div className="account-card-heading">
@@ -191,9 +264,9 @@ export function AccountSettings() {
                       {platformDetails[account.platform].mark}
                     </span>
                     <span
-                      className={`connection-badge ${connected ? "connected" : ""}`}
+                      className={`connection-badge ${ready ? "connected" : ""}`}
                     >
-                      {connected ? "● Connected" : "○ Not connected"}
+                      {ready ? "● Ready to publish" : "○ Action required"}
                     </span>
                   </div>
                   <span className={`account-platform ${account.platform}`}>
@@ -205,6 +278,27 @@ export function AccountSettings() {
                       ? `@${account.username}`
                       : "Profile details sync after connection"}
                   </p>
+                  <div
+                    className="account-readiness"
+                    aria-label="Readiness checks"
+                  >
+                    <ReadinessCheck
+                      ready={state?.provider_configured ?? configured}
+                      label="Provider configured"
+                    />
+                    <ReadinessCheck
+                      ready={connected}
+                      label="Secure credentials"
+                    />
+                    <ReadinessCheck
+                      ready={
+                        Boolean(account.default_cta) ||
+                        account.default_hashtags.length > 0
+                      }
+                      label="Publishing defaults"
+                      optional
+                    />
+                  </div>
                   <div className="account-card-actions">
                     {configured && (
                       <a href={socialConnectUrl(account.id)}>
@@ -214,27 +308,33 @@ export function AccountSettings() {
                     {connected && (
                       <button
                         type="button"
-                        disabled={busy}
+                        disabled={isPending(disconnectKey)}
                         onClick={() =>
-                          void mutate(() => disconnectSocialAccount(account.id))
+                          void mutate(disconnectKey, () =>
+                            disconnectSocialAccount(account.id),
+                          )
                         }
                       >
-                        Disconnect
+                        {isPending(disconnectKey)
+                          ? "Disconnecting…"
+                          : "Disconnect"}
                       </button>
                     )}
                     <button
                       type="button"
-                      disabled={busy}
+                      disabled={isPending(archiveKey)}
                       onClick={() => {
                         if (
                           window.confirm(
                             `Remove “${account.label}”? Existing publication history will remain.`,
                           )
                         )
-                          void mutate(() => archiveSocialAccount(account.id));
+                          void mutate(archiveKey, () =>
+                            archiveSocialAccount(account.id),
+                          );
                       }}
                     >
-                      Remove
+                      {isPending(archiveKey) ? "Removing…" : "Remove"}
                     </button>
                   </div>
                   {!configured && (
@@ -244,12 +344,12 @@ export function AccountSettings() {
                     </small>
                   )}
                   <details className="account-edit">
-                    <summary>Edit publishing defaults</summary>
+                    <summary>Publishing defaults and profile</summary>
                     <AccountForm
                       account={account}
-                      busy={busy}
+                      busy={isPending(updateKey)}
                       onSave={(data) =>
-                        mutate(() =>
+                        mutate(updateKey, () =>
                           updateSocialAccount(account.id, accountData(data)),
                         )
                       }
@@ -262,6 +362,24 @@ export function AccountSettings() {
         )}
       </section>
     </main>
+  );
+}
+
+function ReadinessCheck({
+  ready,
+  label,
+  optional = false,
+}: {
+  ready: boolean;
+  label: string;
+  optional?: boolean;
+}) {
+  return (
+    <span className={ready ? "ready" : "needs-action"}>
+      <b aria-hidden="true">{ready ? "✓" : optional ? "○" : "!"}</b>
+      {label}
+      {optional && !ready ? " (recommended)" : ""}
+    </span>
   );
 }
 

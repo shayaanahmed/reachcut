@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AccountSettings } from "./account-settings";
 import * as api from "./api";
@@ -10,10 +10,13 @@ vi.mock("./api", async () => {
     ...actual,
     listSocialAccounts: vi.fn(),
     publishingCapabilities: vi.fn(),
+    socialAccountReadiness: vi.fn(),
   };
 });
 
 describe("account settings", () => {
+  afterEach(cleanup);
+
   beforeEach(() => {
     vi.mocked(api.listSocialAccounts).mockResolvedValue([
       {
@@ -38,6 +41,16 @@ describe("account settings", () => {
       automatic_platforms: ["youtube"],
       configured_platforms: ["youtube"],
     });
+    vi.mocked(api.socialAccountReadiness).mockResolvedValue([
+      {
+        account_id: "youtube-1",
+        platform: "youtube",
+        provider_configured: true,
+        credentials_available: true,
+        publishing_ready: true,
+        issues: [],
+      },
+    ]);
   });
 
   it("lets an existing YouTube connection request newly added permissions", async () => {
@@ -50,6 +63,27 @@ describe("account settings", () => {
     expect(reconnect.getAttribute("href")).toContain(
       "/social-accounts/youtube-1/connect",
     );
-    expect(screen.getByText("● Connected")).toBeTruthy();
+    expect(screen.getByText("● Ready to publish")).toBeTruthy();
+    expect(screen.getByText("Secure credentials")).toBeTruthy();
+  });
+
+  it("surfaces a backend-verified account that needs reconnection", async () => {
+    vi.mocked(api.socialAccountReadiness).mockResolvedValue([
+      {
+        account_id: "youtube-1",
+        platform: "youtube",
+        provider_configured: true,
+        credentials_available: false,
+        publishing_ready: false,
+        issues: ["credentials_missing"],
+      },
+    ]);
+
+    render(<AccountSettings />);
+
+    expect(await screen.findByText("○ Action required")).toBeTruthy();
+    expect(screen.getByText("Secure credentials").className).toBe(
+      "needs-action",
+    );
   });
 });

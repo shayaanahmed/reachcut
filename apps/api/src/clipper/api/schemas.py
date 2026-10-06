@@ -211,6 +211,16 @@ class PublishingCapabilitiesResponse(BaseModel):
     configured_platforms: list[SocialPlatform]
 
 
+class AccountConnectionReadinessResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    account_id: str
+    platform: SocialPlatform
+    provider_configured: bool
+    credentials_available: bool
+    publishing_ready: bool
+    issues: list[str]
+
+
 class ApiConnectionRequest(BaseModel):
     access_token: str = Field(min_length=1, max_length=8_192)
     refresh_token: str = Field(default="", max_length=8_192)

@@ -1,137 +1,157 @@
-import type { Project, SocialAccount } from "../../lib/contracts";
-import type { MetricCreate, PublicationCreate } from "../publishing/api";
-import { PublicationTracker } from "../publishing/publication-tracker";
+import Link from "next/link";
+
+import type { Project } from "../../lib/contracts";
+import type { OperationState } from "../projects/use-project-workbench";
 import { finalUrl, previewUrl } from "./api";
-import { ClipStyleEditor } from "./clip-style-editor";
 
 type Clip = Project["clips"][number];
 
 export function ClipCard({
+  projectId,
   clip,
-  accounts,
   index,
   bestToPublish,
-  busy,
+  approvalPending,
+  renderState,
   onApprove,
   onRender,
-  onSaveStyle,
-  onTranslate,
-  onTrack,
-  onUploadAsset,
-  onRemoveAsset,
-  onPublish,
-  onRecordMetrics,
-  onRefreshPublication,
-  onSyncMetrics,
-  onDeletePublication,
 }: {
+  projectId: string;
   clip: Clip;
-  accounts: SocialAccount[];
   index: number;
   bestToPublish: boolean;
-  busy: boolean;
-  onApprove: (clipId: string, approved: boolean) => Promise<void>;
+  approvalPending: boolean;
+  renderState?: OperationState;
+  onApprove: (clipId: string, approved: boolean) => Promise<unknown>;
   onRender: (clipId: string) => Promise<unknown>;
-  onSaveStyle: (clipId: string, form: HTMLFormElement) => Promise<unknown>;
-  onTranslate: (
-    clipId: string,
-    targetLanguage: string,
-    mode: "translated" | "bilingual",
-  ) => Promise<unknown>;
-  onTrack: (clipId: string) => Promise<unknown>;
-  onUploadAsset: (clipId: string, form: HTMLFormElement) => Promise<unknown>;
-  onRemoveAsset: (clipId: string, assetId: string) => Promise<unknown>;
-  onPublish: (clipId: string, data: PublicationCreate) => Promise<unknown>;
-  onRecordMetrics: (
-    publicationId: string,
-    data: MetricCreate,
-  ) => Promise<unknown>;
-  onDeletePublication: (publicationId: string) => Promise<unknown>;
-  onRefreshPublication: (publicationId: string) => Promise<unknown>;
-  onSyncMetrics: (publicationId: string) => Promise<unknown>;
 }) {
-  const sourceSlices =
-    clip.plan.source_slices.length > 0
-      ? clip.plan.source_slices
-      : [clip.plan.source];
-  const renderedDuration = sourceSlices.reduce(
+  const slices = clip.plan.source_slices.length
+    ? clip.plan.source_slices
+    : [clip.plan.source];
+  const duration = slices.reduce(
     (total, slice) => total + slice.end_seconds - slice.start_seconds,
     0,
   );
+  const studioUrl = `/projects/${projectId}/clips/${clip.id}`;
+  const title =
+    clip.plan.suggested_title ??
+    clip.plan.hook?.text ??
+    `Candidate ${index + 1}`;
+
   return (
-    <div className="clip">
-      {clip.preview_path && (
-        <video
-          className="preview"
-          src={previewUrl(clip.id)}
-          controls
-          preload="metadata"
-          aria-label={`Preview ${index + 1}`}
-        />
-      )}
-      <div className="score">{clip.plan.scores.overall}</div>
-      <div>
-        {bestToPublish && (
-          <span className="best-publish-badge">Best to publish</span>
+    <article className={`clip-row ${clip.approval_status}`}>
+      <Link
+        className="clip-row-preview"
+        href={studioUrl}
+        aria-label={`Edit ${title}`}
+      >
+        {clip.preview_path ? (
+          <video
+            src={previewUrl(clip.id)}
+            muted
+            playsInline
+            preload="metadata"
+          />
+        ) : (
+          <span aria-hidden="true">▶</span>
         )}
-        <span className="best-publish-badge">
-          {clip.plan.optimization_goal === "revenue"
-            ? "Revenue version"
-            : "Views version"}
-        </span>
-        <span className="best-publish-badge">
-          {clip.plan.content_mode.replace("_", " ")}
-        </span>
-        <strong>
-          {clip.plan.suggested_title ??
-            clip.plan.hook?.text ??
-            `Candidate ${index + 1}`}
-        </strong>
-        {clip.plan.hashtags.length > 0 && (
-          <p className="hashtags">{clip.plan.hashtags.join(" ")}</p>
-        )}
+        <span className="clip-duration">{duration.toFixed(0)}s</span>
+      </Link>
+
+      <div className="clip-row-copy">
+        <div className="clip-row-badges">
+          {bestToPublish && (
+            <span className="recommendation-badge">Top pick</span>
+          )}
+          <span>{clip.plan.optimization_goal}</span>
+          <span>{clip.plan.content_mode.replaceAll("_", " ")}</span>
+          <span
+            className={`approval-pill ${clip.approval_status}`}
+            aria-live="polite"
+          >
+            {approvalPending ? "Saving…" : clip.approval_status}
+          </span>
+        </div>
+        <Link href={studioUrl} className="clip-row-title">
+          {title}
+        </Link>
         <p>{clip.plan.rationale}</p>
-        <small>
-          {clip.plan.source.start_seconds.toFixed(1)}–
-          {clip.plan.source.end_seconds.toFixed(1)}s source ·{" "}
-          {renderedDuration.toFixed(1)}s render · editorial heuristic
-        </small>
-        <div className="publish-recommendation">
-          <strong>
-            Publish potential {clip.publish_recommendation.score}/100 ·{" "}
-            {clip.publish_recommendation.confidence} confidence
-          </strong>
-          <ul>
-            {clip.publish_recommendation.reasons.map((reason) => (
-              <li key={reason}>{reason}</li>
-            ))}
-          </ul>
-          <small>
-            Directional estimate from editorial signals; reach and earnings are
-            not guaranteed.
-          </small>
+        <div className="clip-row-signals">
+          <span>
+            <strong>{clip.publish_recommendation.score}</strong> potential
+          </span>
+          <span>
+            <strong>{clip.plan.scores.hook}</strong> hook
+          </span>
+          <span>
+            <strong>{clip.plan.scores.payoff}</strong> payoff
+          </span>
+          <span>
+            <strong>{slices.length}</strong> cut{slices.length === 1 ? "" : "s"}
+          </span>
         </div>
       </div>
-      <div className="actions">
-        <button
-          className="approve"
-          onClick={() => void onApprove(clip.id, true)}
-        >
-          Approve
-        </button>
-        <button
-          className="reject"
-          onClick={() => void onApprove(clip.id, false)}
-        >
-          Reject
-        </button>
-        {clip.approval_status === "approved" && (
+
+      <div className="clip-row-actions">
+        <Link className="studio-link" href={studioUrl}>
+          Open studio <span aria-hidden="true">→</span>
+        </Link>
+        <div>
           <button
-            className="secondary"
-            disabled={busy}
+            type="button"
+            className={
+              clip.approval_status === "approved" ? "approve active" : "approve"
+            }
+            disabled={approvalPending}
+            onClick={() => void onApprove(clip.id, true)}
+          >
+            {clip.approval_status === "approved" ? "Approved ✓" : "Approve"}
+          </button>
+          <button
+            type="button"
+            className={
+              clip.approval_status === "rejected" ? "reject active" : "reject"
+            }
+            disabled={approvalPending}
+            onClick={() => void onApprove(clip.id, false)}
+          >
+            {clip.approval_status === "rejected" ? "Rejected" : "Reject"}
+          </button>
+        </div>
+        {clip.approval_status === "approved" && !clip.final_path && (
+          <button
+            type="button"
+            className={`render-button clip-export-action ${renderState ?? "ready"}`}
+            aria-live="polite"
+            aria-label={
+              renderState === "queued"
+                ? "Final export queued"
+                : renderState === "working"
+                  ? "Final export rendering"
+                  : "Render final MP4"
+            }
+            disabled={approvalPending || Boolean(renderState)}
             onClick={() => void onRender(clip.id)}
           >
-            Render final
+            <span aria-hidden="true">
+              {renderState === "queued"
+                ? "⋯"
+                : renderState === "working"
+                  ? "↻"
+                  : "↗"}
+            </span>
+            <span>
+              <strong>
+                {renderState === "queued"
+                  ? "Export queued"
+                  : renderState === "working"
+                    ? "Rendering final"
+                    : "Render final MP4"}
+              </strong>
+              <small>
+                {renderState ? "Local export in progress" : "Publishing master"}
+              </small>
+            </span>
           </button>
         )}
         {clip.final_path && (
@@ -140,25 +160,6 @@ export function ClipCard({
           </a>
         )}
       </div>
-      <ClipStyleEditor
-        clip={clip}
-        busy={busy}
-        onSave={onSaveStyle}
-        onTranslate={onTranslate}
-        onTrack={onTrack}
-        onUploadAsset={onUploadAsset}
-        onRemoveAsset={onRemoveAsset}
-      />
-      <PublicationTracker
-        clip={clip}
-        accounts={accounts}
-        busy={busy}
-        onPublish={onPublish}
-        onRecordMetrics={onRecordMetrics}
-        onRefreshPublication={onRefreshPublication}
-        onSyncMetrics={onSyncMetrics}
-        onDeletePublication={onDeletePublication}
-      />
-    </div>
+    </article>
   );
 }

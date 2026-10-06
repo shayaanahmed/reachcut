@@ -34,7 +34,7 @@ small composition root.
 | Full-screen crop or blurred-background composition     | `clipper/rendering/framing.py`                                                  | `build_video_filter`                                                    |
 | FFmpeg argument construction and source-slice assembly | `clipper/rendering/ffmpeg.py`                                                   | `build_ffmpeg_command`, `FfmpegCommand`                                 |
 | FFmpeg process execution, preview/final manifests      | `clipper/rendering/service.py`                                                  | `VideoRenderer`, `RenderRequest`                                        |
-| Crop tracking/smoothing policy                         | `clipper/rendering/tracking.py`                                                 | `VisualTrackingProvider`, `keyframes_for_clip`, `smooth_crop_path`       |
+| Crop tracking/smoothing policy                         | `clipper/rendering/tracking.py`                                                 | `VisualTrackingProvider`, `keyframes_for_clip`, `smooth_crop_path`      |
 | OpenCV face/action tracking adapter                    | `clipper/providers/opencv_tracking.py`                                          | `OpenCvVisualTrackingProvider`                                          |
 | Ollama caption translation adapter                     | `clipper/providers/ollama_translation.py`                                       | `OllamaCaptionTranslationProvider`                                      |
 | Clip caption/plan/provenance artifacts                 | `clipper/projects/artifacts.py`                                                 | `ClipArtifactService`                                                   |
@@ -42,7 +42,7 @@ small composition root.
 | Publication upload and metric snapshot workflows       | `clipper/projects/publications.py`                                              | `PublicationService`, `AutomaticPublicationCreate`, `MetricCreate`      |
 | Publishing and metrics adapter contracts               | `clipper/publishing/`                                                           | `PublishingAdapter`, `MetricsAdapter`, `CredentialStore`, typed results |
 | Social OAuth, API uploads, and encrypted token storage | `clipper/providers/{social_oauth,youtube,tiktok,meta,x,credentials}.py`         | OAuth clients, publishing adapters, and `EncryptedCredentialStore`      |
-| Publishing account connection workflow                 | `clipper/projects/publishing_connections.py`                                    | `PublishingConnectionService`                                           |
+| Publishing account connection and readiness workflow   | `clipper/projects/publishing_connections.py`                                    | `PublishingConnectionService`, `AccountConnectionReadiness`             |
 | Social-account setup and publishing defaults           | `clipper/projects/social_accounts.py`                                           | `SocialAccountService`, `SocialAccountCreate`, `SocialAccountUpdate`    |
 | Resumable project stages                               | `clipper/projects/stages.py`                                                    | `StageRunner.run`                                                       |
 | End-to-end analysis orchestration                      | `clipper/projects/pipeline.py`                                                  | `Pipeline.run`                                                          |
@@ -52,19 +52,23 @@ small composition root.
 
 ## Web modules
 
-| Change                                        | Owning module                                         |
-| --------------------------------------------- | ----------------------------------------------------- |
-| Project upload/list/process requests          | `apps/web/features/projects/api.ts`                   |
-| Clip approval/style/render requests           | `apps/web/features/clips/api.ts`                      |
-| Runtime API response validation               | `apps/web/lib/contracts.ts`                           |
-| Project polling and UI actions                | `apps/web/features/projects/use-project-workbench.ts` |
-| Project upload form                           | `apps/web/features/projects/project-upload.tsx`       |
-| Stage progress presentation                   | `apps/web/features/projects/project-progress.tsx`     |
-| Project card/list presentation                | `apps/web/features/projects/project-{card,list}.tsx`  |
-| Clip presentation and actions                 | `apps/web/features/clips/clip-card.tsx`               |
-| Creative controls and secondary-media forms   | `apps/web/features/clips/clip-style-editor.tsx`       |
-| Publication assistant and project performance | `apps/web/features/publishing/`                       |
-| Trend discovery and source selection          | `apps/web/features/discovery/`                        |
+| Change                                        | Owning module                                                |
+| --------------------------------------------- | ------------------------------------------------------------ |
+| Project upload/list/process requests          | `apps/web/features/projects/api.ts`                          |
+| Clip approval/style/render requests           | `apps/web/features/clips/api.ts`                             |
+| Runtime API response validation               | `apps/web/lib/contracts.ts`                                  |
+| Project polling, keyed actions, render queue  | `apps/web/features/projects/use-project-workbench.ts`        |
+| Project upload form                           | `apps/web/features/projects/project-upload.tsx`              |
+| Stage progress presentation                   | `apps/web/features/projects/project-progress.tsx`            |
+| Project card/list presentation                | `apps/web/features/projects/project-{card,list}.tsx`         |
+| Compact clip review queue and actions         | `apps/web/features/clips/clip-card.tsx`                      |
+| Dedicated clip studio and live design preview | `apps/web/features/clips/clip-studio.tsx`                    |
+| Final-export readiness and render handoff     | `apps/web/features/clips/final-export-panel.tsx`             |
+| Grouped creative controls and media forms     | `apps/web/features/clips/clip-style-editor.tsx`              |
+| Dedicated clip publishing workspace           | `apps/web/features/publishing/clip-publishing-workspace.tsx` |
+| Account setup and connection readiness        | `apps/web/features/publishing/account-settings.tsx`          |
+| Publication assistant and project performance | `apps/web/features/publishing/`                              |
+| Trend discovery and source selection          | `apps/web/features/discovery/`                               |
 
 ## Practical examples
 

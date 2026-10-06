@@ -6,6 +6,8 @@ import { useMemo, useState } from "react";
 import type { Project } from "../../lib/contracts";
 
 type ProjectFilter = "all" | "active" | "review" | "complete";
+type ProjectSort = "recent" | "attention" | "performance";
+type ProjectView = "grid" | "list";
 
 function latestProjectViews(project: Project) {
   return project.clips.reduce(
@@ -47,22 +49,39 @@ function matchesFilter(project: Project, filter: ProjectFilter) {
   return true;
 }
 
+function nextAction(project: Project) {
+  if (project.status === "created") return "Run analysis";
+  if (project.status === "processing") return "Processing locally";
+  if (project.status === "failed") return "Resolve failed stage";
+  const pending = project.clips.filter(
+    (clip) => clip.approval_status === "pending",
+  ).length;
+  if (pending) return `Review ${pending} clip${pending === 1 ? "" : "s"}`;
+  const approved = project.clips.filter(
+    (clip) => clip.approval_status === "approved" && !clip.final_path,
+  ).length;
+  if (approved) return `Render ${approved} approved`;
+  return "View performance";
+}
+
 export function ProjectList({
   projects,
-  busy,
+  isPending,
   onDelete,
   compact = false,
 }: {
   projects: Project[];
-  busy: boolean;
+  isPending: (key: string) => boolean;
   onDelete: (id: string) => Promise<unknown>;
   compact?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<ProjectFilter>("all");
+  const [sort, setSort] = useState<ProjectSort>("recent");
+  const [view, setView] = useState<ProjectView>("grid");
   const visibleProjects = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
-    return projects.filter(
+    const matching = projects.filter(
       (project) =>
         matchesFilter(project, filter) &&
         (!normalizedQuery ||
@@ -71,7 +90,26 @@ export function ProjectList({
             .toLocaleLowerCase()
             .includes(normalizedQuery)),
     );
-  }, [filter, projects, query]);
+    return matching.toSorted((left, right) => {
+      if (sort === "performance")
+        return latestProjectViews(right) - latestProjectViews(left);
+      if (sort === "attention") {
+        const priority = (project: Project) =>
+          project.status === "failed"
+            ? 3
+            : project.status === "review"
+              ? 2
+              : project.status === "created"
+                ? 1
+                : 0;
+        return priority(right) - priority(left);
+      }
+      return (
+        new Date(right.created_at).getTime() -
+        new Date(left.created_at).getTime()
+      );
+    });
+  }, [filter, projects, query, sort]);
 
   if (projects.length === 0) {
     return (
@@ -116,6 +154,37 @@ export function ProjectList({
               ),
             )}
           </div>
+          <div className="project-view-tools">
+            <select
+              value={sort}
+              onChange={(event) => setSort(event.target.value as ProjectSort)}
+              aria-label="Sort projects"
+            >
+              <option value="recent">Most recent</option>
+              <option value="attention">Needs attention</option>
+              <option value="performance">Best performance</option>
+            </select>
+            <div aria-label="Project view" className="view-switcher">
+              <button
+                type="button"
+                aria-label="Grid view"
+                aria-pressed={view === "grid"}
+                className={view === "grid" ? "active" : ""}
+                onClick={() => setView("grid")}
+              >
+                ▦
+              </button>
+              <button
+                type="button"
+                aria-label="List view"
+                aria-pressed={view === "list"}
+                className={view === "list" ? "active" : ""}
+                onClick={() => setView("list")}
+              >
+                ☰
+              </button>
+            </div>
+          </div>
         </div>
       )}
       {visibleProjects.length === 0 ? (
@@ -124,7 +193,9 @@ export function ProjectList({
           <p>Try a different search or filter.</p>
         </div>
       ) : (
-        <div className={`project-grid ${compact ? "compact" : ""}`}>
+        <div
+          className={`project-grid ${compact ? "compact" : ""} ${!compact && view === "list" ? "list-view" : ""}`}
+        >
           {visibleProjects.map((project, index) => {
             const views = latestProjectViews(project);
             const progress = projectProgress(project);
@@ -136,7 +207,12 @@ export function ProjectList({
                   aria-label={`Open ${project.title}`}
                 >
                   <div className={`project-cover cover-${index % 4}`}>
-                    <span aria-hidden="true">▶</span>
+                    <span className="project-cover-icon" aria-hidden="true">
+                      ▶
+                    </span>
+                    <span className="project-cover-label">
+                      {nextAction(project)}
+                    </span>
                     <strong>{project.clips.length}</strong>
                     <small>clips</small>
                   </div>
@@ -167,6 +243,20 @@ export function ProjectList({
                         </strong>{" "}
                         exported
                       </span>
+                      <span>
+                        <strong>
+                          {
+                            project.clips.filter(
+                              (clip) => clip.approval_status === "approved",
+                            ).length
+                          }
+                        </strong>{" "}
+                        approved
+                      </span>
+                    </div>
+                    <div className="project-next-action">
+                      <span>{nextAction(project)}</span>
+                      <strong>Open →</strong>
                     </div>
                     <div className="project-completion">
                       <span style={{ width: `${progress}%` }} />
@@ -176,7 +266,10 @@ export function ProjectList({
                 <button
                   className="project-delete"
                   type="button"
-                  disabled={busy || project.status === "processing"}
+                  disabled={
+                    isPending(`project:${project.id}:delete`) ||
+                    project.status === "processing"
+                  }
                   aria-label={`Delete ${project.title}`}
                   onClick={() => {
                     if (
@@ -188,7 +281,7 @@ export function ProjectList({
                     }
                   }}
                 >
-                  ×
+                  {isPending(`project:${project.id}:delete`) ? "…" : "×"}
                 </button>
               </article>
             );

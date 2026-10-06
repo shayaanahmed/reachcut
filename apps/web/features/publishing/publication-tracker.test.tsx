@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { Project, SocialAccount } from "../../lib/contracts";
@@ -89,7 +89,7 @@ describe("publication tracker", () => {
       <PublicationTracker
         clip={clip}
         accounts={[account]}
-        busy={false}
+        isPending={() => false}
         onPublish={vi.fn()}
         onRecordMetrics={vi.fn()}
         onRefreshPublication={vi.fn()}
@@ -99,8 +99,10 @@ describe("publication tracker", () => {
     );
 
     expect(
-      (screen.getByLabelText("Publishing account") as HTMLSelectElement).value,
-    ).toBe("account-1");
+      view
+        .getByRole("button", { name: /Main YouTube/ })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
     expect(
       (screen.getByLabelText("Suggested title") as HTMLInputElement).value,
     ).toBe("A useful idea");
@@ -113,7 +115,7 @@ describe("publication tracker", () => {
     expect(
       (
         view.getByRole("button", {
-          name: "Publish with Clipper",
+          name: /Publish to YouTube Shorts/,
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(false);
@@ -132,7 +134,7 @@ describe("publication tracker", () => {
             label: "Main TikTok",
           },
         ]}
-        busy={false}
+        isPending={() => false}
         onPublish={vi.fn()}
         onRecordMetrics={vi.fn()}
         onRefreshPublication={vi.fn()}
@@ -144,7 +146,7 @@ describe("publication tracker", () => {
     expect(
       (
         view.container.querySelector(
-          "button.primary-button",
+          "button.publish-primary-action",
         ) as HTMLButtonElement
       ).disabled,
     ).toBe(false);
@@ -178,7 +180,7 @@ describe("publication tracker", () => {
           ],
         }}
         accounts={[account]}
-        busy={false}
+        isPending={() => false}
         onPublish={vi.fn()}
         onRecordMetrics={vi.fn()}
         onRefreshPublication={vi.fn()}
@@ -216,7 +218,7 @@ describe("publication tracker", () => {
           ],
         }}
         accounts={[account]}
-        busy={false}
+        isPending={() => false}
         onPublish={vi.fn()}
         onRecordMetrics={vi.fn()}
         onRefreshPublication={vi.fn()}
@@ -231,5 +233,48 @@ describe("publication tracker", () => {
         'a[href="https://www.youtube.com/watch?v=video-123"]',
       ),
     ).toBeNull();
+  });
+
+  it("keeps unrelated publication actions available while metrics sync", () => {
+    const publication = {
+      id: "publication-1",
+      platform: "youtube" as const,
+      status: "published" as const,
+      post_url: "https://www.youtube.com/shorts/video-123",
+      title: "Published clip",
+      description: "",
+      published_at: "2026-10-02T10:00:00Z",
+      created_at: "2026-10-02T10:00:00Z",
+      social_account_id: "account-1",
+      account_label: "Main YouTube",
+      account_username: "creator",
+      provider_publication_id: "video-123",
+      metric_snapshots: [],
+    };
+    const view = render(
+      <PublicationTracker
+        clip={{ ...clip, publications: [publication] }}
+        accounts={[account]}
+        isPending={(key) => key === "publication:publication-1:sync"}
+        onPublish={vi.fn()}
+        onRecordMetrics={vi.fn()}
+        onRefreshPublication={vi.fn()}
+        onSyncMetrics={vi.fn()}
+        onDeletePublication={vi.fn()}
+      />,
+    );
+    const tracker = within(view.container);
+
+    expect(
+      (tracker.getByRole("button", { name: "Syncing…" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      (
+        tracker.getByRole("button", {
+          name: "Check status",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
   });
 });

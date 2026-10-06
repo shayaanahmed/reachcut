@@ -228,6 +228,15 @@ export const socialAccountSchema = z.object({
   updated_at: z.string(),
 });
 
+export const accountConnectionReadinessSchema = z.object({
+  account_id: z.string(),
+  platform: socialPlatformSchema,
+  provider_configured: z.boolean(),
+  credentials_available: z.boolean(),
+  publishing_ready: z.boolean(),
+  issues: z.array(z.string()),
+});
+
 export const projectSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -267,3 +276,6 @@ export const projectSchema = z.object({
 export type Project = z.infer<typeof projectSchema>;
 export type SocialAccount = z.infer<typeof socialAccountSchema>;
 export type SocialPlatform = z.infer<typeof socialPlatformSchema>;
+export type AccountConnectionReadiness = z.infer<
+  typeof accountConnectionReadinessSchema
+>;

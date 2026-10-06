@@ -1,61 +1,37 @@
 import type { Dispatch, SetStateAction } from "react";
 
 import { ClipCard } from "../clips/clip-card";
-import type { MetricCreate, PublicationCreate } from "../publishing/api";
 import { ProjectPerformance } from "../publishing/project-performance";
-import type { Project, SocialAccount } from "../../lib/contracts";
+import type { Project } from "../../lib/contracts";
 import { ProjectProgress } from "./project-progress";
+import type { OperationState } from "./use-project-workbench";
 
 export function ProjectCard({
   project,
-  accounts,
-  busy,
   language,
   setLanguages,
+  isPending,
+  operationState,
   onProcess,
   onApprove,
   onRender,
-  onSaveStyle,
-  onTranslate,
-  onTrack,
-  onUploadAsset,
-  onRemoveAsset,
-  onPublish,
-  onRecordMetrics,
-  onRefreshPublication,
-  onSyncMetrics,
-  onDeletePublication,
   onRename,
   onDelete,
 }: {
   project: Project;
-  accounts: SocialAccount[];
-  busy: boolean;
   language: string;
   setLanguages: Dispatch<SetStateAction<Record<string, string>>>;
+  isPending: (key: string) => boolean;
+  operationState: (key: string) => OperationState | undefined;
   onProcess: (id: string) => Promise<unknown>;
-  onApprove: (clipId: string, approved: boolean) => Promise<void>;
+  onApprove: (clipId: string, approved: boolean) => Promise<unknown>;
   onRender: (clipId: string) => Promise<unknown>;
-  onSaveStyle: (clipId: string, form: HTMLFormElement) => Promise<unknown>;
-  onTranslate: (
-    clipId: string,
-    targetLanguage: string,
-    mode: "translated" | "bilingual",
-  ) => Promise<unknown>;
-  onTrack: (clipId: string) => Promise<unknown>;
-  onUploadAsset: (clipId: string, form: HTMLFormElement) => Promise<unknown>;
-  onRemoveAsset: (clipId: string, assetId: string) => Promise<unknown>;
-  onPublish: (clipId: string, data: PublicationCreate) => Promise<unknown>;
-  onRecordMetrics: (
-    publicationId: string,
-    data: MetricCreate,
-  ) => Promise<unknown>;
-  onDeletePublication: (publicationId: string) => Promise<unknown>;
-  onRefreshPublication: (publicationId: string) => Promise<unknown>;
-  onSyncMetrics: (publicationId: string) => Promise<unknown>;
   onRename: (id: string, title: string) => Promise<unknown>;
   onDelete: (id: string) => Promise<unknown>;
 }) {
+  const processing = isPending(`project:${project.id}:process`);
+  const renaming = isPending(`project:${project.id}:rename`);
+  const deleting = isPending(`project:${project.id}:delete`);
   const bestClipId = project.clips.reduce<string | null>((bestId, clip) => {
     if (!bestId) return clip.id;
     const currentBest = project.clips.find(
@@ -96,13 +72,15 @@ export function ProjectCard({
                 maxLength={200}
                 aria-label="Project name"
               />
-              <button disabled={busy}>Save</button>
+              <button disabled={renaming}>
+                {renaming ? "Saving…" : "Save"}
+              </button>
             </form>
           </details>
           <button
             className="danger-button"
             type="button"
-            disabled={busy || project.status === "processing"}
+            disabled={deleting || project.status === "processing"}
             onClick={() => {
               if (
                 window.confirm(
@@ -150,10 +128,14 @@ export function ProjectCard({
             </label>
             <button
               className="secondary"
-              disabled={busy}
+              disabled={processing}
               onClick={() => void onProcess(project.id)}
             >
-              {project.status === "created" ? "Analyze" : "Re-analyze"}
+              {processing
+                ? "Starting…"
+                : project.status === "created"
+                  ? "Analyze"
+                  : "Re-analyze"}
             </button>
           </div>
         </div>
@@ -161,30 +143,38 @@ export function ProjectCard({
       {project.stages.length > 0 && <ProjectProgress project={project} />}
       <ProjectPerformance project={project} />
       {project.clips.length > 0 && (
-        <div className="clips">
-          {project.clips.map((clip, index) => (
-            <ClipCard
-              key={clip.id}
-              clip={clip}
-              accounts={accounts}
-              index={index}
-              bestToPublish={clip.id === bestClipId}
-              busy={busy}
-              onApprove={onApprove}
-              onRender={onRender}
-              onSaveStyle={onSaveStyle}
-              onTranslate={onTranslate}
-              onTrack={onTrack}
-              onUploadAsset={onUploadAsset}
-              onRemoveAsset={onRemoveAsset}
-              onPublish={onPublish}
-              onRecordMetrics={onRecordMetrics}
-              onRefreshPublication={onRefreshPublication}
-              onSyncMetrics={onSyncMetrics}
-              onDeletePublication={onDeletePublication}
-            />
-          ))}
-        </div>
+        <section
+          className="clip-review-queue"
+          aria-labelledby="clip-review-title"
+        >
+          <div className="clip-review-heading">
+            <div>
+              <span className="eyebrow">REVIEW QUEUE</span>
+              <h2 id="clip-review-title">
+                {project.clips.length} generated clips
+              </h2>
+            </div>
+            <p>
+              Approve quickly here, or open a clip in Studio for detailed
+              editing.
+            </p>
+          </div>
+          <div className="clip-rows">
+            {project.clips.map((clip, index) => (
+              <ClipCard
+                key={clip.id}
+                projectId={project.id}
+                clip={clip}
+                index={index}
+                bestToPublish={clip.id === bestClipId}
+                approvalPending={isPending(`clip:${clip.id}:approval`)}
+                renderState={operationState(`clip:${clip.id}:render`)}
+                onApprove={onApprove}
+                onRender={onRender}
+              />
+            ))}
+          </div>
+        </section>
       )}
     </article>
   );

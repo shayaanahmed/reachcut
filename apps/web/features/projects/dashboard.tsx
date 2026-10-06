@@ -39,14 +39,52 @@ export function summarizeWorkspace(projects: Project[]) {
 
 export function Dashboard({ workbench }: { workbench: Workbench }) {
   const summary = summarizeWorkspace(workbench.projects);
+  const reviewProjects = workbench.projects.filter(
+    (project) => project.status === "review",
+  );
+  const processingProjects = workbench.projects.filter(
+    (project) => project.status === "processing",
+  );
+  const failedProjects = workbench.projects.filter(
+    (project) => project.status === "failed",
+  );
+  const pendingClips = workbench.projects.flatMap((project) =>
+    project.clips
+      .filter((clip) => clip.approval_status === "pending")
+      .map((clip) => ({ project, clip })),
+  );
+  const readyToRender = workbench.projects.flatMap((project) =>
+    project.clips.filter(
+      (clip) => clip.approval_status === "approved" && !clip.final_path,
+    ),
+  ).length;
+  const revenue = workbench.projects.reduce(
+    (total, project) =>
+      total +
+      project.clips.reduce(
+        (clipTotal, clip) =>
+          clipTotal +
+          clip.publications.reduce(
+            (publicationTotal, publication) =>
+              publicationTotal +
+              (publication.metric_snapshots.at(-1)?.revenue ?? 0),
+            0,
+          ),
+        0,
+      ),
+    0,
+  );
 
   return (
     <main className="page dashboard-page">
       <div className="topbar dashboard-topbar">
         <div>
-          <span className="eyebrow">OVERVIEW</span>
-          <h1>Your content workspace</h1>
-          <p>See what is performing and continue the work that matters.</p>
+          <span className="eyebrow">TODAY</span>
+          <h1>Content command center</h1>
+          <p>
+            Move ideas from source to published clip, then learn from what
+            performs.
+          </p>
         </div>
         <Link className="primary-link" href="/projects/new">
           ＋ New project
@@ -62,24 +100,82 @@ export function Dashboard({ workbench }: { workbench: Workbench }) {
           <small>latest snapshot from every published post</small>
         </article>
         <article>
-          <span>Published posts</span>
-          <strong>{summary.published.toLocaleString()}</strong>
-          <small>{summary.exported} clips ready to share</small>
+          <span>Awaiting review</span>
+          <strong>{pendingClips.length.toLocaleString()}</strong>
+          <small>across {reviewProjects.length} projects</small>
         </article>
         <article>
-          <span>Engagement rate</span>
-          <strong>{summary.engagementRate.toFixed(1)}%</strong>
-          <small>likes, comments, and shares per view</small>
+          <span>Ready to render</span>
+          <strong>{readyToRender.toLocaleString()}</strong>
+          <small>{summary.exported} final exports completed</small>
         </article>
         <article>
-          <span>Projects</span>
-          <strong>{summary.projects.toLocaleString()}</strong>
+          <span>Tracked revenue</span>
+          <strong>€{revenue.toFixed(2)}</strong>
+          <small>{summary.engagementRate.toFixed(1)}% engagement rate</small>
+        </article>
+      </section>
+      <section
+        className="dashboard-focus"
+        aria-labelledby="next-actions-heading"
+      >
+        <div className="dashboard-focus-heading">
+          <div>
+            <span className="eyebrow">NEXT ACTIONS</span>
+            <h2 id="next-actions-heading">Keep production moving</h2>
+          </div>
           <small>
-            {summary.attention
-              ? `${summary.attention} need your attention`
-              : "everything is up to date"}
+            {processingProjects.length
+              ? `${processingProjects.length} processing now`
+              : "Local pipeline is available"}
           </small>
-        </article>
+        </div>
+        <div className="dashboard-focus-grid">
+          <article className={pendingClips.length ? "priority" : ""}>
+            <span className="focus-icon">✓</span>
+            <div>
+              <strong>Review candidates</strong>
+              <p>
+                {pendingClips.length
+                  ? `${pendingClips.length} clips need a decision.`
+                  : "Your review queue is clear."}
+              </p>
+            </div>
+            <Link
+              href={
+                pendingClips[0]
+                  ? `/projects/${pendingClips[0].project.id}`
+                  : "/projects"
+              }
+            >
+              {pendingClips.length ? "Start review" : "View library"} →
+            </Link>
+          </article>
+          <article className={readyToRender ? "priority" : ""}>
+            <span className="focus-icon">↗</span>
+            <div>
+              <strong>Finish approved clips</strong>
+              <p>
+                {readyToRender
+                  ? `${readyToRender} approved clips are waiting for final render.`
+                  : "No render backlog right now."}
+              </p>
+            </div>
+            <Link href="/projects">Open projects →</Link>
+          </article>
+          <article className={failedProjects.length ? "warning" : ""}>
+            <span className="focus-icon">!</span>
+            <div>
+              <strong>Pipeline health</strong>
+              <p>
+                {failedProjects.length
+                  ? `${failedProjects.length} projects need attention.`
+                  : `${processingProjects.length} active · no failures.`}
+              </p>
+            </div>
+            <Link href="/projects">Inspect pipeline →</Link>
+          </article>
+        </div>
       </section>
       <section className="dashboard-actions" aria-label="Quick actions">
         <div>
@@ -107,7 +203,7 @@ export function Dashboard({ workbench }: { workbench: Workbench }) {
         ) : (
           <ProjectList
             projects={workbench.projects.slice(0, 4)}
-            busy={workbench.busy}
+            isPending={workbench.isPending}
             onDelete={workbench.remove}
             compact
           />

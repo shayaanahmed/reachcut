@@ -13,6 +13,7 @@ from clipper.projects.publications import (
     PublicationStateError,
 )
 from clipper.projects.publishing_connections import (
+    AccountConnectionReadiness,
     PublishingConnectionError,
     PublishingConnectionService,
 )
@@ -25,6 +26,7 @@ from clipper.projects.social_accounts import (
 from clipper.projects.stages import StageRunner
 
 __all__ = [
+    "AccountConnectionReadiness",
     "AutomaticPublicationCreate",
     "ClipArtifactService",
     "ClipService",

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from clipper.api.dependencies import publishing_connections
 from clipper.api.schemas import (
+    AccountConnectionReadinessResponse,
     ApiConnectionRequest,
     PublishingCapabilitiesResponse,
     SocialAccountCreateRequest,
@@ -39,6 +40,21 @@ def publishing_capabilities() -> PublishingCapabilitiesResponse:
         automatic_platforms=["youtube", "tiktok", "instagram", "facebook", "x"],
         configured_platforms=publishing_connections.configured_platforms,
     )
+
+
+@router.get(
+    "/social-accounts/readiness",
+    response_model=list[AccountConnectionReadinessResponse],
+)
+def social_account_readiness(
+    session: Session = Depends(get_session),
+) -> list[AccountConnectionReadinessResponse]:
+    return [
+        AccountConnectionReadinessResponse.model_validate(
+            publishing_connections.connection_readiness(session, account.id)
+        )
+        for account in account_service.list(session)
+    ]
 
 
 @router.get("/social-accounts/{account_id}/connect")
