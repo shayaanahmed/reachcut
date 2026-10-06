@@ -8,10 +8,11 @@ from typing import BinaryIO
 from clipper.media.errors import MediaError
 
 ALLOWED_SIGNATURES = {
-    b"\x00\x00\x00": "iso-bmff",
     b"\x1aE\xdf\xa3": "matroska",
     b"RIFF": "riff",
     b"OggS": "ogg",
+    b"ID3": "mp3",
+    b"fLaC": "flac",
 }
 
 
@@ -31,8 +32,10 @@ def safe_filename(name: str) -> str:
 def detect_container(header: bytes) -> str:
     if len(header) >= 12 and header[4:8] == b"ftyp":
         return "iso-bmff"
+    if len(header) >= 2 and header[0] == 0xFF and header[1] & 0xE0 == 0xE0:
+        return "mp3"
     for signature, container in ALLOWED_SIGNATURES.items():
-        if header.startswith(signature) and signature != b"\x00\x00\x00":
+        if header.startswith(signature):
             return container
     raise MediaError("unsupported or invalid media file signature")
 

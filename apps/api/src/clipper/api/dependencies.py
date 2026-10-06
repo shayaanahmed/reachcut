@@ -17,6 +17,8 @@ from clipper.projects import ClipService, Pipeline, PublishingConnectionService
 from clipper.providers.credentials import EncryptedCredentialStore
 from clipper.providers.meta import FacebookPublishingAdapter, InstagramPublishingAdapter
 from clipper.providers.ollama import EditorialGenerationConfig, OllamaEditorialProvider
+from clipper.providers.ollama_translation import OllamaCaptionTranslationProvider
+from clipper.providers.opencv_tracking import OpenCvVisualTrackingProvider
 from clipper.providers.social_oauth import (
     MetaOAuthClient,
     OAuthAppConfig,
@@ -63,8 +65,29 @@ editorial_provider = OllamaEditorialProvider(
         retry_num_predict=settings.editorial_retry_num_predict,
     ),
 )
-pipeline = Pipeline(settings, transcription_provider, editorial_provider)
-clip_service = ClipService(pipeline.artifacts, pipeline.renderer)
+caption_translation_provider = OllamaCaptionTranslationProvider(
+    settings.editorial_base_url,
+    settings.editorial_model,
+    timeout_seconds=settings.editorial_timeout_seconds,
+)
+visual_tracking_provider = (
+    OpenCvVisualTrackingProvider(settings.tracking_sample_interval_seconds)
+    if settings.tracking_provider == "opencv"
+    else None
+)
+pipeline = Pipeline(
+    settings,
+    transcription_provider,
+    editorial_provider,
+    visual_tracking_provider,
+)
+clip_service = ClipService(
+    pipeline.artifacts,
+    pipeline.renderer,
+    caption_translation_provider,
+    visual_tracking_provider,
+    settings.max_secondary_media_bytes,
+)
 media_downloader = YtDlpDownloader(
     settings.yt_dlp_repository,
     timeout_seconds=settings.yt_dlp_timeout_seconds,
@@ -138,7 +161,12 @@ def run_pipeline(project_id: str, language: str | None = None) -> None:
     with pipeline_lock, SessionLocal() as session:
         try:
             selected_transcription = build_transcription_provider(language)
-            selected_pipeline = Pipeline(settings, selected_transcription, editorial_provider)
+            selected_pipeline = Pipeline(
+                settings,
+                selected_transcription,
+                editorial_provider,
+                visual_tracking_provider,
+            )
             selected_pipeline.run(session, project_id)
         except Exception as error:
             logger.exception(

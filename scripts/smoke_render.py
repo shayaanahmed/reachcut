@@ -17,6 +17,11 @@ def main() -> None:
     parser.add_argument("--ffprobe", type=Path, required=True)
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--skip-probe",
+        action="store_true",
+        help="Skip the probe assertion when no native ffprobe binary is available.",
+    )
     args = parser.parse_args()
 
     bin_dir = args.output.parent / "bin"
@@ -27,8 +32,9 @@ def main() -> None:
         link.symlink_to(source.resolve())
     os.environ["PATH"] = f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"
 
-    media = probe_media(args.source, max_duration_seconds=60)
-    assert 7.5 < float(str(media["duration_seconds"])) < 8.5
+    if not args.skip_probe:
+        media = probe_media(args.source, max_duration_seconds=60)
+        assert 7.5 < float(str(media["duration_seconds"])) < 8.5
     subtitles = args.output.with_suffix(".srt")
     subtitles.write_text(
         "1\n00:00:00,000 --> 00:00:03,000\nGenerated fixture caption\n"

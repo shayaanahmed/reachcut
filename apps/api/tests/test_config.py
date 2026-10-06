@@ -18,6 +18,9 @@ def test_model_runtime_settings_are_loaded_from_environment(
     monkeypatch.setenv("CLIPPER_EDITORIAL_RETRY_NUM_CTX", "8192")
     monkeypatch.setenv("CLIPPER_EDITORIAL_RETRY_NUM_PREDICT", "2048")
     monkeypatch.setenv("CLIPPER_WEB_PORT", "3001")
+    monkeypatch.setenv("CLIPPER_TRACKING_PROVIDER", "disabled")
+    monkeypatch.setenv("CLIPPER_TRACKING_SAMPLE_INTERVAL_SECONDS", "1.25")
+    monkeypatch.setenv("CLIPPER_MAX_SECONDARY_MEDIA_BYTES", "4096")
 
     settings = Settings(_env_file=None)
 
@@ -33,4 +36,7 @@ def test_model_runtime_settings_are_loaded_from_environment(
     assert settings.editorial_retry_num_ctx == 8192
     assert settings.editorial_retry_num_predict == 2048
     assert settings.web_port == 3001
+    assert settings.tracking_provider == "disabled"
+    assert settings.tracking_sample_interval_seconds == 1.25
+    assert settings.max_secondary_media_bytes == 4096
     assert settings.tiktok_redirect_uri == ""

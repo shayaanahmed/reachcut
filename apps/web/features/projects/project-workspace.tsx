@@ -52,6 +52,10 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         onApprove={workbench.approve}
         onRender={workbench.render}
         onSaveStyle={workbench.saveStyle}
+        onTranslate={workbench.translate}
+        onTrack={workbench.analyzeTracking}
+        onUploadAsset={workbench.uploadSecondaryMedia}
+        onRemoveAsset={workbench.removeSecondaryMedia}
         onPublish={workbench.publish}
         onRecordMetrics={workbench.recordMetrics}
         onRefreshPublication={workbench.refreshPublishedPost}

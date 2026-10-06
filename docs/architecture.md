@@ -40,6 +40,28 @@ The Next.js client is a review surface. FastAPI is the control plane and owns au
 
 Model and media integrations sit behind typed providers. Project services depend on those interfaces, not model names. Every candidate becomes an `EditingPlanV1`; only validated plans may reach FFmpeg or, later, Remotion. Subprocesses receive argument arrays and never use a shell.
 
+Editorial selection emits two explicit optimization profiles when the source is long
+enough: a compact views-focused version and a 61–90 second revenue-focused version.
+The labels describe editing intent, not a promise of platform eligibility or earnings.
+Plans may contain ordered source slices; artifact generation retimes captions onto the
+joined timeline and FFmpeg trims and concatenates those slices before composition.
+Legacy single-range V1 plans remain valid through defaults.
+
+The enhancement pipeline remains deterministic after editorial selection. Transcript
+pauses, filler-only beats, and exact repeated segments produce curated source slices.
+OpenCV supplies sampled face/group/motion observations through a replaceable visual
+tracking port; rendering consumes only normalized crop keyframes. Content-mode policy
+selects conservative defaults for talking-head, podcast, gameplay, sports, tutorial,
+reaction, product, news, and B-roll clips. This inference can be overridden per clip.
+
+Caption translation is another provider port and stores both the original and translated
+text in the validated plan, allowing translated-only or bilingual ASS/SRT/VTT artifacts.
+Secondary media is copied into a clip-owned asset directory and referenced by opaque IDs;
+plans never carry arbitrary filesystem paths. FFmpeg composes gameplay split-screen,
+reaction picture-in-picture, timed B-roll, SFX, and music from those resolved assets.
+Hooks, CTAs, cards, tracking, transitions, zoom, and progress indicators are all plan data,
+not executable templates.
+
 Topic discovery follows the same boundary: the pure `discovery` module owns typed
 topic, category, trend, and source results, while the Google Trends/YouTube network
 adapter lives in `providers`. A discovered source enters the existing authorized URL-import workflow;
@@ -55,7 +77,7 @@ FastAPI control plane ── SQLite
 resumable stage runner
   ├── faster-whisper transcription
   ├── Ollama / llama.cpp editorial endpoint
-  ├── optional VLM / diarization / tracking providers
+  ├── OpenCV tracking + replaceable translation/tracking ports
   └── FFprobe + deterministic FFmpeg renderer
        │
 private data/artifact directory
@@ -72,8 +94,8 @@ Stages are persisted as independent rows with `pending`, `running`, `succeeded`,
 ## Phases
 
 1. **Local MVP:** upload, probe, transcription, editorial candidates, plan validation, center-crop rendering, captions, review/approval, durable exports.
-2. **Polish:** MediaPipe tracking, crop keyframe editor, Remotion data-driven templates, hooks/CTAs, reduced-resolution previews, controlled audio assets.
-3. **Multimodal:** sampled candidate windows, replaceable Qwen3-VL provider, visual reranking, reactions, scene-aware edits, multi-speaker layouts.
+2. **Polish:** OpenCV face/action tracking, crop keyframes, hooks/CTAs, caption presets and translation, reduced-resolution previews, and controlled secondary media.
+3. **Multimodal:** optional VLM reranking, diarized active-speaker identity, semantic stock-library search, scene-aware edits, and richer multi-speaker layouts.
 4. **Automation:** hardened worker process, watch folders, batches, schedules, optional OAuth publishing adapters, hardware-specific tuning.
 
 ## Hardware profiles
@@ -84,5 +106,7 @@ Stages are persisted as independent rows with `pending`, `running`, `succeeded`,
 
 - Transcription provider: implement `clipper.transcription.TranscriptionProvider`, add configuration and a health check, then register it in `clipper.api.dependencies`.
 - Editorial provider: implement `clipper.editorial.EditorialLLMProvider` and register it in `clipper.api.dependencies`.
+- Caption translation provider: implement `clipper.captions.CaptionTranslationProvider` and register it in `clipper.api.dependencies`.
+- Visual tracking provider: implement `clipper.rendering.VisualTrackingProvider`; return normalized observations rather than renderer-specific filters.
 - Editing template: add a versioned JSON/Zod configuration. Templates may reference only registered assets/effects; they cannot execute code.
 - Publishing adapter: implement `clipper.publishing.PublishingAdapter`, keep network calls in `providers/`, and orchestrate approval, credentials, processing-state refresh, and publication persistence in `projects/`. Current adapters cover YouTube, TikTok, Instagram Reels, Facebook Reels, and X.

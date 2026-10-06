@@ -1,37 +1,58 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
 from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from clipper.config import Settings
-from clipper.domain.editing_plan import EditingPlanV1
+from clipper.domain.editing_plan import EditingPlanV1, TrackingConfig
 from clipper.domain.transcript import Transcript
-from clipper.editorial import EditorialLLMProvider
+from clipper.editorial import (
+    EditorialContext,
+    EditorialLLMProvider,
+    ModeSignals,
+    infer_content_mode,
+)
 from clipper.media import probe_media
 from clipper.persistence import Clip, Project, ProjectStatus
 from clipper.projects.artifacts import ArtifactProvenance, ClipArtifactService
 from clipper.projects.stages import StageRunner
-from clipper.rendering import RenderRequest, VideoRenderer
+from clipper.rendering import (
+    RenderRequest,
+    VideoRenderer,
+    VisualAnalysis,
+    VisualTrackingProvider,
+    keyframes_for_clip,
+    strategy_for_mode,
+)
 from clipper.transcription import ProgressReporter, TranscriptionProvider
 
 
 class Pipeline:
     """Orchestrate project stages through domain ports and application services."""
 
-    STAGES = ("probe", "transcribe", "select_candidates", "render_previews")
+    STAGES = (
+        "probe",
+        "analyze_visuals",
+        "transcribe",
+        "select_candidates",
+        "render_previews",
+    )
 
     def __init__(
         self,
         settings: Settings,
         transcription: TranscriptionProvider,
         editorial: EditorialLLMProvider,
+        tracking: VisualTrackingProvider | None = None,
     ) -> None:
         self.settings = settings
         self.transcription = transcription
         self.editorial = editorial
+        self.tracking = tracking
         self.stage_runner = StageRunner()
         self.artifacts = ClipArtifactService(
             ArtifactProvenance(transcription.identity, editorial.identity)
@@ -57,6 +78,21 @@ class Pipeline:
             project.media_info = media_info
             project.duration_seconds = float(str(media_info["duration_seconds"]))
             session.commit()
+            visual_payload: dict[str, object] = {}
+            tracking = self.tracking
+            if tracking:
+                visual_payload = self.stage_runner.run(
+                    session,
+                    project,
+                    "analyze_visuals",
+                    self._key(project.media_sha256, tracking.identity),
+                    lambda progress: tracking.analyze(
+                        Path(project.source_path),
+                        lambda: self._cancelled(session, project.id),
+                        progress,
+                    ).as_artifact(),
+                )
+            visual_analysis = VisualAnalysis.from_artifact(visual_payload)
             transcript_payload = self.stage_runner.run(
                 session,
                 project,
@@ -71,6 +107,25 @@ class Pipeline:
             project.transcript = transcript_payload
             session.commit()
             transcript = Transcript.model_validate(transcript_payload)
+            motion_confidence = (
+                sum(point.confidence for point in visual_analysis.action_points)
+                / len(visual_analysis.action_points)
+                if visual_analysis.action_points
+                else 0
+            )
+            inferred_mode = infer_content_mode(
+                project.title,
+                project.original_filename,
+                transcript,
+                ModeSignals(visual_analysis.face_coverage, motion_confidence),
+            )
+            editorial_context = EditorialContext(
+                project.title,
+                project.original_filename,
+                inferred_mode,
+                visual_analysis.face_coverage,
+                motion_confidence,
+            )
             plans_payload = self.stage_runner.run(
                 session,
                 project,
@@ -79,17 +134,18 @@ class Pipeline:
                     project.media_sha256,
                     self.transcription.identity,
                     self.editorial.identity,
+                    self.tracking.identity if self.tracking else "tracking:none",
+                    inferred_mode,
                     str(target_count),
                 ),
-                lambda progress: [
-                    plan.model_dump(mode="json")
-                    for plan in self.editorial.select_candidates(
-                        transcript,
-                        target_count,
-                        lambda: self._cancelled(session, project.id),
-                        progress,
-                    )
-                ],
+                lambda progress: self._select_and_track(
+                    transcript,
+                    target_count,
+                    lambda: self._cancelled(session, project.id),
+                    progress,
+                    editorial_context,
+                    visual_analysis,
+                ),
             )
             session.query(Clip).filter(Clip.project_id == project.id).delete()
             for plan_payload in plans_payload:
@@ -144,6 +200,41 @@ class Pipeline:
             session.commit()
             progress((index + 1) / len(clips))
         return outputs
+
+    def _select_and_track(
+        self,
+        transcript: Transcript,
+        target_count: int,
+        cancelled: Callable[[], bool],
+        progress: ProgressReporter,
+        context: EditorialContext,
+        visual_analysis: VisualAnalysis,
+    ) -> list[dict[str, object]]:
+        plans = self.editorial.select_candidates(
+            transcript,
+            target_count,
+            cancelled,
+            progress,
+            context,
+        )
+        payloads: list[dict[str, object]] = []
+        for plan in plans:
+            mode = context.content_mode if plan.content_mode.value == "auto" else plan.content_mode
+            slices = plan.source_slices or [plan.source]
+            keyframes = keyframes_for_clip(visual_analysis, mode, slices)
+            payload = plan.model_dump(mode="json")
+            payload.update(
+                {
+                    "content_mode": mode,
+                    "tracking": TrackingConfig(
+                        enabled=bool(keyframes),
+                        strategy=strategy_for_mode(mode),
+                        keyframes=keyframes,
+                    ).model_dump(mode="json"),
+                }
+            )
+            payloads.append(EditingPlanV1.model_validate(payload).model_dump(mode="json"))
+        return payloads
 
     @staticmethod
     def _key(*parts: str) -> str:

@@ -22,7 +22,10 @@ class Settings(BaseSettings):
     editorial_num_predict: int = Field(default=2_048, ge=1)
     editorial_retry_num_ctx: int = Field(default=16_384, ge=1)
     editorial_retry_num_predict: int = Field(default=4_096, ge=1)
+    tracking_provider: Literal["opencv", "disabled"] = "opencv"
+    tracking_sample_interval_seconds: float = Field(default=0.5, ge=0.1, le=5)
     max_upload_bytes: int = Field(default=8 * 1024**3, ge=1)
+    max_secondary_media_bytes: int = Field(default=2 * 1024**3, ge=1)
     max_duration_seconds: float = Field(default=6 * 60 * 60, gt=0)
     web_port: int = Field(default=3_000, ge=1, le=65_535)
     web_base_url: str = "http://127.0.0.1:3000"

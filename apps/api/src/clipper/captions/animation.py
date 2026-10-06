@@ -23,7 +23,13 @@ def animated_events(
             duration = max(0.01, next_start - word.start_seconds)
             words.append(f"{{\\kf{max(1, round(duration * 100))}}}{ass_escape(word.text)}")
         colors = f"{{\\1c{ass_color(config.highlight_color)}\\2c{ass_color(config.text_color)}}}"
-        return [(cue.start_seconds, cue.end_seconds, colors + " ".join(words))]
+        return [
+            (
+                cue.start_seconds,
+                cue.end_seconds,
+                _with_secondary(colors + " ".join(words), cue.secondary_text),
+            )
+        ]
     if config.animation == "pop" and cue.words:
         events: list[tuple[float, float, str]] = []
         for active_index, active_word in enumerate(cue.words):
@@ -49,7 +55,7 @@ def animated_events(
                 (
                     max(cue.start_seconds, active_word.start_seconds),
                     min(cue.end_seconds, max(next_start, active_word.start_seconds + 0.08)),
-                    " ".join(parts),
+                    _with_secondary(" ".join(parts), cue.secondary_text),
                 )
             )
         return events
@@ -61,7 +67,15 @@ def animated_events(
         )
         for word in cue.words
     ]
-    return [(cue.start_seconds, cue.end_seconds, " ".join(parts))]
+    return [
+        (cue.start_seconds, cue.end_seconds, _with_secondary(" ".join(parts), cue.secondary_text))
+    ]
+
+
+def _with_secondary(primary: str, secondary: str | None) -> str:
+    if not secondary:
+        return primary
+    return primary + r"\N" + r"{\fs42}" + ass_escape(secondary)
 
 
 def ass_color(value: str) -> str:

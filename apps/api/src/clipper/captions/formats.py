@@ -14,7 +14,7 @@ def serialize_srt(cues: list[CaptionCue]) -> str:
     return (
         "\n\n".join(
             f"{index}\n{subtitle_timestamp(cue.start_seconds)} --> "
-            f"{subtitle_timestamp(cue.end_seconds)}\n{cue.text}"
+            f"{subtitle_timestamp(cue.end_seconds)}\n{_display_text(cue)}"
             for index, cue in enumerate(cues, 1)
         )
         + "\n"
@@ -24,7 +24,11 @@ def serialize_srt(cues: list[CaptionCue]) -> str:
 def serialize_vtt(cues: list[CaptionCue]) -> str:
     body = "\n\n".join(
         f"{subtitle_timestamp(cue.start_seconds, True)} --> "
-        f"{subtitle_timestamp(cue.end_seconds, True)}\n{cue.text}"
+        f"{subtitle_timestamp(cue.end_seconds, True)}\n{_display_text(cue)}"
         for cue in cues
     )
     return f"WEBVTT\n\n{body}\n"
+
+
+def _display_text(cue: CaptionCue) -> str:
+    return f"{cue.text}\n{cue.secondary_text}" if cue.secondary_text else cue.text

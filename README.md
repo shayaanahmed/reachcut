@@ -2,9 +2,14 @@
 
 Clipper is a local-first application for turning media you are authorized to repurpose into reviewable vertical clips. The core pipeline uses local models and local FFmpeg processes. Official API adapters can upload approved clips to YouTube, TikTok, Instagram Reels, Facebook Reels, and X without opening each platform's upload interface.
 
-The current vertical slice provides secure local upload and allowlisted URL import through `yt-dlp`, media probing, durable stage state, provider-based `faster-whisper` transcription, Ollama/Qwen editorial selection, schema-validated editing plans, deterministic 9:16 FFmpeg rendering, customizable animated subtitles, and a project-based review UI. Human approval is required before final rendering. Exports preserve the complete source frame over a soft 9:16 background by default; center-crop remains available per clip.
+The current vertical slice provides secure local upload and allowlisted URL import through `yt-dlp`, media probing, durable stage state, provider-based `faster-whisper` transcription, Ollama/Qwen editorial selection, and schema-validated views- and revenue-oriented editing plans. The Creative Studio adds auto-curated source slices, content modes, OpenCV face/action tracking, caption presets and translation, hook/CTA/card overlays, transitions, zoom/progress effects, gameplay split-screen, B-roll, reaction PIP, SFX, music, and alternate source-audio selection. Deterministic FFmpeg rendering produces review previews and final 9:16 exports. Human approval is required before final rendering.
 
 For Urdu and other non-English media, select the spoken language before analysis. The default `large-v3-turbo` Whisper model substantially improves multilingual recognition, while ASS/libass captions preserve Unicode/RTL shaping. Caption position, font, size, colors, highlighted words, line length, and pop/karaoke animation can be reviewed and changed on each generated clip.
+
+Caption translation uses the configured local Ollama model and can render either the
+translation or both languages. Visual tracking runs locally through OpenCV. Uploaded
+gameplay, B-roll, reaction, sound, and music assets are copied into the clip's private
+artifact directory; only attach media you own or are licensed to reuse.
 
 > Importing a publicly accessible URL does **not** grant permission to republish it. Only process media you own, license, or have explicit authorization to repurpose.
 

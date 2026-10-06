@@ -33,6 +33,22 @@ def test_upload_requires_rights_confirmation() -> None:
     assert "authorization" in response.json()["detail"]
 
 
+def test_secondary_media_requires_rights_confirmation() -> None:
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/clips/missing/secondary-media",
+            data={
+                "kind": "gameplay",
+                "placement": "bottom",
+                "authorization_confirmed": "false",
+            },
+            files={"media": ("game.mp4", b"fixture", "video/mp4")},
+        )
+
+    assert response.status_code == 422
+    assert "authorization" in response.json()["detail"]
+
+
 def test_configured_web_port_can_start_processing_through_cors() -> None:
     origin = f"http://localhost:{settings.web_port}"
     with TestClient(app) as client:

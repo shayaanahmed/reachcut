@@ -3,7 +3,17 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
-from clipper.domain.editing_plan import CaptionConfig, EditingPlanV1
+from clipper.domain.editing_plan import (
+    CaptionConfig,
+    ContentMode,
+    EditingPlanV1,
+    Effect,
+    EnhancementLevel,
+    TimeRange,
+    TrackingStrategy,
+    TransitionStyle,
+    TranslationMode,
+)
 from clipper.editorial import PublishRecommendation, recommend_for_publishing
 from clipper.publishing import PublishingPlatform
 
@@ -101,6 +111,27 @@ class UrlImportRequest(BaseModel):
 class ClipStyleRequest(BaseModel):
     caption_config: CaptionConfig
     frame_style: Literal["blurred_background", "center_crop"]
+    crop_focus_x: float = Field(default=0.5, ge=0, le=1)
+    crop_focus_y: float = Field(default=0.5, ge=0, le=1)
+    source_slices: list[TimeRange] | None = Field(default=None, min_length=1, max_length=12)
+    hook_text: str | None = Field(default=None, min_length=1, max_length=160)
+    hook_render: bool | None = None
+    content_mode: ContentMode = ContentMode.AUTO
+    enhancement_level: EnhancementLevel = EnhancementLevel.CLEAN
+    tracking_enabled: bool | None = None
+    tracking_strategy: TrackingStrategy | None = None
+    transition_style: TransitionStyle = TransitionStyle.CUT
+    transition_duration_seconds: float = Field(default=0.2, ge=0.05, le=1)
+    cta_text: str | None = Field(default=None, min_length=1, max_length=160)
+    cta_render: bool | None = None
+    cta_style: Literal["follow", "comment", "part_two", "profile", "product", "campaign"] = "follow"
+    effects: list[Effect] | None = Field(default=None, max_length=40)
+    audio_track_index: int = Field(default=0, ge=0, le=32)
+
+
+class CaptionTranslationRequest(BaseModel):
+    target_language: str = Field(pattern=r"^[A-Za-z]{2,3}$")
+    mode: TranslationMode = TranslationMode.TRANSLATED
 
 
 class PublicationCreateRequest(BaseModel):

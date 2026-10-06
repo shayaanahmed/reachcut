@@ -22,6 +22,49 @@ def phrase_cues(words: list[Word], max_words: int = 6, max_chars: int = 34) -> l
     return cues
 
 
+def retime_text(words: list[Word], text: str) -> list[Word]:
+    """Map corrected display text onto the original clip timing without mutating the transcript."""
+
+    tokens = text.split()
+    if not words or not tokens:
+        return []
+    start = words[0].start_seconds
+    duration = max(words[-1].end_seconds - start, 0.01)
+    weights = [max(len(token.strip()), 1) for token in tokens]
+    total_weight = sum(weights)
+    elapsed_weight = 0
+    corrected: list[Word] = []
+    for token, weight in zip(tokens, weights, strict=True):
+        token_start = start + duration * elapsed_weight / total_weight
+        elapsed_weight += weight
+        token_end = start + duration * elapsed_weight / total_weight
+        corrected.append(Word(text=token, start_seconds=token_start, end_seconds=token_end))
+    return corrected
+
+
+def bilingual_cues(primary: list[CaptionCue], translated: list[CaptionCue]) -> list[CaptionCue]:
+    """Attach translated phrases to primary cues that occupy the same timeline region."""
+
+    combined: list[CaptionCue] = []
+    for cue in primary:
+        secondary = " ".join(
+            translated_cue.text
+            for translated_cue in translated
+            if translated_cue.end_seconds > cue.start_seconds
+            and translated_cue.start_seconds < cue.end_seconds
+        ).strip()
+        combined.append(
+            CaptionCue(
+                cue.start_seconds,
+                cue.end_seconds,
+                cue.text,
+                cue.words,
+                secondary or None,
+            )
+        )
+    return combined
+
+
 def _cue(words: list[Word]) -> CaptionCue:
     return CaptionCue(
         words[0].start_seconds,

@@ -3,7 +3,13 @@ from pathlib import Path
 
 import pytest
 
-from clipper.media import MediaError, safe_filename, store_upload, validate_public_media_url
+from clipper.media import (
+    MediaError,
+    detect_container,
+    safe_filename,
+    store_upload,
+    validate_public_media_url,
+)
 
 
 def test_filename_drops_traversal() -> None:
@@ -22,6 +28,14 @@ def test_upload_enforces_streaming_limit(tmp_path: Path) -> None:
     target = tmp_path / "project" / "payload.mp4"
     with pytest.raises(MediaError, match="exceeds"):
         store_upload(io.BytesIO(b"\x00\x00\x00\x18ftypisom" + b"x" * 100), target, 20)
+
+
+@pytest.mark.parametrize(
+    ("header", "container"),
+    [(b"ID3\x04\x00\x00", "mp3"), (b"\xff\xfb\x90\x64", "mp3"), (b"fLaC\x00", "flac")],
+)
+def test_audio_assets_accept_common_local_formats(header: bytes, container: str) -> None:
+    assert detect_container(header) == container
 
 
 def test_url_import_accepts_allowlisted_public_hosts() -> None:

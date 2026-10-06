@@ -12,9 +12,40 @@ const timeRange = z.object({
   start_seconds: z.number(),
   end_seconds: z.number(),
 });
+const contentMode = z.enum([
+  "auto",
+  "talking_head",
+  "podcast",
+  "gameplay",
+  "sports",
+  "tutorial",
+  "reaction",
+  "product",
+  "news",
+  "broll",
+]);
+const effect = z.object({
+  time_seconds: z.number(),
+  type: z.enum([
+    "punch_zoom",
+    "slow_zoom",
+    "sound_effect",
+    "progress_bar",
+    "speaker_label",
+    "question_card",
+    "quote_card",
+  ]),
+  parameters: z.record(z.string(), z.unknown()).default({}),
+});
 const editingPlan = z.object({
   schema_version: z.literal("1.0"),
   source: timeRange,
+  source_slices: z.array(timeRange).default([]),
+  optimization_goal: z.enum(["views", "revenue"]).default("views"),
+  content_mode: contentMode.default("auto"),
+  enhancement_level: z
+    .enum(["clean", "dynamic", "aggressive"])
+    .default("clean"),
   scores: z.object({
     overall: z.number(),
     hook: z.number(),
@@ -25,10 +56,25 @@ const editingPlan = z.object({
   rationale: z.string(),
   suggested_title: z.string().nullable().default(null),
   hashtags: z.array(z.string()).default([]),
-  hook: timeRange.extend({ text: z.string() }).nullable(),
+  hook: timeRange
+    .extend({ text: z.string(), render: z.boolean().default(false) })
+    .nullable(),
   caption_style: z.enum(["clean", "kinetic_highlight", "karaoke"]),
   caption_config: z
     .object({
+      preset: z
+        .enum([
+          "custom",
+          "clean",
+          "bold_viral",
+          "karaoke",
+          "podcast",
+          "gaming",
+          "sports",
+          "minimal",
+          "news",
+        ])
+        .default("custom"),
       enabled: z.boolean().default(true),
       position: z.enum(["top", "middle", "bottom"]),
       font_family: z.string(),
@@ -39,8 +85,16 @@ const editingPlan = z.object({
       animation: z.enum(["none", "pop", "karaoke"]),
       highlighted_words: z.array(z.string()),
       max_words_per_line: z.number(),
+      text_override: z.string().nullable().default(null),
+      source_language: z.string().nullable().default(null),
+      target_language: z.string().nullable().default(null),
+      translation_mode: z
+        .enum(["original", "translated", "bilingual"])
+        .default("original"),
+      translated_text: z.string().nullable().default(null),
     })
     .default({
+      preset: "custom",
       enabled: true,
       position: "bottom",
       font_family: "Noto Sans",
@@ -51,13 +105,79 @@ const editingPlan = z.object({
       animation: "pop",
       highlighted_words: [],
       max_words_per_line: 5,
+      text_override: null,
+      source_language: null,
+      target_language: null,
+      translation_mode: "original",
+      translated_text: null,
     }),
   frame_style: z
     .enum(["blurred_background", "center_crop"])
     .default("blurred_background"),
+  crop_focus_x: z.number().default(0.5),
+  crop_focus_y: z.number().default(0.5),
+  tracking: z
+    .object({
+      enabled: z.boolean().default(false),
+      strategy: z
+        .enum(["static", "face", "active_speaker", "action", "object"])
+        .default("static"),
+      keyframes: z
+        .array(
+          z.object({
+            time_seconds: z.number(),
+            center_x: z.number(),
+            center_y: z.number(),
+            confidence: z.number().default(1),
+          }),
+        )
+        .default([]),
+    })
+    .default({ enabled: false, strategy: "static", keyframes: [] }),
+  transition_style: z.enum(["cut", "fade"]).default("cut"),
+  transition_duration_seconds: z.number().default(0.2),
+  secondary_media: z
+    .array(
+      z.object({
+        asset_id: z.string(),
+        filename: z.string(),
+        kind: z.enum([
+          "gameplay",
+          "broll",
+          "reaction",
+          "sound_effect",
+          "music",
+        ]),
+        start_seconds: z.number().nullable().default(null),
+        end_seconds: z.number().nullable().default(null),
+        muted: z.boolean().default(true),
+        loop: z.boolean().default(true),
+        volume_db: z.number().default(-18),
+        placement: z
+          .enum(["bottom", "pip", "fullscreen", "audio"])
+          .default("bottom"),
+      }),
+    )
+    .default([]),
+  audio_track_index: z.number().default(0),
   emphasis: z.array(z.unknown()),
-  effects: z.array(z.unknown()),
-  cta: timeRange.extend({ text: z.string() }).nullable(),
+  effects: z.array(effect),
+  cta: timeRange
+    .extend({
+      text: z.string(),
+      render: z.boolean().default(false),
+      style: z
+        .enum([
+          "follow",
+          "comment",
+          "part_two",
+          "profile",
+          "product",
+          "campaign",
+        ])
+        .default("follow"),
+    })
+    .nullable(),
 });
 
 const metricSnapshot = z.object({

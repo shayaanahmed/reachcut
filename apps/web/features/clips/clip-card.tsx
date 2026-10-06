@@ -15,6 +15,10 @@ export function ClipCard({
   onApprove,
   onRender,
   onSaveStyle,
+  onTranslate,
+  onTrack,
+  onUploadAsset,
+  onRemoveAsset,
   onPublish,
   onRecordMetrics,
   onRefreshPublication,
@@ -29,6 +33,14 @@ export function ClipCard({
   onApprove: (clipId: string, approved: boolean) => Promise<void>;
   onRender: (clipId: string) => Promise<unknown>;
   onSaveStyle: (clipId: string, form: HTMLFormElement) => Promise<unknown>;
+  onTranslate: (
+    clipId: string,
+    targetLanguage: string,
+    mode: "translated" | "bilingual",
+  ) => Promise<unknown>;
+  onTrack: (clipId: string) => Promise<unknown>;
+  onUploadAsset: (clipId: string, form: HTMLFormElement) => Promise<unknown>;
+  onRemoveAsset: (clipId: string, assetId: string) => Promise<unknown>;
   onPublish: (clipId: string, data: PublicationCreate) => Promise<unknown>;
   onRecordMetrics: (
     publicationId: string,
@@ -38,6 +50,14 @@ export function ClipCard({
   onRefreshPublication: (publicationId: string) => Promise<unknown>;
   onSyncMetrics: (publicationId: string) => Promise<unknown>;
 }) {
+  const sourceSlices =
+    clip.plan.source_slices.length > 0
+      ? clip.plan.source_slices
+      : [clip.plan.source];
+  const renderedDuration = sourceSlices.reduce(
+    (total, slice) => total + slice.end_seconds - slice.start_seconds,
+    0,
+  );
   return (
     <div className="clip">
       {clip.preview_path && (
@@ -54,6 +74,14 @@ export function ClipCard({
         {bestToPublish && (
           <span className="best-publish-badge">Best to publish</span>
         )}
+        <span className="best-publish-badge">
+          {clip.plan.optimization_goal === "revenue"
+            ? "Revenue version"
+            : "Views version"}
+        </span>
+        <span className="best-publish-badge">
+          {clip.plan.content_mode.replace("_", " ")}
+        </span>
         <strong>
           {clip.plan.suggested_title ??
             clip.plan.hook?.text ??
@@ -65,7 +93,8 @@ export function ClipCard({
         <p>{clip.plan.rationale}</p>
         <small>
           {clip.plan.source.start_seconds.toFixed(1)}–
-          {clip.plan.source.end_seconds.toFixed(1)}s · editorial heuristic
+          {clip.plan.source.end_seconds.toFixed(1)}s source ·{" "}
+          {renderedDuration.toFixed(1)}s render · editorial heuristic
         </small>
         <div className="publish-recommendation">
           <strong>
@@ -111,7 +140,15 @@ export function ClipCard({
           </a>
         )}
       </div>
-      <ClipStyleEditor clip={clip} busy={busy} onSave={onSaveStyle} />
+      <ClipStyleEditor
+        clip={clip}
+        busy={busy}
+        onSave={onSaveStyle}
+        onTranslate={onTranslate}
+        onTrack={onTrack}
+        onUploadAsset={onUploadAsset}
+        onRemoveAsset={onRemoveAsset}
+      />
       <PublicationTracker
         clip={clip}
         accounts={accounts}

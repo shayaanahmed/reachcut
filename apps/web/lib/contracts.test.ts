@@ -48,6 +48,9 @@ describe("project contract", () => {
 
     expect(project.clips[0].plan.suggested_title).toBeNull();
     expect(project.clips[0].plan.hashtags).toEqual([]);
+    expect(project.clips[0].plan.optimization_goal).toBe("views");
+    expect(project.clips[0].plan.source_slices).toEqual([]);
+    expect(project.clips[0].plan.crop_focus_x).toBe(0.5);
     expect(project.clips[0].publications).toEqual([]);
   });
 });

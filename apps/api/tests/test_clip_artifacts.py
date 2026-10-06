@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from clipper.domain.editing_plan import EditingPlanV1
 from clipper.domain.transcript import Segment, Transcript, Word
 from clipper.persistence import Clip, Project, now_utc
 from clipper.projects.artifacts import ArtifactProvenance, ClipArtifactService
@@ -42,3 +43,53 @@ def test_artifact_service_keeps_caption_formats_synchronized(
     assert "Idea" in (root / "captions.vtt").read_text()
     assert "Idea" in (root / "captions.ass").read_text()
     assert '"transcription": "speech:v1"' in (root / "provenance.json").read_text()
+
+
+def test_artifacts_join_source_slices_and_apply_caption_corrections(
+    tmp_path: Path,
+    make_plan,  # type: ignore[no-untyped-def]
+) -> None:
+    source = tmp_path / "source.mp4"
+    project = Project(
+        id="project-id",
+        title="Fixture",
+        original_filename=source.name,
+        source_path=str(source),
+        media_sha256="a" * 64,
+        authorization_confirmed_at=now_utc(),
+    )
+    payload = make_plan(0, 12).model_dump(mode="json")
+    payload["source_slices"] = [
+        {"start_seconds": 0, "end_seconds": 2},
+        {"start_seconds": 10, "end_seconds": 12},
+    ]
+    payload["caption_config"]["text_override"] = "First corrected second"
+    plan = EditingPlanV1.model_validate(payload)
+    clip = Clip(id="clip-id", project_id=project.id, plan=plan.model_dump(mode="json"))
+    transcript = Transcript(
+        language="en",
+        provider="fixture",
+        model="fixture",
+        segments=[
+            Segment(
+                id=1,
+                text="First gap second",
+                start_seconds=0,
+                end_seconds=12,
+                words=[
+                    Word(text="First", start_seconds=0, end_seconds=1),
+                    Word(text="gap", start_seconds=5, end_seconds=6),
+                    Word(text="second", start_seconds=10, end_seconds=11),
+                ],
+            )
+        ],
+    )
+
+    root = ClipArtifactService(ArtifactProvenance("speech:v1", "editor:v1")).write(
+        project, clip, plan, transcript
+    )
+
+    captions = (root / "captions.srt").read_text()
+    assert "First corrected second" in captions
+    assert "gap" not in captions
+    assert "00:00:03,000" in captions

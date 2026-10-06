@@ -22,17 +22,21 @@ small composition root.
 | Urdu or another language hint/prompt                   | `clipper/transcription/languages.py`                                            | `language_settings`, `TranscriptionLanguage`                            |
 | Transcript windows, ranking diversity                  | `clipper/editorial/highlights.py`                                               | `semantic_windows`, `diverse_top_plans`                                 |
 | Editorial model integration contract                   | `clipper/editorial/contracts.py`                                                | `EditorialLLMProvider`                                                  |
+| Content-mode inference                                 | `clipper/editorial/modes.py`                                                    | `infer_content_mode`, `ModeSignals`                                     |
 | Publish-potential scoring                              | `clipper/editorial/recommendations.py`                                          | `recommend_for_publishing`, `PublishRecommendation`                     |
 | Topic/category trend and source discovery              | `clipper/discovery/`                                                            | `DiscoveryService`, typed discovery results                             |
 | Google Trends and YouTube discovery adapter            | `clipper/providers/trend_discovery.py`                                          | `GoogleYouTubeDiscoveryProvider`                                        |
-| Phrase construction and punctuation                    | `clipper/captions/text.py`                                                      | `phrase_cues`                                                           |
+| Phrase construction, corrections, and punctuation      | `clipper/captions/text.py`                                                      | `phrase_cues`, `retime_text`                                            |
+| Caption presets and translation contract               | `clipper/captions/{presets,translation}.py`                                     | `caption_config_for_preset`, `CaptionTranslationProvider`               |
 | Subtitle appearance and ASS document style             | `clipper/captions/ass.py`                                                       | `serialize_ass`                                                         |
 | Word animation and highlighting                        | `clipper/captions/animation.py`                                                 | `animated_events`                                                       |
 | SRT/VTT serialization                                  | `clipper/captions/formats.py`                                                   | `serialize_srt`, `serialize_vtt`                                        |
 | Full-screen crop or blurred-background composition     | `clipper/rendering/framing.py`                                                  | `build_video_filter`                                                    |
-| FFmpeg argument construction                           | `clipper/rendering/ffmpeg.py`                                                   | `build_ffmpeg_command`, `FfmpegCommand`                                 |
+| FFmpeg argument construction and source-slice assembly | `clipper/rendering/ffmpeg.py`                                                   | `build_ffmpeg_command`, `FfmpegCommand`                                 |
 | FFmpeg process execution, preview/final manifests      | `clipper/rendering/service.py`                                                  | `VideoRenderer`, `RenderRequest`                                        |
-| Crop tracking/smoothing                                | `clipper/rendering/tracking.py`                                                 | `smooth_crop_path`, `CropPoint`                                         |
+| Crop tracking/smoothing policy                         | `clipper/rendering/tracking.py`                                                 | `VisualTrackingProvider`, `keyframes_for_clip`, `smooth_crop_path`       |
+| OpenCV face/action tracking adapter                    | `clipper/providers/opencv_tracking.py`                                          | `OpenCvVisualTrackingProvider`                                          |
+| Ollama caption translation adapter                     | `clipper/providers/ollama_translation.py`                                       | `OllamaCaptionTranslationProvider`                                      |
 | Clip caption/plan/provenance artifacts                 | `clipper/projects/artifacts.py`                                                 | `ClipArtifactService`                                                   |
 | Clip approval, styling, preview and final workflows    | `clipper/projects/clips.py`                                                     | `ClipService`, `ClipStyleUpdate`                                        |
 | Publication upload and metric snapshot workflows       | `clipper/projects/publications.py`                                              | `PublicationService`, `AutomaticPublicationCreate`, `MetricCreate`      |
@@ -58,7 +62,7 @@ small composition root.
 | Stage progress presentation                   | `apps/web/features/projects/project-progress.tsx`     |
 | Project card/list presentation                | `apps/web/features/projects/project-{card,list}.tsx`  |
 | Clip presentation and actions                 | `apps/web/features/clips/clip-card.tsx`               |
-| Caption/framing controls                      | `apps/web/features/clips/clip-style-editor.tsx`       |
+| Creative controls and secondary-media forms   | `apps/web/features/clips/clip-style-editor.tsx`       |
 | Publication assistant and project performance | `apps/web/features/publishing/`                       |
 | Trend discovery and source selection          | `apps/web/features/discovery/`                        |
 

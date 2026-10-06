@@ -11,3 +11,4 @@ class CaptionCue:
     end_seconds: float
     text: str
     words: tuple[Word, ...] = ()
+    secondary_text: str | None = None

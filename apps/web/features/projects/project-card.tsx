@@ -16,6 +16,10 @@ export function ProjectCard({
   onApprove,
   onRender,
   onSaveStyle,
+  onTranslate,
+  onTrack,
+  onUploadAsset,
+  onRemoveAsset,
   onPublish,
   onRecordMetrics,
   onRefreshPublication,
@@ -33,6 +37,14 @@ export function ProjectCard({
   onApprove: (clipId: string, approved: boolean) => Promise<void>;
   onRender: (clipId: string) => Promise<unknown>;
   onSaveStyle: (clipId: string, form: HTMLFormElement) => Promise<unknown>;
+  onTranslate: (
+    clipId: string,
+    targetLanguage: string,
+    mode: "translated" | "bilingual",
+  ) => Promise<unknown>;
+  onTrack: (clipId: string) => Promise<unknown>;
+  onUploadAsset: (clipId: string, form: HTMLFormElement) => Promise<unknown>;
+  onRemoveAsset: (clipId: string, assetId: string) => Promise<unknown>;
   onPublish: (clipId: string, data: PublicationCreate) => Promise<unknown>;
   onRecordMetrics: (
     publicationId: string,
@@ -161,6 +173,10 @@ export function ProjectCard({
               onApprove={onApprove}
               onRender={onRender}
               onSaveStyle={onSaveStyle}
+              onTranslate={onTranslate}
+              onTrack={onTrack}
+              onUploadAsset={onUploadAsset}
+              onRemoveAsset={onRemoveAsset}
               onPublish={onPublish}
               onRecordMetrics={onRecordMetrics}
               onRefreshPublication={onRefreshPublication}
