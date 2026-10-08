@@ -21,6 +21,51 @@ class ArtifactProvenance:
     editorial: str
 
 
+class ArtifactPathError(ValueError):
+    pass
+
+
+def resolve_clip_artifact(
+    projects_root: Path,
+    project: Project,
+    clip: Clip,
+    stored_path: str,
+    expected_filename: str,
+) -> Path:
+    """Resolve a persisted clip artifact only when it is the expected owned file."""
+
+    projects_root = projects_root.resolve()
+    expected_project_root = projects_root / project.id
+    if expected_project_root.parent != projects_root:
+        raise ArtifactPathError("project identifier is not an owned directory name")
+
+    expected_source_dir = expected_project_root / "source"
+    source_path = Path(project.source_path)
+    try:
+        resolved_source_dir = expected_source_dir.resolve(strict=True)
+        resolved_source = source_path.resolve(strict=True)
+    except OSError as error:
+        raise ArtifactPathError("project source path is unavailable") from error
+    if (
+        resolved_source_dir != expected_source_dir
+        or resolved_source.parent != expected_source_dir
+        or not resolved_source.is_file()
+    ):
+        raise ArtifactPathError("project source path is outside its owned directory")
+
+    expected = expected_source_dir / "clips" / clip.id / expected_filename
+    candidate = Path(stored_path)
+    if candidate.is_symlink():
+        raise ArtifactPathError("clip artifact cannot be a symbolic link")
+    try:
+        resolved = candidate.resolve(strict=True)
+    except OSError as error:
+        raise ArtifactPathError("clip artifact is unavailable") from error
+    if resolved != expected or not resolved.is_file():
+        raise ArtifactPathError("clip artifact is outside its owned directory")
+    return resolved
+
+
 class ClipArtifactService:
     """Create deterministic plan and caption artifacts for one clip."""
 
@@ -72,12 +117,6 @@ class ClipArtifactService:
         }
         (root / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
         return root
-
-
-def relative_words(transcript: Transcript, start: float, end: float) -> list[Word]:
-    """Select clip words and translate their timings to the clip timeline."""
-
-    return timeline_words(transcript, [TimeRange(start_seconds=start, end_seconds=end)])
 
 
 def timeline_words(transcript: Transcript, slices: list[TimeRange]) -> list[Word]:

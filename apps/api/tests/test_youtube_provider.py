@@ -54,7 +54,10 @@ def test_youtube_adapter_refreshes_token_and_uses_resumable_upload(tmp_path: Pat
             return httpx.Response(200, json={"access_token": "access-123"})
         if request.method == "POST":
             assert request.headers["authorization"] == "Bearer access-123"
-            return httpx.Response(200, headers={"Location": "https://upload.example/session"})
+            return httpx.Response(
+                200,
+                headers={"Location": "https://www.googleapis.com/upload/session"},
+            )
         assert request.content == b"video-content"
         return httpx.Response(200, json={"id": "video-123"})
 

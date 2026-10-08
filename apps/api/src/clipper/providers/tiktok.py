@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import httpx
 
-from clipper.providers.publishing_http import ProviderApiError, PublishingHttpClient
+from clipper.providers.publishing_http import (
+    ProviderApiError,
+    PublishingHttpClient,
+    trusted_upload_url,
+)
 from clipper.publishing import OAuthConnection, PublishedPost, PublishRequest
 
 
@@ -86,12 +90,17 @@ class TikTokPublishingAdapter(PublishingHttpClient):
                 publish_id = payload.get("data", {}).get("publish_id")
                 if not upload_url or not publish_id:
                     raise ProviderApiError("TikTok did not return an upload URL and publish ID")
+                upload_url = trusted_upload_url(
+                    upload_url,
+                    provider="TikTok",
+                    allowed_host_suffixes=("tiktokapis.com",),
+                )
                 with request.media_path.open("rb") as media:
                     offset = 0
                     while chunk := media.read(chunk_size):
                         final_byte = offset + len(chunk) - 1
                         uploaded = client.put(
-                            str(upload_url),
+                            upload_url,
                             headers={
                                 "Content-Type": "video/mp4",
                                 "Content-Length": str(len(chunk)),

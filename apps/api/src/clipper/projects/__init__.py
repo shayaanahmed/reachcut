@@ -1,6 +1,6 @@
 """Project and clip application services."""
 
-from clipper.projects.artifacts import ClipArtifactService
+from clipper.projects.artifacts import ArtifactPathError, ClipArtifactService, resolve_clip_artifact
 from clipper.projects.clips import ClipService, ClipStyleUpdate
 from clipper.projects.management import ProjectService
 from clipper.projects.pipeline import Pipeline
@@ -27,6 +27,7 @@ from clipper.projects.stages import StageRunner
 
 __all__ = [
     "AccountConnectionReadiness",
+    "ArtifactPathError",
     "AutomaticPublicationCreate",
     "ClipArtifactService",
     "ClipService",
@@ -45,4 +46,5 @@ __all__ = [
     "SocialAccountService",
     "SocialAccountUpdate",
     "StageRunner",
+    "resolve_clip_artifact",
 ]

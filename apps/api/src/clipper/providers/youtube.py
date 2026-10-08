@@ -7,6 +7,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
 
+from clipper.providers.publishing_http import ProviderApiError, trusted_upload_url
 from clipper.publishing import (
     OAuthConfigurationError,
     OAuthConnection,
@@ -173,6 +174,14 @@ class YouTubePublishingAdapter:
                 upload_url = initialize.headers.get("Location")
                 if not upload_url:
                     raise YouTubeApiError("YouTube did not return a resumable upload URL")
+                try:
+                    upload_url = trusted_upload_url(
+                        upload_url,
+                        provider="YouTube",
+                        allowed_host_suffixes=("googleapis.com",),
+                    )
+                except ProviderApiError as error:
+                    raise YouTubeApiError(str(error)) from error
 
                 with request.media_path.open("rb") as media:
                     uploaded = client.put(

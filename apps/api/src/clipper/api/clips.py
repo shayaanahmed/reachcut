@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -13,9 +12,11 @@ from clipper.api.schemas import (
     ClipStyleRequest,
     ProjectResponse,
 )
+from clipper.config import settings
 from clipper.domain.editing_plan import SecondaryMediaKind
 from clipper.media import MediaError
-from clipper.persistence import Clip, get_session
+from clipper.persistence import Clip, Project, get_session
+from clipper.projects import ArtifactPathError, resolve_clip_artifact
 from clipper.projects.clips import ClipNotFoundError, ClipStateError, ClipStyleUpdate
 
 router = APIRouter()
@@ -153,11 +154,18 @@ def remove_clip_secondary_media(
 @router.get("/clips/{clip_id}/preview", response_class=FileResponse)
 def clip_preview(clip_id: str, session: Session = Depends(get_session)) -> FileResponse:
     clip = session.get(Clip, clip_id)
-    if not clip or not clip.preview_path or not Path(clip.preview_path).is_file():
+    if not clip or not clip.preview_path:
         raise HTTPException(status_code=404, detail="preview not found")
-    return FileResponse(
-        clip.preview_path, media_type="video/mp4", filename=f"{clip.id}-preview.mp4"
-    )
+    project = session.get(Project, clip.project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="preview not found")
+    try:
+        preview = resolve_clip_artifact(
+            settings.data_dir / "projects", project, clip, clip.preview_path, "preview.mp4"
+        )
+    except ArtifactPathError as error:
+        raise HTTPException(status_code=404, detail="preview not found") from error
+    return FileResponse(preview, media_type="video/mp4", filename=f"{clip.id}-preview.mp4")
 
 
 @router.post("/clips/{clip_id}/render", status_code=status.HTTP_201_CREATED)
@@ -180,6 +188,15 @@ def render_clip(clip_id: str, session: Session = Depends(get_session)) -> dict[s
 @router.get("/clips/{clip_id}/final", response_class=FileResponse)
 def clip_final(clip_id: str, session: Session = Depends(get_session)) -> FileResponse:
     clip = session.get(Clip, clip_id)
-    if not clip or not clip.final_path or not Path(clip.final_path).is_file():
+    if not clip or not clip.final_path:
         raise HTTPException(status_code=404, detail="final render not found")
-    return FileResponse(clip.final_path, media_type="video/mp4", filename=f"{clip.id}.mp4")
+    project = session.get(Project, clip.project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="final render not found")
+    try:
+        final = resolve_clip_artifact(
+            settings.data_dir / "projects", project, clip, clip.final_path, "final.mp4"
+        )
+    except ArtifactPathError as error:
+        raise HTTPException(status_code=404, detail="final render not found") from error
+    return FileResponse(final, media_type="video/mp4", filename=f"{clip.id}.mp4")

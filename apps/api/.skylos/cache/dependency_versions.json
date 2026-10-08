@@ -1,0 +1,18 @@
+{
+  "schema_version": 2,
+  "statuses": {
+    "PyPI:alembic:1.16": "present",
+    "PyPI:cryptography:46": "present",
+    "PyPI:fastapi:0.138": "present",
+    "PyPI:faster-whisper:1.2.1": "present",
+    "PyPI:httpx:0.28": "present",
+    "PyPI:opencv-python-headless:4.10": "missing_version",
+    "PyPI:pydantic-settings:2.10": "present",
+    "PyPI:python-multipart:0.0.20": "present",
+    "PyPI:sqlalchemy:2.0.43": "present",
+    "PyPI:structlog:25.4": "present",
+    "PyPI:uvicorn:0.35": "present",
+    "PyPI:yt-dlp:2026.8.19": "present",
+    "PyPI:uv:0.12.5": "present"
+  }
+}

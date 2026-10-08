@@ -4,7 +4,11 @@ import time
 
 import httpx
 
-from clipper.providers.publishing_http import ProviderApiError, PublishingHttpClient
+from clipper.providers.publishing_http import (
+    ProviderApiError,
+    PublishingHttpClient,
+    trusted_upload_url,
+)
 from clipper.publishing import OAuthConnection, PublishedPost, PublishRequest
 
 
@@ -32,10 +36,15 @@ class InstagramPublishingAdapter(PublishingHttpClient):
                 upload_uri = payload.get("uri")
                 if not container_id or not upload_uri:
                     raise ProviderApiError("Instagram did not return an upload container")
+                upload_uri = trusted_upload_url(
+                    upload_uri,
+                    provider="Instagram",
+                    allowed_host_suffixes=("facebook.com",),
+                )
                 size = request.media_path.stat().st_size
                 with request.media_path.open("rb") as media:
                     uploaded = client.post(
-                        str(upload_uri),
+                        upload_uri,
                         headers={
                             "Authorization": f"OAuth {token}",
                             "offset": "0",
@@ -105,10 +114,15 @@ class FacebookPublishingAdapter(PublishingHttpClient):
                 upload_url = payload.get("upload_url")
                 if not video_id or not upload_url:
                     raise ProviderApiError("Facebook did not return a Reel upload session")
+                upload_url = trusted_upload_url(
+                    upload_url,
+                    provider="Facebook",
+                    allowed_host_suffixes=("facebook.com",),
+                )
                 size = request.media_path.stat().st_size
                 with request.media_path.open("rb") as media:
                     uploaded = client.post(
-                        str(upload_url),
+                        upload_url,
                         headers={
                             "Authorization": f"OAuth {token}",
                             "offset": "0",
