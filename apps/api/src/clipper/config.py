@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     max_duration_seconds: float = Field(default=6 * 60 * 60, gt=0)
     web_port: int = Field(default=3_000, ge=1, le=65_535)
     web_base_url: str = "http://127.0.0.1:3000"
+    local_agent_token: str = Field(default="", repr=False)
     youtube_client_id: str = ""
     youtube_client_secret: str = ""
     youtube_redirect_uri: str = "http://127.0.0.1:8000/api/oauth/youtube/callback"

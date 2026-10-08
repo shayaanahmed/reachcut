@@ -56,6 +56,22 @@ pnpm dev
 
 `pnpm dev` starts the API on port 8000 and web client on port 3000. Run `pnpm doctor` before processing media. Model downloads are explicit user actions; see [docs/models.md](docs/models.md).
 
+### Branded local application
+
+Run the supervised local application instead of exposing the development ports directly:
+
+```bash
+pnpm local
+```
+
+The ReachCut agent starts the API and web processes on private loopback ports, waits for
+their health checks, then opens a one-time authorized browser session at
+`http://studio.reachcut.localhost:47321`. The public gateway accepts only that hostname,
+keeps uploads on one origin, injects a private per-run API token, and stops its child
+processes on shutdown. Use `pnpm local:no-browser` on a machine where the URL must be
+opened manually. See [docs/local-agent.md](docs/local-agent.md) for the architecture,
+security model, packaging contract, configuration, and OS startup integration.
+
 ReachCut retains the existing `CLIPPER_*` environment-variable prefix, `clipper`
 Python import package, database filename, and Docker data-volume name for backward
 compatibility. The product rename does not require a configuration or data migration.

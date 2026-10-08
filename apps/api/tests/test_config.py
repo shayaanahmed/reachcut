@@ -21,6 +21,7 @@ def test_model_runtime_settings_are_loaded_from_environment(
     monkeypatch.setenv("CLIPPER_TRACKING_PROVIDER", "disabled")
     monkeypatch.setenv("CLIPPER_TRACKING_SAMPLE_INTERVAL_SECONDS", "1.25")
     monkeypatch.setenv("CLIPPER_MAX_SECONDARY_MEDIA_BYTES", "4096")
+    monkeypatch.setenv("CLIPPER_LOCAL_AGENT_TOKEN", "agent-secret")
 
     settings = Settings(_env_file=None)
 
@@ -39,4 +40,5 @@ def test_model_runtime_settings_are_loaded_from_environment(
     assert settings.tracking_provider == "disabled"
     assert settings.tracking_sample_interval_seconds == 1.25
     assert settings.max_secondary_media_bytes == 4096
+    assert settings.local_agent_token == "agent-secret"  # noqa: S105
     assert settings.tiktok_redirect_uri == ""

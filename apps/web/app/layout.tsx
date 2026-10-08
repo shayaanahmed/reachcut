@@ -6,6 +6,8 @@ import "./styles.css";
 export const metadata: Metadata = {
   title: "ReachCut — Video repurposing workspace",
   description: "A private, local-first workspace for creating vertical clips",
+  applicationName: "ReachCut",
+  manifest: "/manifest.webmanifest",
 };
 
 export default function RootLayout({
