@@ -1,0 +1,139 @@
+version: 2.1
+
+executors:
+  python:
+    docker:
+      - image: cimg/python:3.13.15
+    resource_class: medium
+    working_directory: ~/project
+    environment:
+      UV_LINK_MODE: copy
+
+  node:
+    docker:
+      - image: cimg/node:24.19.0
+    resource_class: medium
+    working_directory: ~/project
+
+jobs:
+  api-quality:
+    executor: python
+    steps:
+      - checkout
+
+      - restore_cache:
+          name: Restore uv download cache
+          keys:
+            - uv-v1-py313-{{ checksum "apps/api/uv.lock" }}
+            - uv-v1-py313-
+
+      - run:
+          name: Install uv
+          command: |
+            python -m pip install --user uv==0.12.5
+            echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$BASH_ENV"
+            export PATH="$HOME/.local/bin:$PATH"
+            uv --version
+
+      - run:
+          name: Install API dependencies
+          command: uv sync --project apps/api --extra dev --frozen
+
+      - save_cache:
+          name: Save uv download cache
+          key: uv-v1-py313-{{ checksum "apps/api/uv.lock" }}
+          paths:
+            - ~/.cache/uv
+
+      - run:
+          name: Lint and type-check API
+          command: |
+            uv run --project apps/api ruff check apps/api
+            uv run --project apps/api ruff format --check apps/api
+            uv run --project apps/api mypy apps/api/src
+
+      - run:
+          name: Test API
+          command: |
+            mkdir -p test-results/api
+            uv run --project apps/api pytest apps/api/tests \
+              --junitxml=test-results/api/results.xml
+
+      - store_test_results:
+          path: test-results
+
+  web-quality:
+    executor: node
+    steps:
+      - checkout
+
+      - run:
+          name: Enable pnpm
+          command: |
+            sudo corepack enable
+            corepack prepare pnpm@11.19.0 --activate
+            pnpm config set store-dir ~/.pnpm-store
+            pnpm --version
+
+      - restore_cache:
+          name: Restore pnpm download cache
+          keys:
+            - pnpm-v1-node24-{{ checksum "pnpm-lock.yaml" }}
+            - pnpm-v1-node24-
+
+      - run:
+          name: Install web dependencies
+          command: pnpm install --frozen-lockfile
+
+      - save_cache:
+          name: Save pnpm download cache
+          key: pnpm-v1-node24-{{ checksum "pnpm-lock.yaml" }}
+          paths:
+            - ~/.pnpm-store
+
+      - run:
+          name: Lint, format-check, and type-check web
+          command: pnpm --dir apps/web check
+
+      - run:
+          name: Test web
+          command: pnpm --dir apps/web test
+
+  docker-build:
+    docker:
+      - image: cimg/base:2026.08
+    resource_class: medium
+    working_directory: ~/project
+    steps:
+      - checkout
+      - setup_remote_docker:
+          version: default
+
+      - run:
+          name: Build API image
+          command: |
+            docker build \
+              --file apps/api/Dockerfile \
+              --tag "reachcut-api:${CIRCLE_SHA1}" \
+              .
+
+      - run:
+          name: Build web image
+          command: |
+            docker build \
+              --file apps/web/Dockerfile \
+              --tag "reachcut-web:${CIRCLE_SHA1}" \
+              .
+
+workflows:
+  validate:
+    jobs:
+      - api-quality
+      - web-quality
+      - docker-build:
+          requires:
+            - api-quality
+            - web-quality
+          filters:
+            branches:
+              only: main
