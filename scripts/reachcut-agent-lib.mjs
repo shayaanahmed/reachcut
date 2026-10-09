@@ -78,6 +78,7 @@ export function resolveUserDataDir(
   platform = process.platform,
   environment = process.env,
   homeDirectory = environment.HOME ?? environment.USERPROFILE,
+  applicationDirectory = platform === "linux" ? "reachcut" : "ReachCut",
 ) {
   const platformPath = platform === "win32" ? path.win32 : path.posix;
   if (platform === "win32") {
@@ -86,7 +87,7 @@ export function resolveUserDataDir(
       throw new Error(
         "LOCALAPPDATA is required by the packaged ReachCut agent",
       );
-    return platformPath.join(base, "ReachCut");
+    return platformPath.join(base, applicationDirectory);
   }
   if (!homeDirectory) {
     throw new Error(
@@ -98,13 +99,13 @@ export function resolveUserDataDir(
       homeDirectory,
       "Library",
       "Application Support",
-      "ReachCut",
+      applicationDirectory,
     );
   }
   return platformPath.join(
     environment.XDG_DATA_HOME ??
       platformPath.join(homeDirectory, ".local", "share"),
-    "reachcut",
+    applicationDirectory,
   );
 }
 

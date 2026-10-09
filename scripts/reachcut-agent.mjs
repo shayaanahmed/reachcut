@@ -47,18 +47,24 @@ const noBrowser =
   process.argv.includes("--no-browser") ||
   process.env.REACHCUT_NO_BROWSER === "1";
 const publicHostname = validateLocalHostname(
-  process.env.REACHCUT_LOCAL_HOSTNAME ?? "studio.reachcut.localhost",
+  process.env.REACHCUT_LOCAL_HOSTNAME ??
+    packageManifest?.localHostname ??
+    "studio.reachcut.localhost",
 );
 const publicPort = parsePort(
-  process.env.REACHCUT_LOCAL_PORT ?? "47321",
+  process.env.REACHCUT_LOCAL_PORT ?? packageManifest?.localPort ?? "47321",
   "REACHCUT_LOCAL_PORT",
 );
 const apiPort = parsePort(
-  process.env.REACHCUT_INTERNAL_API_PORT ?? "48100",
+  process.env.REACHCUT_INTERNAL_API_PORT ??
+    packageManifest?.internalApiPort ??
+    "48100",
   "REACHCUT_INTERNAL_API_PORT",
 );
 const webPort = parsePort(
-  process.env.REACHCUT_INTERNAL_WEB_PORT ?? "48101",
+  process.env.REACHCUT_INTERNAL_WEB_PORT ??
+    packageManifest?.internalWebPort ??
+    "48101",
   "REACHCUT_INTERNAL_WEB_PORT",
 );
 if (new Set([publicPort, apiPort, webPort]).size !== 3) {
@@ -136,7 +142,12 @@ const packagedEnvironment = {};
 if (packageManifest) {
   const dataDir = process.env.REACHCUT_DATA_DIR
     ? path.resolve(process.env.REACHCUT_DATA_DIR)
-    : resolveUserDataDir(process.platform, process.env, os.homedir());
+    : resolveUserDataDir(
+        process.platform,
+        process.env,
+        os.homedir(),
+        packageManifest.dataDirectoryName,
+      );
   const cacheDir = path.join(dataDir, "cache");
   const binariesDir = path.join(rootDir, "bin");
   mkdirSync(dataDir, { recursive: true });

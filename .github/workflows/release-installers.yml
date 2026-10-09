@@ -7,6 +7,14 @@ on:
         description: Semantic version to package
         required: true
         default: 0.1.0
+      channel:
+        description: Isolated application channel
+        required: true
+        default: personal
+        type: choice
+        options:
+          - personal
+          - stable
   push:
     tags:
       - "v*"
@@ -80,13 +88,24 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve release channel
+        id: channel
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            channel="${{ inputs.channel }}"
+          else
+            channel="stable"
+          fi
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+
       - name: Build native installer
-        run: pnpm build:installer -- --version "${{ steps.version.outputs.version }}"
+        run: pnpm build:installer -- --version "${{ steps.version.outputs.version }}" --channel "${{ steps.channel.outputs.channel }}"
 
       - name: Upload unsigned installer
         uses: actions/upload-artifact@v5
         with:
-          name: reachcut-${{ runner.os }}-${{ runner.arch }}
+          name: reachcut-${{ steps.channel.outputs.channel }}-${{ runner.os }}-${{ runner.arch }}
           path: build/installers/*
           if-no-files-found: error
           retention-days: 14

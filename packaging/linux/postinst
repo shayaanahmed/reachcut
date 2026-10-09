@@ -2,7 +2,7 @@
 set -e
 
 if command -v systemctl >/dev/null 2>&1; then
-  systemctl --global enable reachcut-agent.service >/dev/null 2>&1 || true
+  systemctl --global enable @REACHCUT_SERVICE@ >/dev/null 2>&1 || true
 fi
 
 exit 0

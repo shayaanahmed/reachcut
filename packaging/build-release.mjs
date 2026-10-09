@@ -6,6 +6,8 @@ import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+import { releaseProfile } from "./release-profile.mjs";
+
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -35,10 +37,16 @@ const version = option("--version", "0.1.0");
 if (!/^\d+\.\d+\.\d+$/.test(version)) {
   throw new Error("--version must be a semantic version such as 0.1.0");
 }
+const profile = releaseProfile(option("--channel", "stable"));
+process.env.NEXT_PUBLIC_REACHCUT_CHANNEL = profile.channel;
 
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const uv = process.platform === "win32" ? "uv.exe" : "uv";
-const stageDirectory = path.join(repositoryRoot, "build", "stage");
+const stageDirectory = path.join(
+  repositoryRoot,
+  "build",
+  profile.channel === "stable" ? "stage" : `stage-${profile.channel}`,
+);
 const apiDirectory = path.join(
   repositoryRoot,
   "build",
@@ -71,6 +79,8 @@ run(process.execPath, [
   stageDirectory,
   "--version",
   version,
+  "--channel",
+  profile.channel,
 ]);
 
 if (process.argv.includes("--stage-only")) process.exit(0);
@@ -90,6 +100,9 @@ if (process.platform === "win32") {
   }
   run(compiler, [
     `/DAppVersion=${version}`,
+    `/DAppName=${profile.displayName}`,
+    `/DAppId=${profile.windowsAppId}`,
+    `/DArtifactName=${profile.artifactName}`,
     `/DStageDir=${stageDirectory}`,
     `/DOutputDir=${outputDirectory}`,
     path.join(repositoryRoot, "packaging", "windows", "ReachCut.iss"),
@@ -100,6 +113,7 @@ if (process.platform === "win32") {
     stageDirectory,
     outputDirectory,
     version,
+    profile.channel,
   ]);
 } else if (process.platform === "linux") {
   run("sh", [
@@ -107,6 +121,7 @@ if (process.platform === "win32") {
     stageDirectory,
     outputDirectory,
     version,
+    profile.channel,
   ]);
 } else {
   throw new Error(`Installer builds are not supported on ${process.platform}`);

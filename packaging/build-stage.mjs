@@ -15,6 +15,11 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import {
+  profileDataDirectory,
+  releaseProfile,
+} from "./release-profile.mjs";
+
 const require = createRequire(import.meta.url);
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -38,6 +43,7 @@ function requireDirectory(directory, description) {
 const platform = option("--platform", process.platform);
 const architecture = option("--arch", process.arch);
 const version = option("--version", "0.1.0");
+const profile = releaseProfile(option("--channel", "stable"));
 const outputDirectory = path.resolve(
   option("--output", path.join(repositoryRoot, "build", "stage")),
 );
@@ -126,10 +132,16 @@ const executableSuffix = platform === "win32" ? ".exe" : "";
 const separator = platform === "win32" ? "\\" : "/";
 const manifest = {
   schemaVersion: 1,
-  product: "ReachCut",
+  product: profile.displayName,
+  channel: profile.channel,
   version,
   platform,
   architecture,
+  localHostname: profile.localHostname,
+  localPort: profile.localPort,
+  internalApiPort: profile.internalApiPort,
+  internalWebPort: profile.internalWebPort,
+  dataDirectoryName: profileDataDirectory(profile, platform),
   apiCommand: [
     `{rootDir}${separator}api${separator}reachcut-api${executableSuffix}`,
     "--port",
@@ -153,5 +165,7 @@ if (existsSync(licensePath)) {
   );
 }
 
-console.log(`Staged ReachCut ${version} for ${platform}-${architecture}`);
+console.log(
+  `Staged ${profile.displayName} ${version} for ${platform}-${architecture}`,
+);
 console.log(outputDirectory);

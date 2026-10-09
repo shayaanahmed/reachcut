@@ -3,11 +3,11 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.reachcut.agent</string>
+  <string>__REACHCUT_AGENT_ID__</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Applications/ReachCut.app/Contents/Resources/app/runtime/node</string>
-    <string>/Applications/ReachCut.app/Contents/Resources/app/scripts/reachcut-agent.mjs</string>
+    <string>/Applications/__REACHCUT_APP_BUNDLE__/Contents/Resources/app/runtime/node</string>
+    <string>/Applications/__REACHCUT_APP_BUNDLE__/Contents/Resources/app/scripts/reachcut-agent.mjs</string>
     <string>--production</string>
     <string>--no-browser</string>
   </array>

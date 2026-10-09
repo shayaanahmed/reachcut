@@ -1,6 +1,15 @@
 #ifndef AppVersion
   #define AppVersion "0.1.0"
 #endif
+#ifndef AppName
+  #define AppName "ReachCut"
+#endif
+#ifndef AppId
+  #define AppId "{{E60CCBB7-0773-4A8F-86C1-B4BEC4446E61}"
+#endif
+#ifndef ArtifactName
+  #define ArtifactName "ReachCut"
+#endif
 #ifndef StageDir
   #define StageDir "..\..\build\stage"
 #endif
@@ -9,24 +18,24 @@
 #endif
 
 [Setup]
-AppId={{E60CCBB7-0773-4A8F-86C1-B4BEC4446E61}
-AppName=ReachCut
+AppId={#AppId}
+AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher=ReachCut
-DefaultDirName={localappdata}\Programs\ReachCut
-DefaultGroupName=ReachCut
+DefaultDirName={localappdata}\Programs\{#AppName}
+DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#OutputDir}
-OutputBaseFilename=ReachCut-{#AppVersion}-windows-x64-setup
+OutputBaseFilename={#ArtifactName}-{#AppVersion}-windows-x64-setup
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 CloseApplications=yes
 RestartApplications=no
-UninstallDisplayName=ReachCut
+UninstallDisplayName={#AppName}
 VersionInfoCompany=ReachCut
 VersionInfoDescription=ReachCut local AI video clipping application
 
@@ -40,9 +49,9 @@ Source: "launch.vbs"; DestDir: "{app}"; Flags: ignoreversion
 Source: "launch-background.vbs"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\ReachCut"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\launch.vbs"""; WorkingDir: "{app}"
-Name: "{autodesktop}\ReachCut"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\launch.vbs"""; WorkingDir: "{app}"; Tasks: desktopicon
-Name: "{userstartup}\ReachCut agent"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\launch-background.vbs"""; WorkingDir: "{app}"; Tasks: autostart
+Name: "{group}\{#AppName}"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\launch.vbs"""; WorkingDir: "{app}"
+Name: "{autodesktop}\{#AppName}"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\launch.vbs"""; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{userstartup}\{#AppName} agent"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\launch-background.vbs"""; WorkingDir: "{app}"; Tasks: autostart
 
 [Run]
-Filename: "{sys}\wscript.exe"; Parameters: """{app}\launch.vbs"""; Description: "Open ReachCut"; Flags: nowait postinstall skipifsilent
+Filename: "{sys}\wscript.exe"; Parameters: """{app}\launch.vbs"""; Description: "Open {#AppName}"; Flags: nowait postinstall skipifsilent

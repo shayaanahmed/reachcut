@@ -16,6 +16,21 @@ CPU architecture on which it will run.
 The browser always opens `http://studio.reachcut.localhost:47321`. No package edits the
 hosts file, installs a local root certificate, exposes a LAN port, or requires Docker.
 
+## Personal and stable channels
+
+ReachCut has two package profiles built from the same source commit. They can be installed
+side by side and never share application state:
+
+| Profile  | Application       | Browser origin                                  | Data directory name   | Distribution                         |
+| -------- | ----------------- | ----------------------------------------------- | --------------------- | ------------------------------------ |
+| Personal | ReachCut Personal | `http://studio.personal.reachcut.localhost:47331` | `ReachCut Personal` or `reachcut-personal` | Private workflow artifact |
+| Stable   | ReachCut          | `http://studio.reachcut.localhost:47321`        | `ReachCut` or `reachcut` | Signed customer release              |
+
+Personal uses separate bundle/package identifiers, startup services, installation roots,
+ports, browser cookies, and mutable data. Ollama remains a machine-level service, so its
+Qwen weights can be reused by both profiles. A manual workflow run defaults to Personal;
+a `v*` tag always builds Stable.
+
 ## What is bundled
 
 The build creates a platform-specific staging directory before invoking a native package
@@ -83,6 +98,13 @@ pnpm test
 pnpm build:installer -- --version 0.1.0
 ```
 
+Choose the profile explicitly for release work:
+
+```bash
+pnpm build:personal -- --version 0.1.0
+pnpm build:stable -- --version 0.1.0
+```
+
 `packaging/build-release.mjs` performs these steps without shell-based child execution:
 
 1. Builds Next.js in standalone mode.
@@ -95,11 +117,13 @@ under `build/`, which is ignored by Git.
 
 ## Automated release matrix
 
-`.github/workflows/release-installers.yml` runs manually or for a `v*` tag. It uses native
-hosted runners for Windows x64, macOS arm64, macOS Intel, and Linux x64, then uploads each
-unsigned package as a short-lived workflow artifact. The artifacts are intentionally
-labelled unsigned because no ReachCut signing identities exist yet. The Linux build uses
-Ubuntu 22.04 to avoid unnecessarily raising the minimum glibc version.
+`.github/workflows/release-installers.yml` runs manually or for a `v*` tag. Manual runs
+offer a Personal/Stable choice and default to Personal. Tags ignore that input and always
+build Stable. The matrix uses native hosted runners for Windows x64, macOS arm64, macOS
+Intel, and Linux x64, then uploads each unsigned package as a short-lived workflow
+artifact. The artifacts are intentionally labelled unsigned because no ReachCut signing
+identities exist yet. The Linux build uses Ubuntu 22.04 to avoid unnecessarily raising the
+minimum glibc version.
 
 The workflow does not publish a GitHub Release. This prevents an unsigned build from being
 presented as a customer-ready binary.

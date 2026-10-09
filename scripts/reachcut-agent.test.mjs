@@ -103,6 +103,19 @@ describe("local agent configuration", () => {
       resolveUserDataDir("linux", {}, "/home/me"),
       "/home/me/.local/share/reachcut",
     );
+    assert.equal(
+      resolveUserDataDir("darwin", {}, "/Users/me", "ReachCut Personal"),
+      "/Users/me/Library/Application Support/ReachCut Personal",
+    );
+    assert.equal(
+      resolveUserDataDir(
+        "linux",
+        { XDG_DATA_HOME: "/data" },
+        "/home/me",
+        "reachcut-personal",
+      ),
+      "/data/reachcut-personal",
+    );
   });
 });
 

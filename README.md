@@ -79,6 +79,18 @@ pnpm install --frozen-lockfile
 pnpm build:installer -- --version 0.1.0
 ```
 
+Release work uses two isolated profiles from the same source commit:
+
+```bash
+pnpm build:personal -- --version 0.1.0 # private daily-use build
+pnpm build:stable -- --version 0.1.0   # customer release candidate
+```
+
+ReachCut Personal uses its own application ID, data directory, services, ports, and
+`studio.personal.reachcut.localhost` browser origin, so it can be installed beside Stable
+without touching customer-state data. Manual release-workflow runs default to Personal;
+version tags always select Stable.
+
 Artifacts are written to `build/installers/`. The release workflow builds Windows x64,
 macOS Apple Silicon, macOS Intel, and Linux x64 variants on matching hosted runners. See
 [docs/installers.md](docs/installers.md) for bundled components, startup behavior, signing,
