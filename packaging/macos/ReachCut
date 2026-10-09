@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+
+RESOURCE_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/../Resources/app" && pwd)"
+exec "$RESOURCE_DIR/runtime/node" \
+  "$RESOURCE_DIR/scripts/reachcut-agent.mjs" \
+  --production

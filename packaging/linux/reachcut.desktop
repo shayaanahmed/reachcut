@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=ReachCut
+Comment=Local AI video clipping
+Exec=/usr/bin/reachcut
+Icon=reachcut
+Terminal=false
+Categories=AudioVideo;Video;
+StartupNotify=true

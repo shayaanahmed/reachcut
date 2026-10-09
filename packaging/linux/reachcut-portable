@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+
+ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+exec "$ROOT_DIR/runtime/node" \
+  "$ROOT_DIR/scripts/reachcut-agent.mjs" \
+  --production

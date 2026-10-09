@@ -1,9 +1,15 @@
 {
   "name": "reachcut",
+  "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@11.19.0",
   "scripts": {
     "dev": "pnpm --parallel --stream dev:api dev:web",
+    "local": "node scripts/reachcut-agent.mjs",
+    "local:no-browser": "node scripts/reachcut-agent.mjs --no-browser",
+    "local:production": "node scripts/reachcut-agent.mjs --production",
+    "build:installer": "node packaging/build-release.mjs",
+    "build:stage": "node packaging/build-release.mjs --stage-only",
     "dev:api": "uv run --project apps/api uvicorn clipper.main:app --reload --host 127.0.0.1 --port 8000",
     "dev:web": "pnpm --dir apps/web dev",
     "docker:model": "docker compose -f compose.yaml -f compose.ollama.yaml --profile setup run --rm model-init",
@@ -14,11 +20,12 @@
     "fixture": "node scripts/generate-fixture.mjs",
     "check": "pnpm check:api && pnpm --dir apps/web check",
     "check:api": "uv run --project apps/api ruff check apps/api && uv run --project apps/api ruff format --check apps/api && uv run --project apps/api mypy apps/api/src",
-    "test": "pnpm test:api && pnpm --dir apps/web test",
+    "test": "pnpm test:agent && pnpm test:api && pnpm --dir apps/web test",
+    "test:agent": "node --test scripts/reachcut-agent.test.mjs",
     "test:api": "uv run --project apps/api pytest apps/api/tests"
   },
   "devDependencies": {
     "ffmpeg-static": "5.3.0",
-    "ffprobe-static": "3.1.0"
+    "ffprobe-static": "npm:@derhuerst/ffprobe-static@5.3.0"
   }
 }
