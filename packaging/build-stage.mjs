@@ -11,11 +11,11 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { cp } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import { copyDirectoryDereferenced } from "./copy-directory.mjs";
 import { profileDataDirectory, releaseProfile } from "./release-profile.mjs";
 
 const require = createRequire(import.meta.url);
@@ -45,11 +45,9 @@ async function copyDirectory(source, destination, description) {
     return;
   }
 
-  // pnpm's standalone output contains directory links. Creating those links on
-  // Windows requires privileges that hosted runners do not have, so copy their
-  // targets instead. The asynchronous implementation also avoids the native
-  // stack failure seen when cpSync copies the large standalone tree on Windows.
-  await cp(source, destination, { recursive: true, dereference: true });
+  // pnpm's standalone output contains directory links that Windows runners
+  // cannot follow or recreate. Resolve each link and stage ordinary content.
+  await copyDirectoryDereferenced(source, destination);
 }
 
 const platform = option("--platform", process.platform);
