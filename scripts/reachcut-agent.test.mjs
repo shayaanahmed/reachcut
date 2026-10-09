@@ -135,7 +135,9 @@ describe("local agent configuration", () => {
         publicPort: 47_331,
         activationToken,
       });
-      assert.equal(statSync(statePath).mode & 0o777, 0o600);
+      if (process.platform !== "win32") {
+        assert.equal(statSync(statePath).mode & 0o777, 0o600);
+      }
       assert.deepEqual(
         readActivationState(
           statePath,
