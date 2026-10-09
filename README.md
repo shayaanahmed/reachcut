@@ -89,7 +89,7 @@ pnpm build:stable -- --version 0.1.0   # customer release candidate
 ReachCut Personal uses its own application ID, data directory, services, ports, and
 `studio.personal.reachcut.localhost` browser origin, so it can be installed beside Stable
 without touching customer-state data. Manual release-workflow runs default to Personal;
-version tags always select Stable.
+`personal-v*` tags select Personal and ordinary `v*` version tags select Stable.
 
 Artifacts are written to `build/installers/`. The release workflow builds Windows x64,
 macOS Apple Silicon, macOS Intel, and Linux x64 variants on matching hosted runners. See

@@ -18,6 +18,7 @@ on:
   push:
     tags:
       - "v*"
+      - "personal-v*"
 
 permissions:
   contents: read
@@ -83,6 +84,8 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             version="${{ inputs.version }}"
+          elif [[ "$GITHUB_REF_NAME" == personal-v* ]]; then
+            version="${GITHUB_REF_NAME#personal-v}"
           else
             version="${GITHUB_REF_NAME#v}"
           fi
@@ -94,6 +97,8 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             channel="${{ inputs.channel }}"
+          elif [[ "$GITHUB_REF_NAME" == personal-v* ]]; then
+            channel="personal"
           else
             channel="stable"
           fi

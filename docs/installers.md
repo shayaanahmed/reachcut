@@ -29,7 +29,7 @@ side by side and never share application state:
 Personal uses separate bundle/package identifiers, startup services, installation roots,
 ports, browser cookies, and mutable data. Ollama remains a machine-level service, so its
 Qwen weights can be reused by both profiles. A manual workflow run defaults to Personal;
-a `v*` tag always builds Stable.
+a `personal-v*` tag builds Personal, and a `v*` tag always builds Stable.
 
 ## What is bundled
 
@@ -117,13 +117,14 @@ under `build/`, which is ignored by Git.
 
 ## Automated release matrix
 
-`.github/workflows/release-installers.yml` runs manually or for a `v*` tag. Manual runs
-offer a Personal/Stable choice and default to Personal. Tags ignore that input and always
-build Stable. The matrix uses native hosted runners for Windows x64, macOS arm64, macOS
-Intel, and Linux x64, then uploads each unsigned package as a short-lived workflow
-artifact. The artifacts are intentionally labelled unsigned because no ReachCut signing
-identities exist yet. The Linux build uses Ubuntu 22.04 to avoid unnecessarily raising the
-minimum glibc version.
+`.github/workflows/release-installers.yml` runs manually or for `personal-v*`/`v*` tags.
+Manual runs offer a Personal/Stable choice and default to Personal. Tags ignore that input
+and select their named channel: `personal-v0.1.0` builds Personal while `v0.1.0` builds Stable.
+The Personal tag is especially useful before the workflow has reached the default branch.
+The matrix uses native hosted runners for Windows x64, macOS arm64, macOS Intel, and Linux
+x64, then uploads each unsigned package as a short-lived workflow artifact. The artifacts
+are intentionally labelled unsigned because no ReachCut signing identities exist yet. The
+Linux build uses Ubuntu 22.04 to avoid unnecessarily raising the minimum glibc version.
 
 The workflow does not publish a GitHub Release. This prevents an unsigned build from being
 presented as a customer-ready binary.
