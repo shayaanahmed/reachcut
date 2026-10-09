@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { createRequire } from "node:module";
-import { spawnSync } from "node:child_process";
 import {
   chmodSync,
   cpSync,
@@ -12,6 +11,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { cp } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -38,30 +38,18 @@ function requireDirectory(directory, description) {
   return path.resolve(directory);
 }
 
-function copyDirectory(source, destination, description) {
+async function copyDirectory(source, destination, description) {
   console.log(`Copying ${description}...`);
   if (process.platform !== "win32") {
     cpSync(source, destination, { recursive: true });
     return;
   }
 
-  mkdirSync(destination, { recursive: true });
-  const result = spawnSync(
-    "robocopy.exe",
-    [source, destination, "/E", "/NFL", "/NDL", "/NJH", "/NJS", "/NP"],
-    {
-      shell: false,
-      stdio: "inherit",
-      windowsHide: true,
-    },
-  );
-  if (result.error) throw result.error;
-  // Robocopy uses 0-7 for successful copy outcomes and 8+ for failures.
-  if (result.status === null || result.status >= 8) {
-    throw new Error(
-      `robocopy failed while copying ${description} with exit code ${result.status}`,
-    );
-  }
+  // pnpm's standalone output contains directory links. Creating those links on
+  // Windows requires privileges that hosted runners do not have, so copy their
+  // targets instead. The asynchronous implementation also avoids the native
+  // stack failure seen when cpSync copies the large standalone tree on Windows.
+  await cp(source, destination, { recursive: true, dereference: true });
 }
 
 const platform = option("--platform", process.platform);
@@ -102,20 +90,24 @@ if (
 rmSync(outputDirectory, { recursive: true, force: true });
 mkdirSync(outputDirectory, { recursive: true });
 
-copyDirectory(apiDirectory, path.join(outputDirectory, "api"), "packaged API");
-copyDirectory(
+await copyDirectory(
+  apiDirectory,
+  path.join(outputDirectory, "api"),
+  "packaged API",
+);
+await copyDirectory(
   standaloneDirectory,
   path.join(outputDirectory, "web"),
   "standalone web application",
 );
-copyDirectory(
+await copyDirectory(
   staticDirectory,
   path.join(outputDirectory, "web", "apps", "web", ".next", "static"),
   "web static assets",
 );
 const publicDirectory = path.join(repositoryRoot, "apps", "web", "public");
 if (existsSync(publicDirectory)) {
-  copyDirectory(
+  await copyDirectory(
     publicDirectory,
     path.join(outputDirectory, "web", "apps", "web", "public"),
     "web public assets",
