@@ -5,11 +5,11 @@ This is the technical source of truth for the native ReachCut release system on 
 the build and runtime flows, Personal and Stable channels, installation behavior, release
 commands, validation, and the work still required before customer distribution.
 
-The most recent built internal version is `personal-v0.1.9` from commit `ef1e87e`, built
-on 2026-10-09. Its four native CI jobs installed and started their packaged runtimes, but
-real Intel macOS testing subsequently found that opening the app while its login agent was
-already running opened an unauthenticated URL. Therefore `0.1.9`, like `0.1.6`–`0.1.8`,
-is rejected. The activation fix is awaiting a newer Personal build. Update this document
+The current validated internal version is `personal-v0.1.12` from commit `b697616`, built
+on 2026-10-09. Its four native CI jobs installed and started their packaged runtimes and
+verified a second app launch against the running agent. Intel macOS also verified the
+installer-started background-agent path that exposed the `0.1.9` authorization defect.
+Versions `0.1.6`–`0.1.11` are rejected; see the records below. Update this document
 whenever the release architecture, installer layout, profiles, CI workflow, or customer
 procedure changes.
 
@@ -18,21 +18,20 @@ procedure changes.
 The release system can build native, self-contained application installers for four
 targets:
 
-| Target              | Native output                 | `personal-v0.1.9` CI result                |
-| ------------------- | ----------------------------- | ------------------------------------------ |
-| Windows x64         | Inno Setup `.exe`             | Installed runtime passed                   |
-| macOS Apple Silicon | `.pkg` and `.dmg`             | PKG runtime passed; DMG checksum verified  |
-| macOS Intel         | `.pkg` and `.dmg`             | PKG runtime passed; DMG checksum verified  |
-| Ubuntu/Debian x64   | `.deb` and portable `.tar.gz` | DEB and extracted portable runtimes passed |
+| Target              | Native output                 | `personal-v0.1.12` result                           |
+| ------------------- | ----------------------------- | --------------------------------------------------- |
+| Windows x64         | Inno Setup `.exe`             | Installed cold/second-launch runtime passed         |
+| macOS Apple Silicon | `.pkg` and `.dmg`             | PKG cold/second-launch passed; DMG verified         |
+| macOS Intel         | `.pkg` and `.dmg`             | Installer-started agent/second-launch passed        |
+| Ubuntu/Debian x64   | `.deb` and portable `.tar.gz` | DEB and portable cold/second-launch runtimes passed |
 
-The validated `personal-v0.1.9` workflow is:
+The validated `personal-v0.1.12` workflow is:
 
-<https://github.com/shayaanahmed/reachcut/actions/runs/37918322192>
+<https://github.com/shayaanahmed/reachcut/actions/runs/37941031139>
 
-Those artifacts are **rejected unsigned internal-test builds** and must not be
-distributed. The CI smoke test proved cold startup but did not exercise a second app-icon
-launch against the background agent. Code signing, Apple notarization, release
-publication, automatic updates, rollback, expanded lifecycle testing, and customer
+Those artifacts are **unsigned internal-test builds**. They are suitable for continued
+Personal testing but must not be presented as customer releases. Code signing, Apple
+notarization, release publication, automatic updates, rollback, and broader customer
 clean-machine testing remain release gates.
 
 The code currently lives on `release-bundle`. The repository's default branch is `main`
@@ -785,7 +784,34 @@ Profile values are currently centralized in JavaScript for common staging, but t
 builders also contain channel mappings. When a profile changes, search for the old value
 across `packaging/`, workflow files, docs, tests, and UI copy to prevent drift.
 
-## 20. Rejected Personal 0.1.9 release record
+## 20. Personal 0.1.12 release record
+
+| Item            | Value                                                                     |
+| --------------- | ------------------------------------------------------------------------- |
+| Source commit   | `b6976162b66208db82a4a78ac5713793bcc9168a`                                |
+| Tag             | `personal-v0.1.12`                                                        |
+| Workflow run    | `37941031139`                                                             |
+| Runtime result  | All four targets passed installed cold/existing-agent second-launch smoke |
+| Signing         | None; internal test only                                                  |
+| Artifact expiry | 2026-10-23                                                                |
+
+GitHub artifact archive sizes and digests:
+
+| Artifact                        |       Bytes | SHA-256                                                            |
+| ------------------------------- | ----------: | ------------------------------------------------------------------ |
+| `reachcut-personal-Windows-X64` | 210,587,710 | `a8ba123cca67f985be2596d22deb3a19ccf930d02705dd5f65295ec442d2e1e4` |
+| `reachcut-personal-macOS-ARM64` | 578,328,403 | `871a6ae853cbb8e37c23a07fef9b55bc8875d8a3c9e19a359ebeecc857426902` |
+| `reachcut-personal-macOS-X64`   | 599,354,233 | `d1de9165a0ae1872c317a5a55aed2938313e949d011cf72c53bf011d0badd29b` |
+| `reachcut-personal-Linux-X64`   | 635,036,071 | `eb2d8066670f871a2b7751fc2a246519759b198e88762adf015d81567e20c200` |
+
+This is the first Personal build whose native smoke gate exercises repeated app launches.
+On Intel macOS, the PKG postinstall script started the login agent, and the smoke harness
+then activated that existing instance and received a fresh browser authorization URL.
+`personal-v0.1.10` was cancelled after a Windows-only permission-bit assertion failed;
+`personal-v0.1.11` was rejected after its older smoke harness tried to start a duplicate
+agent even though Intel macOS postinstall had already started one. Neither tag is reusable.
+
+## 21. Rejected Personal 0.1.9 release record
 
 | Item            | Value                                                       |
 | --------------- | ----------------------------------------------------------- |
@@ -812,7 +838,7 @@ the browser displayed “Authorization failed.” The second launcher now authen
 the running agent and requests a fresh single-use bootstrap URL. `0.1.9` itself remains
 rejected and must be replaced by a newer Personal build.
 
-## 21. Rejected Personal 0.1.6 release record
+## 22. Rejected Personal 0.1.6 release record
 
 | Item            | Value                                                        |
 | --------------- | ------------------------------------------------------------ |
