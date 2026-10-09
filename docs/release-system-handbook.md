@@ -5,31 +5,32 @@ This is the technical source of truth for the native ReachCut release system on 
 the build and runtime flows, Personal and Stable channels, installation behavior, release
 commands, validation, and the work still required before customer distribution.
 
-The release record in this handbook describes commit `f91eb7d` and internal build
-`personal-v0.1.6` from 2026-10-09. That build's packaging jobs passed, but macOS testing
-later found non-portable absolute symbolic links in both Python and Next.js. Do not use or
-distribute its macOS or Linux artifacts. Update this document whenever the release
-architecture, installer layout, profiles, CI workflow, or customer procedure changes.
+The current validated internal build is `personal-v0.1.9` from commit `ef1e87e`, built on
+2026-10-09. Its four native CI jobs installed and started their packaged runtimes before
+uploading artifacts. Earlier `0.1.6`–`0.1.8` artifacts are rejected; see the release
+records below. Update this document whenever the release architecture, installer layout,
+profiles, CI workflow, or customer procedure changes.
 
 ## 1. Current release status
 
 The release system can build native, self-contained application installers for four
 targets:
 
-| Target              | Native output                 | `personal-v0.1.6` status                          |
-| ------------------- | ----------------------------- | ------------------------------------------------- |
-| Windows x64         | Inno Setup `.exe`             | Built; installed-runtime smoke test was absent    |
-| macOS Apple Silicon | `.pkg` and `.dmg`             | Rejected: absolute staged links                   |
-| macOS Intel         | `.pkg` and `.dmg`             | Rejected: Python and Next.js cannot start         |
-| Ubuntu/Debian x64   | `.deb` and portable `.tar.gz` | Rejected pending rebuild; same POSIX staging path |
+| Target              | Native output                 | `personal-v0.1.9` status                   |
+| ------------------- | ----------------------------- | ------------------------------------------ |
+| Windows x64         | Inno Setup `.exe`             | Installed runtime passed                   |
+| macOS Apple Silicon | `.pkg` and `.dmg`             | PKG runtime passed; DMG checksum verified  |
+| macOS Intel         | `.pkg` and `.dmg`             | PKG runtime passed; DMG checksum verified  |
+| Ubuntu/Debian x64   | `.deb` and portable `.tar.gz` | DEB and extracted portable runtimes passed |
 
-The packaging-only `personal-v0.1.6` workflow is:
+The validated `personal-v0.1.9` workflow is:
 
-<https://github.com/shayaanahmed/reachcut/actions/runs/37910408826>
+<https://github.com/shayaanahmed/reachcut/actions/runs/37918322192>
 
-Those artifacts are **superseded unsigned internal-test builds**. They are not ready to be
-presented as customer releases. Code signing, Apple notarization, release publication,
-automatic updates, rollback, and customer clean-machine testing remain release gates.
+Those artifacts are **unsigned internal-test builds**. The native smoke tests make them
+suitable for Personal testing, but they are not ready to be presented as customer
+releases. Code signing, Apple notarization, release publication, automatic updates,
+rollback, and customer clean-machine testing remain release gates.
 
 The code currently lives on `release-bundle`. The repository's default branch is `main`
 (locally it is also available as `master`/`origin/main` at the same older commit). The
@@ -768,7 +769,31 @@ Profile values are currently centralized in JavaScript for common staging, but t
 builders also contain channel mappings. When a profile changes, search for the old value
 across `packaging/`, workflow files, docs, tests, and UI copy to prevent drift.
 
-## 20. Personal 0.1.6 release record
+## 20. Personal 0.1.9 release record
+
+| Item            | Value                                                          |
+| --------------- | -------------------------------------------------------------- |
+| Source commit   | `ef1e87e00ace2290f024eeb6be12ea7c2296653d`                     |
+| Tag             | `personal-v0.1.9`                                              |
+| Workflow run    | `37918322192`                                                  |
+| Runtime result  | Windows, macOS ARM/Intel, Linux DEB, and Linux portable passed |
+| Signing         | None; internal test only                                       |
+| Artifact expiry | 2026-10-23                                                     |
+
+GitHub artifact archive sizes:
+
+| Artifact                        |       Bytes |
+| ------------------------------- | ----------: |
+| `reachcut-personal-Windows-X64` | 210,586,985 |
+| `reachcut-personal-macOS-ARM64` | 578,214,980 |
+| `reachcut-personal-macOS-X64`   | 599,148,610 |
+| `reachcut-personal-Linux-X64`   | 635,029,298 |
+
+This is the first candidate protected by native install-and-start checks. It is suitable
+for Personal clean-machine testing, but it remains unsigned and is not a customer Stable
+release.
+
+## 21. Rejected Personal 0.1.6 release record
 
 | Item            | Value                                                        |
 | --------------- | ------------------------------------------------------------ |
