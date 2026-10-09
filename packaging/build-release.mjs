@@ -40,7 +40,12 @@ if (!/^\d+\.\d+\.\d+$/.test(version)) {
 const profile = releaseProfile(option("--channel", "stable"));
 process.env.NEXT_PUBLIC_REACHCUT_CHANNEL = profile.channel;
 
-const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const pnpmCli = process.env.npm_execpath;
+if (!pnpmCli || !existsSync(pnpmCli)) {
+  throw new Error(
+    "Run the installer build through pnpm so its portable CLI path is available",
+  );
+}
 const uv = process.platform === "win32" ? "uv.exe" : "uv";
 const stageDirectory = path.join(
   repositoryRoot,
@@ -55,7 +60,7 @@ const apiDirectory = path.join(
 );
 const outputDirectory = path.join(repositoryRoot, "build", "installers");
 
-run(pnpm, ["--dir", "apps/web", "build"]);
+run(process.execPath, [pnpmCli, "--dir", "apps/web", "build"]);
 run(uv, [
   "run",
   "--project",
