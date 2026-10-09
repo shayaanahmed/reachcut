@@ -23,7 +23,7 @@
     "check": "pnpm check:api && pnpm --dir apps/web check",
     "check:api": "uv run --project apps/api --extra dev ruff check apps/api && uv run --project apps/api --extra dev ruff format --check apps/api && uv run --project apps/api --extra dev mypy apps/api/src",
     "test": "pnpm test:agent && pnpm test:api && pnpm --dir apps/web test",
-    "test:agent": "node --test scripts/reachcut-agent.test.mjs packaging/release-profile.test.mjs",
+    "test:agent": "node --test scripts/reachcut-agent.test.mjs packaging/release-profile.test.mjs packaging/copy-directory.test.mjs",
     "test:api": "uv run --project apps/api --extra dev pytest apps/api/tests"
   },
   "devDependencies": {

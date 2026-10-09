@@ -94,7 +94,9 @@ without touching customer-state data. Manual release-workflow runs default to Pe
 Artifacts are written to `build/installers/`. The release workflow builds Windows x64,
 macOS Apple Silicon, macOS Intel, and Linux x64 variants on matching hosted runners. See
 [docs/installers.md](docs/installers.md) for bundled components, startup behavior, signing,
-and release gates. The Milestone 0 installer intentionally stays application-only: first
+and release gates. See [docs/release-system-handbook.md](docs/release-system-handbook.md)
+for the complete file-by-file release map, build/runtime flows, release procedure, and
+known limitations. The Milestone 0 installer intentionally stays application-only: first
 run detects Ollama, links to its official installer when missing, downloads the configured
 Qwen model only after confirmation, and explains Whisper's first-analysis download. Open
 `http://studio.reachcut.localhost:47321/setup` later to rerun those checks.
