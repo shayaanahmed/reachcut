@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createRequire } from "node:module";
+import { spawnSync } from "node:child_process";
 import {
   chmodSync,
   cpSync,
@@ -15,10 +16,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import {
-  profileDataDirectory,
-  releaseProfile,
-} from "./release-profile.mjs";
+import { profileDataDirectory, releaseProfile } from "./release-profile.mjs";
 
 const require = createRequire(import.meta.url);
 const repositoryRoot = path.resolve(
@@ -38,6 +36,32 @@ function requireDirectory(directory, description) {
     );
   }
   return path.resolve(directory);
+}
+
+function copyDirectory(source, destination, description) {
+  console.log(`Copying ${description}...`);
+  if (process.platform !== "win32") {
+    cpSync(source, destination, { recursive: true });
+    return;
+  }
+
+  mkdirSync(destination, { recursive: true });
+  const result = spawnSync(
+    "robocopy.exe",
+    [source, destination, "/E", "/NFL", "/NDL", "/NJH", "/NJS", "/NP"],
+    {
+      shell: false,
+      stdio: "inherit",
+      windowsHide: true,
+    },
+  );
+  if (result.error) throw result.error;
+  // Robocopy uses 0-7 for successful copy outcomes and 8+ for failures.
+  if (result.status === null || result.status >= 8) {
+    throw new Error(
+      `robocopy failed while copying ${description} with exit code ${result.status}`,
+    );
+  }
 }
 
 const platform = option("--platform", process.platform);
@@ -78,23 +102,23 @@ if (
 rmSync(outputDirectory, { recursive: true, force: true });
 mkdirSync(outputDirectory, { recursive: true });
 
-cpSync(apiDirectory, path.join(outputDirectory, "api"), { recursive: true });
-cpSync(standaloneDirectory, path.join(outputDirectory, "web"), {
-  recursive: true,
-});
-cpSync(
+copyDirectory(apiDirectory, path.join(outputDirectory, "api"), "packaged API");
+copyDirectory(
+  standaloneDirectory,
+  path.join(outputDirectory, "web"),
+  "standalone web application",
+);
+copyDirectory(
   staticDirectory,
   path.join(outputDirectory, "web", "apps", "web", ".next", "static"),
-  { recursive: true },
+  "web static assets",
 );
 const publicDirectory = path.join(repositoryRoot, "apps", "web", "public");
 if (existsSync(publicDirectory)) {
-  cpSync(
+  copyDirectory(
     publicDirectory,
     path.join(outputDirectory, "web", "apps", "web", "public"),
-    {
-      recursive: true,
-    },
+    "web public assets",
   );
 }
 
