@@ -1,4 +1,11 @@
-import { copyFile, lstat, mkdir, readlink, readdir } from "node:fs/promises";
+import {
+  copyFile,
+  cp,
+  lstat,
+  mkdir,
+  readlink,
+  readdir,
+} from "node:fs/promises";
 import path from "node:path";
 
 async function dereference(source) {
@@ -53,4 +60,57 @@ async function copyEntry(source, destination, ancestorDirectories) {
 
 export async function copyDirectoryDereferenced(source, destination) {
   await copyEntry(source, destination, new Set());
+}
+
+export async function copyDirectoryPreservingLinks(source, destination) {
+  await cp(source, destination, {
+    recursive: true,
+    verbatimSymlinks: true,
+  });
+}
+
+async function validateEntry(root, entry) {
+  const metadata = await lstat(entry);
+
+  if (metadata.isSymbolicLink()) {
+    const target = await readlink(entry);
+    if (path.isAbsolute(target)) {
+      throw new Error(
+        `Staged symbolic link must be relative: ${entry} -> ${target}`,
+      );
+    }
+
+    const resolvedTarget = path.resolve(path.dirname(entry), target);
+    if (
+      resolvedTarget !== root &&
+      !resolvedTarget.startsWith(`${root}${path.sep}`)
+    ) {
+      throw new Error(
+        `Staged symbolic link escapes the package: ${entry} -> ${target}`,
+      );
+    }
+
+    try {
+      await lstat(resolvedTarget);
+    } catch (error) {
+      if (error?.code === "ENOENT") {
+        throw new Error(
+          `Staged symbolic link is broken: ${entry} -> ${target}`,
+        );
+      }
+      throw error;
+    }
+    return;
+  }
+
+  if (!metadata.isDirectory()) return;
+  const entries = await readdir(entry);
+  await Promise.all(
+    entries.map((name) => validateEntry(root, path.join(entry, name))),
+  );
+}
+
+export async function validatePortableLinks(directory) {
+  const root = path.resolve(directory);
+  await validateEntry(root, root);
 }

@@ -3,6 +3,7 @@ import {
   lstat,
   mkdtemp,
   mkdir,
+  readlink,
   readFile,
   rm,
   symlink,
@@ -12,7 +13,11 @@ import os from "node:os";
 import path from "node:path";
 import { after, describe, test } from "node:test";
 
-import { copyDirectoryDereferenced } from "./copy-directory.mjs";
+import {
+  copyDirectoryDereferenced,
+  copyDirectoryPreservingLinks,
+  validatePortableLinks,
+} from "./copy-directory.mjs";
 
 describe("dereferenced directory copy", async () => {
   const temporaryRoot = await mkdtemp(
@@ -20,41 +25,114 @@ describe("dereferenced directory copy", async () => {
   );
   after(() => rm(temporaryRoot, { recursive: true, force: true }));
 
-  test("turns file and directory links into regular staged content", async () => {
-    const source = path.join(temporaryRoot, "source");
-    const destination = path.join(temporaryRoot, "destination");
-    const packageDirectory = path.join(source, "packages", "example");
-    await mkdir(packageDirectory, { recursive: true });
-    await writeFile(
-      path.join(packageDirectory, "index.js"),
-      "export default 1;\n",
-    );
-    await symlink("packages/example", path.join(source, "linked-package"));
-    await symlink(
-      "packages/example/index.js",
-      path.join(source, "linked-file.js"),
-    );
+  test(
+    "turns file and directory links into regular staged content",
+    { skip: process.platform === "win32" && "requires symbolic-link access" },
+    async () => {
+      const source = path.join(temporaryRoot, "source");
+      const destination = path.join(temporaryRoot, "destination");
+      const packageDirectory = path.join(source, "packages", "example");
+      await mkdir(packageDirectory, { recursive: true });
+      await writeFile(
+        path.join(packageDirectory, "index.js"),
+        "export default 1;\n",
+      );
+      await symlink("packages/example", path.join(source, "linked-package"));
+      await symlink(
+        "packages/example/index.js",
+        path.join(source, "linked-file.js"),
+      );
 
-    await copyDirectoryDereferenced(source, destination);
+      await copyDirectoryDereferenced(source, destination);
 
-    assert.equal(
-      await readFile(
-        path.join(destination, "linked-package", "index.js"),
-        "utf8",
-      ),
-      "export default 1;\n",
-    );
-    assert.equal(
-      await readFile(path.join(destination, "linked-file.js"), "utf8"),
-      "export default 1;\n",
-    );
-    assert.equal(
-      (await lstat(path.join(destination, "linked-package"))).isSymbolicLink(),
-      false,
-    );
-    assert.equal(
-      (await lstat(path.join(destination, "linked-file.js"))).isSymbolicLink(),
-      false,
-    );
-  });
+      assert.equal(
+        await readFile(
+          path.join(destination, "linked-package", "index.js"),
+          "utf8",
+        ),
+        "export default 1;\n",
+      );
+      assert.equal(
+        await readFile(path.join(destination, "linked-file.js"), "utf8"),
+        "export default 1;\n",
+      );
+      assert.equal(
+        (
+          await lstat(path.join(destination, "linked-package"))
+        ).isSymbolicLink(),
+        false,
+      );
+      assert.equal(
+        (
+          await lstat(path.join(destination, "linked-file.js"))
+        ).isSymbolicLink(),
+        false,
+      );
+    },
+  );
 });
+
+describe(
+  "portable symbolic-link copy",
+  { skip: process.platform === "win32" && "POSIX packaging only" },
+  async () => {
+    const temporaryRoot = await mkdtemp(
+      path.join(os.tmpdir(), "reachcut-portable-link-test-"),
+    );
+    after(() => rm(temporaryRoot, { recursive: true, force: true }));
+
+    test("preserves relative targets without leaking the build path", async () => {
+      const source = path.join(temporaryRoot, "source");
+      const destination = path.join(temporaryRoot, "destination");
+      await mkdir(path.join(source, "packages", "example"), {
+        recursive: true,
+      });
+      await writeFile(
+        path.join(source, "packages", "example", "index.js"),
+        "export default 1;\n",
+      );
+      await symlink("packages/example", path.join(source, "linked-package"));
+
+      await copyDirectoryPreservingLinks(source, destination);
+      await validatePortableLinks(destination);
+
+      assert.equal(
+        await readlink(path.join(destination, "linked-package")),
+        "packages/example",
+      );
+      assert.equal(
+        await readFile(
+          path.join(destination, "linked-package", "index.js"),
+          "utf8",
+        ),
+        "export default 1;\n",
+      );
+    });
+
+    test("rejects absolute, escaping, and broken package links", async () => {
+      const absoluteRoot = path.join(temporaryRoot, "absolute");
+      await mkdir(absoluteRoot);
+      await symlink(
+        path.join(temporaryRoot, "outside"),
+        path.join(absoluteRoot, "link"),
+      );
+      await assert.rejects(
+        validatePortableLinks(absoluteRoot),
+        /must be relative/,
+      );
+
+      const escapingRoot = path.join(temporaryRoot, "escaping");
+      await mkdir(escapingRoot);
+      await symlink("../outside", path.join(escapingRoot, "link"));
+      await assert.rejects(
+        validatePortableLinks(escapingRoot),
+        /escapes the package/,
+      );
+
+      const brokenRoot = path.join(temporaryRoot, "broken");
+      await mkdir(brokenRoot);
+      await symlink("missing", path.join(brokenRoot, "link"));
+      await assert.rejects(validatePortableLinks(brokenRoot), /is broken/);
+    });
+  },
+);

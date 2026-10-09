@@ -21,10 +21,10 @@ hosts file, installs a local root certificate, exposes a LAN port, or requires D
 ReachCut has two package profiles built from the same source commit. They can be installed
 side by side and never share application state:
 
-| Profile  | Application       | Browser origin                                  | Data directory name   | Distribution                         |
-| -------- | ----------------- | ----------------------------------------------- | --------------------- | ------------------------------------ |
+| Profile  | Application       | Browser origin                                    | Data directory name                        | Distribution              |
+| -------- | ----------------- | ------------------------------------------------- | ------------------------------------------ | ------------------------- |
 | Personal | ReachCut Personal | `http://studio.personal.reachcut.localhost:47331` | `ReachCut Personal` or `reachcut-personal` | Private workflow artifact |
-| Stable   | ReachCut          | `http://studio.reachcut.localhost:47321`        | `ReachCut` or `reachcut` | Signed customer release              |
+| Stable   | ReachCut          | `http://studio.reachcut.localhost:47321`          | `ReachCut` or `reachcut`                   | Signed customer release   |
 
 Personal uses separate bundle/package identifiers, startup services, installation roots,
 ports, browser cookies, and mutable data. Ollama remains a machine-level service, so its
@@ -109,7 +109,8 @@ pnpm build:stable -- --version 0.1.0
 
 1. Builds Next.js in standalone mode.
 2. Runs pinned PyInstaller `6.16.0` in the API uv environment.
-3. Runs `packaging/build-stage.mjs` to assemble and validate the immutable payload.
+3. Runs `packaging/build-stage.mjs` to assemble and validate the immutable payload. POSIX
+   links remain relative; absolute, escaping, and broken package links fail the build.
 4. Invokes the current OS package builder.
 
 Use `pnpm build:stage -- --version 0.1.0` to stop after staging. Build output is always
@@ -122,9 +123,16 @@ Manual runs offer a Personal/Stable choice and default to Personal. Tags ignore 
 and select their named channel: `personal-v0.1.0` builds Personal while `v0.1.0` builds Stable.
 The Personal tag is especially useful before the workflow has reached the default branch.
 The matrix uses native hosted runners for Windows x64, macOS arm64, macOS Intel, and Linux
-x64, then uploads each unsigned package as a short-lived workflow artifact. The artifacts
-are intentionally labelled unsigned because no ReachCut signing identities exist yet. The
-Linux build uses Ubuntu 22.04 to avoid unnecessarily raising the minimum glibc version.
+x64. Before upload, each native runner installs its produced package and starts the
+installed API, web server, and gateway. Linux also starts the portable archive, and macOS
+verifies the DMG. Only passing packages are uploaded as short-lived workflow artifacts.
+The artifacts are intentionally labelled unsigned because no ReachCut signing identities
+exist yet. The Linux build uses Ubuntu 22.04 to avoid unnecessarily raising the minimum
+glibc version.
+
+Docker may add Debian/Ubuntu compatibility coverage, but it cannot replace this matrix:
+containers share their host kernel and therefore cannot execute genuine macOS apps or
+Windows desktop installers on a Linux Docker host.
 
 The workflow does not publish a GitHub Release. This prevents an unsigned build from being
 presented as a customer-ready binary.
@@ -166,7 +174,7 @@ following identities before customer distribution:
   trusted certificate authority, plus its protected hardware or cloud signing key. Use it
   for Authenticode signing and timestamping of the installer and shipped executables.
 - **macOS:** an Apple Developer Program organization membership, a `Developer ID
-  Application` certificate for the app/executables, a `Developer ID Installer` certificate
+Application` certificate for the app/executables, a `Developer ID Installer` certificate
   for the PKG, and App Store Connect notarization credentials (API key, issuer ID, key ID,
   and Team ID). Sign with hardened runtime, notarize, and staple the ticket.
 - **Linux:** a release GPG key held outside the repository for detached checksums now and

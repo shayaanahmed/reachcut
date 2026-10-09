@@ -5,8 +5,10 @@ This is the technical source of truth for the native ReachCut release system on 
 the build and runtime flows, Personal and Stable channels, installation behavior, release
 commands, validation, and the work still required before customer distribution.
 
-The release record in this handbook describes commit `f91eb7d` and the successful internal
-release `personal-v0.1.6` built on 2026-10-09. Update this document whenever the release
+The release record in this handbook describes commit `f91eb7d` and internal build
+`personal-v0.1.6` from 2026-10-09. That build's packaging jobs passed, but macOS testing
+later found non-portable absolute symbolic links in both Python and Next.js. Do not use or
+distribute its macOS or Linux artifacts. Update this document whenever the release
 architecture, installer layout, profiles, CI workflow, or customer procedure changes.
 
 ## 1. Current release status
@@ -14,20 +16,20 @@ architecture, installer layout, profiles, CI workflow, or customer procedure cha
 The release system can build native, self-contained application installers for four
 targets:
 
-| Target              | Native output                 | Current CI status   |
-| ------------------- | ----------------------------- | ------------------- |
-| Windows x64         | Inno Setup `.exe`             | Builds successfully |
-| macOS Apple Silicon | `.pkg` and `.dmg`             | Builds successfully |
-| macOS Intel         | `.pkg` and `.dmg`             | Builds successfully |
-| Ubuntu/Debian x64   | `.deb` and portable `.tar.gz` | Builds successfully |
+| Target              | Native output                 | `personal-v0.1.6` status                          |
+| ------------------- | ----------------------------- | ------------------------------------------------- |
+| Windows x64         | Inno Setup `.exe`             | Built; installed-runtime smoke test was absent    |
+| macOS Apple Silicon | `.pkg` and `.dmg`             | Rejected: absolute staged links                   |
+| macOS Intel         | `.pkg` and `.dmg`             | Rejected: Python and Next.js cannot start         |
+| Ubuntu/Debian x64   | `.deb` and portable `.tar.gz` | Rejected pending rebuild; same POSIX staging path |
 
-The successful `personal-v0.1.6` workflow is:
+The packaging-only `personal-v0.1.6` workflow is:
 
 <https://github.com/shayaanahmed/reachcut/actions/runs/37910408826>
 
-Those artifacts are **unsigned internal-test builds**. They are not ready to be presented
-as customer releases. Code signing, Apple notarization, release publication, automatic
-updates, rollback, and customer clean-machine testing remain release gates.
+Those artifacts are **superseded unsigned internal-test builds**. They are not ready to be
+presented as customer releases. Code signing, Apple notarization, release publication,
+automatic updates, rollback, and customer clean-machine testing remain release gates.
 
 The code currently lives on `release-bundle`. The repository's default branch is `main`
 (locally it is also available as `master`/`origin/main` at the same older commit). The
@@ -165,9 +167,14 @@ The detailed sequence is:
 7. The tag or manual input is converted into a semantic version and channel.
 8. `packaging/build-release.mjs` builds Next.js.
 9. The same script invokes PyInstaller `6.16.0` through uv.
-10. `packaging/build-stage.mjs` creates one immutable payload tree.
+10. `packaging/build-stage.mjs` creates one immutable payload tree, preserving POSIX links
+    verbatim and rejecting absolute, escaping, or broken links.
 11. The platform-specific builder wraps that stage into native installers.
-12. GitHub uploads the resulting files as workflow artifacts for 14 days.
+12. CI installs the EXE, PKG, or DEB on its native runner and starts the installed API and
+    web runtimes; Linux also starts the extracted portable archive and macOS verifies the
+    DMG.
+13. GitHub uploads the resulting files as workflow artifacts for 14 days only if those
+    installed-runtime smoke tests pass.
 
 The workflow does not currently create a GitHub Release. This is deliberate while the
 artifacts are unsigned.
@@ -352,7 +359,7 @@ changed to support release behavior.
 | `.env.example`                             | Modified | Documents branded gateway ports/hostname and the long Ollama pull timeout. Used as developer configuration guidance.                                                   |
 | `.gitattributes`                           | New      | Forces LF text across CI platforms and marks installers/images as binary. This prevents Windows checkout encoding/newline differences from breaking source validation. |
 | `.gitignore`                               | Modified | Ignores all generated `build/` stages, PyInstaller work, installers, and downloaded CI artifacts.                                                                      |
-| `.github/workflows/release-installers.yml` | New      | Defines the four-platform release matrix, version/channel resolution, validation, installer build, and 14-day artifact upload.                                         |
+| `.github/workflows/release-installers.yml` | New      | Defines the four-platform native-runner matrix, version/channel resolution, validation, installer build/install/runtime smoke tests, and 14-day artifact upload.       |
 | `README.md`                                | Modified | Adds local-agent use, branded URL, Personal/Stable build commands, installer outputs, and first-run setup summary.                                                     |
 | `package.json`                             | Modified | Adds agent/build scripts, pins `pnpm@11.19.0`, includes static FFmpeg/ffprobe packages, and makes API checks/tests install dev extras.                                 |
 | `pnpm-workspace.yaml`                      | Modified | Allows the aliased static ffprobe package's install/build behavior.                                                                                                    |
@@ -367,9 +374,10 @@ changed to support release behavior.
 | `packaging/release-profile.mjs`       | New   | Single source of truth for Personal and Stable names, IDs, slugs, ports, origins, and data-directory names. Imported by both release and staging scripts.                       |
 | `packaging/release-profile.test.mjs`  | New   | Proves that Personal and Stable identities/ports are distinct and rejects unknown channels.                                                                                     |
 | `packaging/build-release.mjs`         | New   | Top-level native build orchestrator. Validates semantic versions, builds Next.js, invokes PyInstaller, stages files, and dispatches to the current OS builder without a shell.  |
-| `packaging/build-stage.mjs`           | New   | Creates the immutable stage, copies runtimes/assets, validates required outputs and safe destination paths, and writes `reachcut-package.json`.                                 |
-| `packaging/copy-directory.mjs`        | New   | Windows-specific safe copier that reads pnpm links and copies their real targets as ordinary files/directories. Avoids Windows symlink privileges and Node/robocopy failures.   |
-| `packaging/copy-directory.test.mjs`   | New   | Regression test proving linked files/directories become ordinary staged content. Included in `pnpm test:agent` and therefore in `pnpm test`/CI.                                 |
+| `packaging/build-stage.mjs`           | New   | Creates the immutable stage, copies runtimes/assets, validates required outputs and portable links, and writes `reachcut-package.json`.                                         |
+| `packaging/copy-directory.mjs`        | New   | Dereferences links for Windows, preserves relative links on POSIX, and rejects absolute, escaping, or broken staged links.                                                      |
+| `packaging/copy-directory.test.mjs`   | New   | Regression tests for Windows-style dereferencing and portable POSIX-link preservation/validation. Included in `pnpm test:agent` and therefore in `pnpm test`/CI.                |
+| `packaging/smoke-installed.mjs`       | New   | CI smoke harness that starts the Node supervisor from an installed/extracted native package, waits for API/web/gateway readiness, redacts the bootstrap token, and shuts down.  |
 | `packaging/runtime/api_entry.py`      | New   | Executable entry point for the packaged API. Starts uvicorn on loopback and also supports recursive `-m yt_dlp` calls used by URL imports.                                      |
 | `packaging/runtime/reachcut-api.spec` | New   | PyInstaller recipe. Collects dynamic modules, native libraries, model metadata, and plugin data for clipper, AV, CTranslate2, OpenCV, faster-whisper, ONNX Runtime, and yt-dlp. |
 
@@ -532,9 +540,9 @@ Use Personal for private daily use and release qualification.
 10. Install it and run the smoke-test checklist below.
 11. Use the Personal build for real work long enough to expose upgrade/runtime problems.
 
-The failed/obsolete `personal-v0.1.0` through `personal-v0.1.5` tags are historical CI
-attempts. Do not reuse them. `personal-v0.1.6` is the first tag whose complete
-cross-platform matrix passed.
+The obsolete `personal-v0.1.0` through `personal-v0.1.6` tags are historical CI attempts.
+Do not reuse them. Although all four `personal-v0.1.6` packaging jobs passed, installed
+macOS testing rejected that release because the staged symlinks pointed to the CI runner.
 
 ## 13. Stable release procedure
 
@@ -691,6 +699,15 @@ Until these exist, upgrades need an explicit backup and manual smoke test.
 - Machine licensing is not implemented.
 - Clean-machine install/upgrade/uninstall qualification is incomplete.
 
+### Superseded Personal 0.1.6 artifacts
+
+Node's default recursive copy behavior rewrote relative PyInstaller and Next.js links as
+absolute paths into the GitHub runner workspace. The macOS package therefore could not
+load `_internal/Python` or `next` after installation. Linux used the same POSIX staging
+path and is also rejected. The corrected copier preserves the original relative link text,
+validates every staged link, and the workflow now starts the installed runtime before it
+uploads artifacts.
+
 ### Background-start browser authorization
 
 Background startup launches the agent with `--no-browser`. The agent's session secret is
@@ -749,14 +766,15 @@ across `packaging/`, workflow files, docs, tests, and UI copy to prevent drift.
 
 ## 20. Personal 0.1.6 release record
 
-| Item            | Value                                                       |
-| --------------- | ----------------------------------------------------------- |
-| Source commit   | `f91eb7dcde67b74c7914c437b62c1573f66a5ac6`                  |
-| Tag             | `personal-v0.1.6`                                           |
-| Workflow run    | `37910408826`                                               |
-| Result          | Windows x64, macOS arm64, macOS Intel, and Linux x64 passed |
-| Signing         | None; internal test only                                    |
-| Artifact expiry | 2026-10-23                                                  |
+| Item            | Value                                                        |
+| --------------- | ------------------------------------------------------------ |
+| Source commit   | `f91eb7dcde67b74c7914c437b62c1573f66a5ac6`                   |
+| Tag             | `personal-v0.1.6`                                            |
+| Workflow run    | `37910408826`                                                |
+| CI result       | All four packaging jobs passed                               |
+| Runtime result  | Rejected after Intel macOS installation exposed broken links |
+| Signing         | None; internal test only                                     |
+| Artifact expiry | 2026-10-23                                                   |
 
 GitHub artifact archive sizes:
 
@@ -774,6 +792,8 @@ Downloaded Apple Silicon files:
 | `ReachCut-Personal-0.1.6-macos-arm64.pkg` | `1d99be91313f7e231efaf77e7222e1fdf44be1ac75e4b6a247266e39113f48da` |
 | `ReachCut-Personal-0.1.6-macos-arm64.dmg` | `9c2475b73622054f23dfbdf62ca640baaefb378b0595cc3aff1d7a6d0ff1eabf` |
 
-The DMG checksum verification passed. The PKG structure contains the Personal app,
-generated package manifest, agent scripts, and `com.reachcut.personal.agent.plist`; its
-lack of signature is expected for this internal candidate.
+The DMG checksum verification passed, but that verified archive integrity rather than
+application startup. The PKG structure contains the Personal app, generated package
+manifest, agent scripts, and `com.reachcut.personal.agent.plist`; its lack of signature is
+expected for this internal candidate. The artifact must not be used despite its successful
+packaging job and checksum.

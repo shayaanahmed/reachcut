@@ -15,7 +15,11 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { copyDirectoryDereferenced } from "./copy-directory.mjs";
+import {
+  copyDirectoryDereferenced,
+  copyDirectoryPreservingLinks,
+  validatePortableLinks,
+} from "./copy-directory.mjs";
 import { profileDataDirectory, releaseProfile } from "./release-profile.mjs";
 
 const require = createRequire(import.meta.url);
@@ -41,7 +45,7 @@ function requireDirectory(directory, description) {
 async function copyDirectory(source, destination, description) {
   console.log(`Copying ${description}...`);
   if (process.platform !== "win32") {
-    cpSync(source, destination, { recursive: true });
+    await copyDirectoryPreservingLinks(source, destination);
     return;
   }
 
@@ -178,6 +182,8 @@ if (existsSync(licensePath)) {
     readFileSync(licensePath),
   );
 }
+
+await validatePortableLinks(outputDirectory);
 
 console.log(
   `Staged ${profile.displayName} ${version} for ${platform}-${architecture}`,
