@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=@REACHCUT_DISPLAY_NAME@
+Comment=Local AI video clipping
+Exec=/usr/bin/@REACHCUT_SLUG@
+Icon=@REACHCUT_SLUG@
+Terminal=false
+Categories=AudioVideo;Video;
+StartupNotify=true

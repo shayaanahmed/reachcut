@@ -5,12 +5,13 @@ description = "Local-first AI video clipping control plane"
 requires-python = ">=3.12,<3.14"
 dependencies = [
   "alembic>=1.16,<2",
-  "cryptography>=50,<51",
+  "cryptography==46.0.7",
   "fastapi>=0.138,<0.139",
   "faster-whisper>=1.2.1,<2",
   "httpx>=0.28,<0.29",
   "opencv-python-headless>=4.10,<5",
   "numpy>=2,<3",
+  "onnxruntime==1.23.1",
   "pydantic>=2.10,<3",
   "pydantic-settings>=2.10,<3",
   "python-multipart>=0.0.20,<0.1",

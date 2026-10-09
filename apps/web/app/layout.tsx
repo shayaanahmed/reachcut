@@ -3,9 +3,14 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import "./styles.css";
 
+const personalBuild = process.env.NEXT_PUBLIC_REACHCUT_CHANNEL === "personal";
+const applicationName = personalBuild ? "ReachCut Personal" : "ReachCut";
+
 export const metadata: Metadata = {
-  title: "ReachCut — Video repurposing workspace",
+  title: `${applicationName} — Video repurposing workspace`,
   description: "A private, local-first workspace for creating vertical clips",
+  applicationName,
+  manifest: "/manifest.webmanifest",
 };
 
 export default function RootLayout({
@@ -16,11 +21,17 @@ export default function RootLayout({
       <body>
         <div className="app-shell">
           <aside className="sidebar">
-            <Link className="brand" href="/" aria-label="ReachCut dashboard">
+            <Link
+              className="brand"
+              href="/"
+              aria-label={`${applicationName} dashboard`}
+            >
               <span className="brand-mark">R</span>
               <span>
-                <strong>ReachCut</strong>
-                <small>Local studio</small>
+                <strong>{applicationName}</strong>
+                <small>
+                  {personalBuild ? "Personal channel" : "Local studio"}
+                </small>
               </span>
             </Link>
             <nav aria-label="Primary navigation">
@@ -35,6 +46,9 @@ export default function RootLayout({
               </Link>
               <Link href="/settings/accounts">
                 <span aria-hidden="true">⚙</span> Accounts
+              </Link>
+              <Link href="/setup">
+                <span aria-hidden="true">✓</span> Setup
               </Link>
             </nav>
             <div className="sidebar-footer">

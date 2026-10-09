@@ -1,0 +1,172 @@
+name: Release installers
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Semantic version to package
+        required: true
+        default: 0.1.0
+      channel:
+        description: Isolated application channel
+        required: true
+        default: personal
+        type: choice
+        options:
+          - personal
+          - stable
+  push:
+    tags:
+      - "v*"
+      - "personal-v*"
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-2025
+          - name: macOS Apple Silicon
+            os: macos-15
+          - name: macOS Intel
+            os: macos-15-intel
+          - name: Linux x64
+            os: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      UV_LINK_MODE: copy
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+          run_install: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24.11.1"
+          cache: pnpm
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate source and tests
+        run: |
+          pnpm check
+          pnpm test
+
+      - name: Install Inno Setup
+        if: runner.os == 'Windows'
+        run: choco install innosetup --yes --no-progress
+
+      - name: Resolve release version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="${{ inputs.version }}"
+          elif [[ "$GITHUB_REF_NAME" == personal-v* ]]; then
+            version="${GITHUB_REF_NAME#personal-v}"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve release channel
+        id: channel
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            channel="${{ inputs.channel }}"
+          elif [[ "$GITHUB_REF_NAME" == personal-v* ]]; then
+            channel="personal"
+          else
+            channel="stable"
+          fi
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+
+      - name: Build native installer
+        run: pnpm build:installer -- --version "${{ steps.version.outputs.version }}" --channel "${{ steps.channel.outputs.channel }}"
+
+      - name: Install and smoke-test Windows package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem build/installers -Filter '*-setup.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'Windows installer was not produced' }
+          $installRoot = Join-Path $env:RUNNER_TEMP 'reachcut-installed'
+          $process = Start-Process -FilePath $installer.FullName -ArgumentList @(
+            '/VERYSILENT',
+            '/SUPPRESSMSGBOXES',
+            '/NORESTART',
+            "/DIR=$installRoot"
+          ) -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Installer exited with $($process.ExitCode)" }
+          node packaging/smoke-installed.mjs --root $installRoot
+
+      - name: Install and smoke-test macOS package
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          pkg_path="$(find build/installers -name '*.pkg' -print -quit)"
+          dmg_path="$(find build/installers -name '*.dmg' -print -quit)"
+          test -n "$pkg_path"
+          test -n "$dmg_path"
+          hdiutil verify "$dmg_path"
+          sudo installer -pkg "$pkg_path" -target /
+          if [ "${{ steps.channel.outputs.channel }}" = personal ]; then
+            app_name='ReachCut Personal'
+          else
+            app_name='ReachCut'
+          fi
+          node packaging/smoke-installed.mjs \
+            --root "/Applications/$app_name.app/Contents/Resources/app"
+
+      - name: Install and smoke-test Linux packages
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          deb_path="$(find build/installers -name '*.deb' -print -quit)"
+          portable_path="$(find build/installers -name '*-portable.tar.gz' -print -quit)"
+          test -n "$deb_path"
+          test -n "$portable_path"
+          sudo dpkg -i "$deb_path"
+          if [ "${{ steps.channel.outputs.channel }}" = personal ]; then
+            install_root='/opt/reachcut-personal'
+          else
+            install_root='/opt/reachcut'
+          fi
+          node packaging/smoke-installed.mjs --root "$install_root"
+          portable_root="$RUNNER_TEMP/reachcut-portable"
+          mkdir -p "$portable_root"
+          tar -xzf "$portable_path" -C "$portable_root"
+          manifest_path="$(find "$portable_root" -name reachcut-package.json -print -quit)"
+          test -n "$manifest_path"
+          node packaging/smoke-installed.mjs --root "$(dirname "$manifest_path")"
+
+      - name: Upload unsigned installer
+        uses: actions/upload-artifact@v5
+        with:
+          name: reachcut-${{ steps.channel.outputs.channel }}-${{ runner.os }}-${{ runner.arch }}
+          path: build/installers/*
+          if-no-files-found: error
+          retention-days: 14

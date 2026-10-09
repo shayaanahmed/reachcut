@@ -1,6 +1,5 @@
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
-export const UPLOAD_API_URL =
-  process.env.NEXT_PUBLIC_UPLOAD_API_URL ?? "http://127.0.0.1:8000/api";
+export const UPLOAD_API_URL = process.env.NEXT_PUBLIC_UPLOAD_API_URL ?? API_URL;
 
 export async function responseError(
   response: Response,

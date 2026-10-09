@@ -152,6 +152,124 @@ body {
 a {
   color: inherit;
 }
+
+.setup-page {
+  max-width: 920px;
+}
+.setup-hero {
+  margin-bottom: 28px;
+}
+.setup-hero h1,
+.setup-loading h1 {
+  margin: 8px 0;
+  font-size: clamp(32px, 5vw, 50px);
+  letter-spacing: -0.045em;
+}
+.setup-hero p,
+.setup-footer p {
+  color: var(--muted);
+  line-height: 1.6;
+}
+.setup-checklist {
+  display: grid;
+  gap: 12px;
+}
+.setup-checklist article {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+.setup-checklist article.complete {
+  border-color: #bcebd7;
+}
+.setup-checklist article.warning {
+  border-color: #f1ca8f;
+  background: var(--amber-soft);
+}
+.setup-step {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+  font-weight: 900;
+}
+.setup-checklist .complete .setup-step {
+  color: #176c4b;
+  background: var(--green-soft);
+}
+.setup-checklist small {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+}
+.setup-checklist h2 {
+  margin: 5px 0;
+  font-size: 20px;
+}
+.setup-checklist p {
+  max-width: 590px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.setup-action {
+  min-width: 142px;
+  text-align: right;
+}
+.setup-action strong {
+  color: #176c4b;
+  font-size: 13px;
+}
+.setup-action button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.setup-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-top: 22px;
+}
+.setup-footer > div {
+  display: flex;
+  gap: 10px;
+}
+.setup-error {
+  margin-bottom: 16px;
+}
+.setup-loading {
+  padding-top: 18vh;
+}
+
+@media (max-width: 700px) {
+  .setup-checklist article {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+  .setup-action {
+    grid-column: 2;
+    text-align: left;
+  }
+  .setup-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .setup-footer > div,
+  .setup-footer button {
+    width: 100%;
+  }
+}
 button,
 input,
 select,

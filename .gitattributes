@@ -1,0 +1,15 @@
+* text=auto eol=lf
+
+*.ico binary
+*.icns binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.zip binary
+*.gz binary
+*.dmg binary
+*.pkg binary
+*.exe binary
+*.deb binary
+

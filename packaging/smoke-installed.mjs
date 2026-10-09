@@ -1,0 +1,337 @@
+#!/usr/bin/env node
+
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import http from "node:http";
+import net from "node:net";
+import os from "node:os";
+import path from "node:path";
+import process from "node:process";
+
+function option(name) {
+  const index = process.argv.indexOf(name);
+  return index === -1 ? null : process.argv[index + 1];
+}
+
+function redact(output) {
+  return output.replaceAll(/(#token=)[^\s]+/g, "$1[redacted]");
+}
+
+function gatewayIsRunning(hostname, port, timeoutMs = 1_000) {
+  return new Promise((resolve) => {
+    const authority = `${hostname}${port === 80 ? "" : `:${port}`}`;
+    const request = http.get(
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/__reachcut/health",
+        headers: { Host: authority },
+      },
+      (response) => {
+        response.resume();
+        resolve(response.statusCode === 200);
+      },
+    );
+    request.setTimeout(timeoutMs, () => request.destroy());
+    request.once("error", () => resolve(false));
+  });
+}
+
+function portIsListening(port, timeoutMs = 500) {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host: "127.0.0.1", port });
+    const finish = (listening) => {
+      socket.destroy();
+      resolve(listening);
+    };
+    socket.setTimeout(timeoutMs, () => finish(false));
+    socket.once("connect", () => finish(true));
+    socket.once("error", () => finish(false));
+  });
+}
+
+async function waitForInstallerStartedAgent() {
+  const occupied = await Promise.all([
+    portIsListening(manifest.localPort),
+    portIsListening(manifest.internalApiPort),
+    portIsListening(manifest.internalWebPort),
+  ]);
+  if (!occupied.some(Boolean)) return false;
+
+  console.log("ReachCut ports are active; waiting for the installed agent…");
+  const deadline = Date.now() + 120_000;
+  while (Date.now() < deadline) {
+    if (await gatewayIsRunning(manifest.localHostname, manifest.localPort)) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error(
+    "Installed ReachCut processes occupied their ports but did not become healthy",
+  );
+}
+
+function gatewayRequest({ port, path: requestPath, method = "GET", headers }) {
+  return new Promise((resolve, reject) => {
+    const request = http.request(
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: requestPath,
+        method,
+        headers,
+      },
+      (response) => {
+        const chunks = [];
+        response.on("data", (chunk) => chunks.push(chunk));
+        response.on("end", () =>
+          resolve({
+            status: response.statusCode,
+            headers: response.headers,
+            body: Buffer.concat(chunks).toString("utf8"),
+          }),
+        );
+      },
+    );
+    request.setTimeout(5_000, () =>
+      request.destroy(new Error("Timed out loading the installed application")),
+    );
+    request.once("error", reject);
+    request.end();
+  });
+}
+
+async function verifyBrowserUi(launchUrl) {
+  const url = new URL(launchUrl);
+  const token = new URLSearchParams(url.hash.slice(1)).get("token");
+  if (!token) throw new Error("Browser URL did not include a bootstrap token");
+
+  const authority = url.host;
+  const origin = url.origin;
+  const exchange = await gatewayRequest({
+    port: manifest.localPort,
+    path: "/__reachcut/session",
+    method: "POST",
+    headers: {
+      Host: authority,
+      Origin: origin,
+      "Content-Length": "0",
+      "X-ReachCut-Bootstrap": token,
+    },
+  });
+  if (exchange.status !== 204) {
+    throw new Error(
+      `Installed browser authorization failed (HTTP ${exchange.status ?? "unknown"}): ${exchange.body}`,
+    );
+  }
+  const setCookie = exchange.headers["set-cookie"]?.[0];
+  const cookie = setCookie?.split(";", 1)[0];
+  if (!cookie) {
+    throw new Error("Installed browser authorization did not set a cookie");
+  }
+
+  const page = await gatewayRequest({
+    port: manifest.localPort,
+    path: "/",
+    headers: { Host: authority, Cookie: cookie },
+  });
+  if (
+    page.status !== 200 ||
+    !page.headers["content-type"]?.includes("text/html")
+  ) {
+    throw new Error(
+      `Installed web UI did not load (HTTP ${page.status ?? "unknown"}): ${page.body.slice(0, 500)}`,
+    );
+  }
+}
+
+async function stopProcessTree(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+
+  if (process.platform === "win32" && child.pid) {
+    spawnSync("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
+      shell: false,
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    return;
+  }
+
+  const exited = new Promise((resolve) => child.once("exit", resolve));
+  child.kill("SIGTERM");
+  if (
+    (await Promise.race([
+      exited,
+      new Promise((resolve) => setTimeout(resolve, 15_000, "timeout")),
+    ])) === "timeout"
+  ) {
+    child.kill("SIGKILL");
+  }
+}
+
+const root = path.resolve(option("--root") ?? "");
+const manifestPath = path.join(root, "reachcut-package.json");
+if (!existsSync(manifestPath)) {
+  throw new Error(`Installed package manifest is missing: ${manifestPath}`);
+}
+
+const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+if (manifest?.schemaVersion !== 1) {
+  throw new Error(`Unsupported installed package manifest: ${manifestPath}`);
+}
+
+const executable = path.join(
+  root,
+  "runtime",
+  process.platform === "win32" ? "node.exe" : "node",
+);
+const agent = path.join(root, "scripts", "reachcut-agent.mjs");
+for (const requiredPath of [executable, agent]) {
+  if (!existsSync(requiredPath)) {
+    throw new Error(`Installed runtime file is missing: ${requiredPath}`);
+  }
+}
+
+if (process.platform === "darwin") {
+  const launcher = path.resolve(root, "..", "..", "MacOS", "ReachCut");
+  if (!existsSync(launcher)) {
+    throw new Error(`Installed native macOS launcher is missing: ${launcher}`);
+  }
+  const launcherBytes = await readFile(launcher);
+  const magic = launcherBytes.readUInt32BE(0);
+  const machOMagic = new Set([
+    0xfeedface, 0xcefaedfe, 0xfeedfacf, 0xcffaedfe, 0xcafebabe, 0xbebafeca,
+  ]);
+  if (!machOMagic.has(magic)) {
+    throw new Error(
+      "Installed macOS launcher is not a native Mach-O executable",
+    );
+  }
+}
+
+async function requestPrintedLaunch(environment) {
+  const launcher = spawn(
+    executable,
+    [agent, "--production", "--print-browser-url"],
+    {
+      cwd: root,
+      env: { ...environment, REACHCUT_NO_BROWSER: "0" },
+      shell: false,
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    },
+  );
+  let launcherOutput = "";
+  for (const stream of [launcher.stdout, launcher.stderr]) {
+    stream.on("data", (chunk) => {
+      launcherOutput = `${launcherOutput}${chunk}`.slice(-20_000);
+    });
+  }
+  return new Promise((resolve, reject) => {
+    const launcherTimeout = setTimeout(() => {
+      void stopProcessTree(launcher).finally(() =>
+        reject(new Error("Timed out testing a second app launch")),
+      );
+    }, 10_000);
+    launcher.once("error", (error) => {
+      clearTimeout(launcherTimeout);
+      reject(error);
+    });
+    launcher.once("exit", (code, signal) => {
+      clearTimeout(launcherTimeout);
+      const url = launcherOutput.match(/One-time browser URL: (\S+)/)?.[1];
+      if (code !== 0 || !url) {
+        reject(
+          new Error(
+            `Second app launch did not receive a browser URL (${signal ?? `exit ${code}`}).\n${redact(launcherOutput)}`,
+          ),
+        );
+        return;
+      }
+      resolve(url);
+    });
+  });
+}
+
+const backgroundAgentReady =
+  (await gatewayIsRunning(manifest.localHostname, manifest.localPort)) ||
+  (await waitForInstallerStartedAgent());
+
+if (backgroundAgentReady) {
+  const launchUrl = await requestPrintedLaunch(process.env);
+  await verifyBrowserUi(launchUrl);
+  console.log(
+    `Installed background agent, authorization, and web UI smoke tests passed for ${manifest.product} ${manifest.version}`,
+  );
+  process.exit(0);
+}
+
+const dataDirectory = await mkdtemp(
+  path.join(os.tmpdir(), "reachcut-installed-smoke-"),
+);
+const runtimeEnvironment = {
+  ...process.env,
+  REACHCUT_DATA_DIR: dataDirectory,
+};
+const child = spawn(executable, [agent, "--production", "--no-browser"], {
+  cwd: root,
+  env: {
+    ...runtimeEnvironment,
+    REACHCUT_NO_BROWSER: "1",
+  },
+  shell: false,
+  stdio: ["ignore", "pipe", "pipe"],
+  windowsHide: true,
+});
+
+let output = "";
+const collect = (chunk) => {
+  output = `${output}${chunk}`.slice(-100_000);
+};
+child.stdout.on("data", collect);
+child.stderr.on("data", collect);
+
+let timeout;
+try {
+  await new Promise((resolve, reject) => {
+    const ready = () => {
+      if (output.includes("One-time browser URL:")) resolve();
+    };
+    child.stdout.on("data", ready);
+    child.once("error", reject);
+    child.once("exit", (code, signal) => {
+      reject(
+        new Error(
+          `Installed ReachCut stopped before becoming ready (${signal ?? `exit ${code}`}).\n${redact(output)}`,
+        ),
+      );
+    });
+    timeout = setTimeout(
+      () =>
+        reject(
+          new Error(
+            `Timed out waiting for installed ReachCut.\n${redact(output)}`,
+          ),
+        ),
+      120_000,
+    );
+  });
+  const initialUrl = output.match(/One-time browser URL: (\S+)/)?.[1];
+  if (!initialUrl) throw new Error("Cold start did not print a browser URL");
+
+  const activatedUrl = await requestPrintedLaunch(runtimeEnvironment);
+  if (activatedUrl === initialUrl) {
+    throw new Error(
+      "Second app launch reused the cold-start browser authorization URL",
+    );
+  }
+  await verifyBrowserUi(activatedUrl);
+  console.log(
+    `Installed runtime, second-launch, authorization, and web UI smoke tests passed for ${manifest.product} ${manifest.version}`,
+  );
+} finally {
+  clearTimeout(timeout);
+  await stopProcessTree(child);
+  await rm(dataDirectory, { recursive: true, force: true });
+}

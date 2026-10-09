@@ -1,0 +1,12 @@
+[Unit]
+Description=@REACHCUT_DISPLAY_NAME@ local application agent
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=@REACHCUT_INSTALL_ROOT@/runtime/node @REACHCUT_INSTALL_ROOT@/scripts/reachcut-agent.mjs --production --no-browser
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

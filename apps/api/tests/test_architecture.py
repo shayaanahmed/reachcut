@@ -14,7 +14,7 @@ FORBIDDEN_PURE_IMPORTS = (
 
 
 def imported_modules(path: Path) -> list[str]:
-    tree = ast.parse(path.read_text(), filename=str(path))
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     modules: list[str] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -53,7 +53,7 @@ def test_pure_rendering_and_media_policy_do_not_execute_processes() -> None:
 
 def test_subprocesses_never_enable_a_shell() -> None:
     for path in API_ROOT.rglob("*.py"):
-        tree = ast.parse(path.read_text(), filename=str(path))
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
@@ -66,7 +66,7 @@ def test_subprocesses_never_enable_a_shell() -> None:
 
 def test_web_page_remains_a_small_composition_root() -> None:
     page = WEB_ROOT / "app" / "page.tsx"
-    source = page.read_text()
+    source = page.read_text(encoding="utf-8")
     assert len(source.splitlines()) < 100
     assert "lib/api" not in source
     assert "useProjectWorkbench" in source
