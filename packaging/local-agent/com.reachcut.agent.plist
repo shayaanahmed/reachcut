@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.reachcut.agent</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>@REACHCUT_AGENT_EXECUTABLE@</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>@REACHCUT_INSTALL_DIR@</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+      <key>SuccessfulExit</key>
+      <false/>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>@REACHCUT_LOG_DIR@/agent.log</string>
+    <key>StandardErrorPath</key>
+    <string>@REACHCUT_LOG_DIR@/agent-error.log</string>
+  </dict>
+</plist>

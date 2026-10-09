@@ -233,3 +233,17 @@ class HealthResponse(BaseModel):
     ffprobe: bool
     editorial_provider: str
     transcription_provider: str
+
+
+class SetupStatusResponse(BaseModel):
+    ready: bool
+    ffmpeg: bool
+    ffprobe: bool
+    ollama_available: bool
+    ollama_version: str | None
+    ollama_install_url: str
+    editorial_model: str
+    editorial_model_installed: bool
+    editorial_model_size_bytes: int | None
+    whisper_model: str
+    whisper_download_on_first_use: bool

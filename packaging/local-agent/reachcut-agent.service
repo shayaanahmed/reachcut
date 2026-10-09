@@ -1,0 +1,14 @@
+[Unit]
+Description=ReachCut local agent
+After=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=@REACHCUT_INSTALL_DIR@
+ExecStart=@REACHCUT_AGENT_EXECUTABLE@
+Restart=on-failure
+RestartSec=5
+Environment=REACHCUT_LOCAL_HOSTNAME=studio.reachcut.localhost
+
+[Install]
+WantedBy=default.target

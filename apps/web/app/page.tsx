@@ -1,8 +1,8 @@
 "use client";
 
-import { Dashboard } from "../features/projects/dashboard";
 import { useProjectWorkbench } from "../features/projects/use-project-workbench";
+import { SetupGate } from "../features/setup/setup-gate";
 
 export default function Home() {
-  return <Dashboard workbench={useProjectWorkbench()} />;
+  return <SetupGate workbench={useProjectWorkbench()} />;
 }

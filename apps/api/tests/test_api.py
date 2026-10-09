@@ -22,6 +22,20 @@ def test_health_exposes_local_dependencies() -> None:
     assert response.json()["editorial_provider"].startswith("ollama:")
 
 
+def test_local_agent_token_blocks_direct_api_access(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "local_agent_token", "agent-secret")
+    with TestClient(app) as client:
+        rejected = client.get("/api/health")
+        accepted = client.get(
+            "/api/health",
+            headers={"X-ReachCut-Agent-Token": "agent-secret"},
+        )
+
+    assert rejected.status_code == 403
+    assert rejected.json() == {"detail": "local agent authorization required"}
+    assert accepted.status_code == 200
+
+
 def test_upload_requires_rights_confirmation() -> None:
     with TestClient(app) as client:
         response = client.post(

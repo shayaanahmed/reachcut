@@ -6,6 +6,8 @@ import "./styles.css";
 export const metadata: Metadata = {
   title: "ReachCut — Video repurposing workspace",
   description: "A private, local-first workspace for creating vertical clips",
+  applicationName: "ReachCut",
+  manifest: "/manifest.webmanifest",
 };
 
 export default function RootLayout({
@@ -35,6 +37,9 @@ export default function RootLayout({
               </Link>
               <Link href="/settings/accounts">
                 <span aria-hidden="true">⚙</span> Accounts
+              </Link>
+              <Link href="/setup">
+                <span aria-hidden="true">✓</span> Setup
               </Link>
             </nav>
             <div className="sidebar-footer">

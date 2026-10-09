@@ -4,7 +4,7 @@ import { importProjectUrl, uploadProject } from "../features/projects/api";
 describe("media upload transport", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("bypasses the buffering Next.js rewrite proxy", async () => {
+  it("uses the authenticated same-origin gateway", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: false,
       status: 503,
@@ -16,7 +16,7 @@ describe("media upload transport", () => {
       "test response",
     );
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:8000/api/projects/upload",
+      "/api/projects/upload",
       expect.objectContaining({ method: "POST" }),
     );
   });
@@ -40,7 +40,7 @@ describe("URL import transport", () => {
     };
     await expect(importProjectUrl(request)).rejects.toThrow("test response");
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:8000/api/projects/import-url",
+      "/api/projects/import-url",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify(request),

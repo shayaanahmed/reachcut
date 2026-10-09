@@ -56,6 +56,37 @@ pnpm dev
 
 `pnpm dev` starts the API on port 8000 and web client on port 3000. Run `pnpm doctor` before processing media. Model downloads are explicit user actions; see [docs/models.md](docs/models.md).
 
+### Branded local application
+
+Run the supervised local application instead of exposing the development ports directly:
+
+```bash
+pnpm local
+```
+
+The ReachCut agent starts the API and web processes on private loopback ports, waits for
+their health checks, then opens a one-time authorized browser session at
+`http://studio.reachcut.localhost:47321`. The public gateway accepts only that hostname,
+keeps uploads on one origin, injects a private per-run API token, and stops its child
+processes on shutdown. Use `pnpm local:no-browser` on a machine where the URL must be
+opened manually. See [docs/local-agent.md](docs/local-agent.md) for the architecture,
+security model, packaging contract, configuration, and OS startup integration.
+
+Build a native customer installer on the target operating system with:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm build:installer -- --version 0.1.0
+```
+
+Artifacts are written to `build/installers/`. The release workflow builds Windows x64,
+macOS Apple Silicon, macOS Intel, and Linux x64 variants on matching hosted runners. See
+[docs/installers.md](docs/installers.md) for bundled components, startup behavior, signing,
+and release gates. The Milestone 0 installer intentionally stays application-only: first
+run detects Ollama, links to its official installer when missing, downloads the configured
+Qwen model only after confirmation, and explains Whisper's first-analysis download. Open
+`http://studio.reachcut.localhost:47321/setup` later to rerun those checks.
+
 ReachCut retains the existing `CLIPPER_*` environment-variable prefix, `clipper`
 Python import package, database filename, and Docker data-volume name for backward
 compatibility. The product rename does not require a configuration or data migration.

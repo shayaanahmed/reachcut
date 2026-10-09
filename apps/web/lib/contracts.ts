@@ -237,6 +237,20 @@ export const accountConnectionReadinessSchema = z.object({
   issues: z.array(z.string()),
 });
 
+export const setupStatusSchema = z.object({
+  ready: z.boolean(),
+  ffmpeg: z.boolean(),
+  ffprobe: z.boolean(),
+  ollama_available: z.boolean(),
+  ollama_version: z.string().nullable(),
+  ollama_install_url: z.string().url(),
+  editorial_model: z.string(),
+  editorial_model_installed: z.boolean(),
+  editorial_model_size_bytes: z.number().int().nullable(),
+  whisper_model: z.string(),
+  whisper_download_on_first_use: z.boolean(),
+});
+
 export const projectSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -279,3 +293,4 @@ export type SocialPlatform = z.infer<typeof socialPlatformSchema>;
 export type AccountConnectionReadiness = z.infer<
   typeof accountConnectionReadinessSchema
 >;
+export type SetupStatus = z.infer<typeof setupStatusSchema>;
