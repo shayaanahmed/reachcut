@@ -36,8 +36,18 @@ APP_DIR="$BUILD_DIR/root/Applications/$APP_BUNDLE"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources/app"
 # Build-host quarantine and Finder metadata must not leak into the application payload.
 cp -R -X "$STAGE_DIR/." "$APP_DIR/Contents/Resources/app/"
-cp "$SCRIPT_DIR/ReachCut" "$APP_DIR/Contents/MacOS/ReachCut"
-chmod 755 "$APP_DIR/Contents/MacOS/ReachCut"
+sed \
+  -e "s/__REACHCUT_AGENT_ID__/$AGENT_ID/g" \
+  "$SCRIPT_DIR/ReachCutLauncher.swift" \
+  > "$BUILD_DIR/ReachCutLauncher.swift"
+mkdir -p "$BUILD_DIR/swift-module-cache"
+xcrun swiftc \
+  -parse-as-library \
+  -module-cache-path "$BUILD_DIR/swift-module-cache" \
+  -O \
+  -framework AppKit \
+  "$BUILD_DIR/ReachCutLauncher.swift" \
+  -o "$APP_DIR/Contents/MacOS/ReachCut"
 sed \
   -e "s/__REACHCUT_VERSION__/$VERSION/g" \
   -e "s/__REACHCUT_NAME__/$APP_NAME/g" \

@@ -37,6 +37,80 @@ function gatewayIsRunning(hostname, port, timeoutMs = 1_000) {
   });
 }
 
+function gatewayRequest({ port, path: requestPath, method = "GET", headers }) {
+  return new Promise((resolve, reject) => {
+    const request = http.request(
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: requestPath,
+        method,
+        headers,
+      },
+      (response) => {
+        const chunks = [];
+        response.on("data", (chunk) => chunks.push(chunk));
+        response.on("end", () =>
+          resolve({
+            status: response.statusCode,
+            headers: response.headers,
+            body: Buffer.concat(chunks).toString("utf8"),
+          }),
+        );
+      },
+    );
+    request.setTimeout(5_000, () =>
+      request.destroy(new Error("Timed out loading the installed application")),
+    );
+    request.once("error", reject);
+    request.end();
+  });
+}
+
+async function verifyBrowserUi(launchUrl) {
+  const url = new URL(launchUrl);
+  const token = new URLSearchParams(url.hash.slice(1)).get("token");
+  if (!token) throw new Error("Browser URL did not include a bootstrap token");
+
+  const authority = url.host;
+  const origin = url.origin;
+  const exchange = await gatewayRequest({
+    port: manifest.localPort,
+    path: "/__reachcut/session",
+    method: "POST",
+    headers: {
+      Host: authority,
+      Origin: origin,
+      "Content-Length": "0",
+      "X-ReachCut-Bootstrap": token,
+    },
+  });
+  if (exchange.status !== 204) {
+    throw new Error(
+      `Installed browser authorization failed (HTTP ${exchange.status ?? "unknown"}): ${exchange.body}`,
+    );
+  }
+  const setCookie = exchange.headers["set-cookie"]?.[0];
+  const cookie = setCookie?.split(";", 1)[0];
+  if (!cookie) {
+    throw new Error("Installed browser authorization did not set a cookie");
+  }
+
+  const page = await gatewayRequest({
+    port: manifest.localPort,
+    path: "/",
+    headers: { Host: authority, Cookie: cookie },
+  });
+  if (
+    page.status !== 200 ||
+    !page.headers["content-type"]?.includes("text/html")
+  ) {
+    throw new Error(
+      `Installed web UI did not load (HTTP ${page.status ?? "unknown"}): ${page.body.slice(0, 500)}`,
+    );
+  }
+}
+
 async function stopProcessTree(child) {
   if (child.exitCode !== null || child.signalCode !== null) return;
 
@@ -81,6 +155,23 @@ const agent = path.join(root, "scripts", "reachcut-agent.mjs");
 for (const requiredPath of [executable, agent]) {
   if (!existsSync(requiredPath)) {
     throw new Error(`Installed runtime file is missing: ${requiredPath}`);
+  }
+}
+
+if (process.platform === "darwin") {
+  const launcher = path.resolve(root, "..", "..", "MacOS", "ReachCut");
+  if (!existsSync(launcher)) {
+    throw new Error(`Installed native macOS launcher is missing: ${launcher}`);
+  }
+  const launcherBytes = await readFile(launcher);
+  const magic = launcherBytes.readUInt32BE(0);
+  const machOMagic = new Set([
+    0xfeedface, 0xcefaedfe, 0xfeedfacf, 0xcffaedfe, 0xcafebabe, 0xbebafeca,
+  ]);
+  if (!machOMagic.has(magic)) {
+    throw new Error(
+      "Installed macOS launcher is not a native Mach-O executable",
+    );
   }
 }
 
@@ -129,9 +220,10 @@ async function requestPrintedLaunch(environment) {
 }
 
 if (await gatewayIsRunning(manifest.localHostname, manifest.localPort)) {
-  await requestPrintedLaunch(process.env);
+  const launchUrl = await requestPrintedLaunch(process.env);
+  await verifyBrowserUi(launchUrl);
   console.log(
-    `Installed background agent and second-launch smoke tests passed for ${manifest.product} ${manifest.version}`,
+    `Installed background agent, authorization, and web UI smoke tests passed for ${manifest.product} ${manifest.version}`,
   );
   process.exit(0);
 }
@@ -195,8 +287,9 @@ try {
       "Second app launch reused the cold-start browser authorization URL",
     );
   }
+  await verifyBrowserUi(activatedUrl);
   console.log(
-    `Installed runtime and second-launch smoke tests passed for ${manifest.product} ${manifest.version}`,
+    `Installed runtime, second-launch, authorization, and web UI smoke tests passed for ${manifest.product} ${manifest.version}`,
   );
 } finally {
   clearTimeout(timeout);

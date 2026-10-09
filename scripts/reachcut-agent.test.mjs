@@ -237,6 +237,29 @@ describe("authenticated local gateway", () => {
     assert.equal(await gatewayIsRunning(publicHostname, gatewayPort), true);
   });
 
+  test("reports the gateway as unavailable when the web process is down", async () => {
+    await close(webServer);
+    try {
+      const response = await request({
+        port: gatewayPort,
+        path: "/__reachcut/health",
+        headers: { Host: authority },
+      });
+      assert.equal(response.status, 503);
+      assert.deepEqual(JSON.parse(response.body), {
+        status: "starting",
+        api: true,
+        web: false,
+      });
+      assert.equal(await gatewayIsRunning(publicHostname, gatewayPort), false);
+    } finally {
+      await new Promise((resolve, reject) => {
+        webServer.once("error", reject);
+        webServer.listen(webPort, "127.0.0.1", resolve);
+      });
+    }
+  });
+
   test("requires a browser session for application routes", async () => {
     const response = await request({
       port: gatewayPort,

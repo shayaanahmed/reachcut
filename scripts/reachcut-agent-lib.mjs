@@ -21,6 +21,22 @@ const HOP_BY_HOP_HEADERS = new Set([
   "upgrade",
 ]);
 
+function upstreamIsReady(port, path, headers = {}, timeoutMs = 1_000) {
+  return new Promise((resolve) => {
+    const request = http.get(
+      { hostname: "127.0.0.1", port, path, headers },
+      (response) => {
+        response.resume();
+        resolve(
+          response.statusCode !== undefined && response.statusCode < 500,
+        );
+      },
+    );
+    request.setTimeout(timeoutMs, () => request.destroy());
+    request.once("error", () => resolve(false));
+  });
+}
+
 export function randomToken(bytes = 32) {
   return randomBytes(bytes).toString("base64url");
 }
@@ -569,7 +585,18 @@ export function createGateway({
       return;
     }
     if (request.method === "GET" && path === "/__reachcut/health") {
-      sendJson(response, 200, { status: "ok" });
+      void Promise.all([
+        upstreamIsReady(apiPort, "/api/health", {
+          "X-ReachCut-Agent-Token": apiToken,
+        }),
+        upstreamIsReady(webPort, "/"),
+      ]).then(([apiReady, webReady]) => {
+        sendJson(response, apiReady && webReady ? 200 : 503, {
+          status: apiReady && webReady ? "ok" : "starting",
+          api: apiReady,
+          web: webReady,
+        });
+      });
       return;
     }
     if (!authorized(request)) {

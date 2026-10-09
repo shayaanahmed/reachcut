@@ -390,7 +390,7 @@ changed to support release behavior.
 | `packaging/build-stage.mjs`           | New   | Creates the immutable stage, copies runtimes/assets, validates required outputs and portable links, and writes `reachcut-package.json`.                                           |
 | `packaging/copy-directory.mjs`        | New   | Dereferences links and materializes pnpm's hoisted dependency view for Windows, preserves relative links on POSIX, and rejects unsafe staged links.                               |
 | `packaging/copy-directory.test.mjs`   | New   | Regression tests for Windows dereferencing/module resolution and portable POSIX-link preservation/validation. Included in `pnpm test:agent` and therefore in `pnpm test`/CI.      |
-| `packaging/smoke-installed.mjs`       | New   | CI smoke harness that starts an installed/extracted package, verifies cold readiness, runs a second launcher, requires a fresh authorization URL, redacts tokens, and shuts down. |
+| `packaging/smoke-installed.mjs`       | New   | CI smoke harness that starts an installed/extracted package, performs second-launch authorization, exchanges the token, requires the authenticated HTML UI, and shuts down.      |
 | `packaging/runtime/api_entry.py`      | New   | Executable entry point for the packaged API. Starts uvicorn on loopback and also supports recursive `-m yt_dlp` calls used by URL imports.                                        |
 | `packaging/runtime/reachcut-api.spec` | New   | PyInstaller recipe. Collects dynamic modules, native libraries, model metadata, and plugin data for clipper, AV, CTranslate2, OpenCV, faster-whisper, ONNX Runtime, and yt-dlp.   |
 
@@ -399,8 +399,8 @@ changed to support release behavior.
 | File                              | State | Purpose and consumer                                                                                                                                                                      |
 | --------------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `scripts/reachcut-agent.mjs`      | New   | Main supervisor. Loads configuration/manifest, resolves data paths, creates secrets, activates an existing instance, starts API/web children, opens the browser, and shuts children down. |
-| `scripts/reachcut-agent-lib.mjs`  | New   | Gateway/configuration helpers: OS data paths, private activation-state lifecycle, authenticated second-launch activation, proxying, security headers, health polling, and tokens.         |
-| `scripts/reachcut-agent.test.mjs` | New   | Tests configuration, private activation state, fresh second-launch URLs, one-use exchange, session enforcement, proxy security, origin checks, and private API-token injection.           |
+| `scripts/reachcut-agent-lib.mjs`  | New   | Gateway/configuration helpers: OS data paths, private activation state, second-launch activation, proxying, security headers, upstream-aware health, and tokens.                           |
+| `scripts/reachcut-agent.test.mjs` | New   | Tests configuration, activation state, upstream failure detection, fresh URLs, one-use exchange, session enforcement, proxy security, origin checks, and API-token injection.             |
 
 ### Windows package
 
@@ -414,10 +414,10 @@ changed to support release behavior.
 
 | File                                       | State | Purpose and consumer                                                                                                                         |
 | ------------------------------------------ | ----- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packaging/macos/build-installer.sh`       | New   | Builds the channel-specific `.app`, LaunchAgent and upgrade scripts, creates the PKG with lifecycle scripts, and creates the compressed DMG. |
-| `packaging/macos/Info.plist`               | New   | App-bundle metadata template: name, identifier, executable, version, macOS 13 minimum, and background-agent UI mode.                         |
-| `packaging/macos/ReachCut`                 | New   | App executable shell launcher. Resolves the bundle resource folder and execs the packaged Node agent in production mode.                     |
-| `packaging/macos/com.reachcut.agent.plist` | New   | Active LaunchAgent template installed by the PKG. Starts the channel-specific agent at login with no browser.                                |
+| `packaging/macos/build-installer.sh`       | New   | Compiles the native launcher, builds the channel-specific `.app` and LaunchAgent, creates the lifecycle-aware PKG, and creates the compressed DMG. |
+| `packaging/macos/Info.plist`               | New   | App-bundle metadata template: name, identifier, native executable, version, macOS 13 minimum, accessory UI mode, and loopback networking.        |
+| `packaging/macos/ReachCutLauncher.swift`   | New   | Native AppKit launcher. Shows startup progress, loads/kick-starts the user agent, waits for full health, requests authorization, and opens the browser. |
+| `packaging/macos/com.reachcut.agent.plist` | New   | Active LaunchAgent template. Starts at login, uses interactive scheduling, and restarts the supervisor only after an unexpected failure.        |
 | `packaging/macos/preinstall`               | New   | PKG lifecycle template. Stops the channel's loaded login agent and any matching old supervisor before application files are upgraded.        |
 | `packaging/macos/postinstall`              | New   | PKG lifecycle template. Loads and starts the newly installed login agent for the currently logged-in user after installation or upgrade.     |
 
@@ -738,8 +738,10 @@ session cookie and the gateway removes the token after one use.
 
 The bootstrap page's Content Security Policy must include `connect-src 'self'`. Without it,
 `default-src 'none'` blocks the page's same-origin `fetch()` before the token reaches the
-gateway. Direct HTTP smoke tests do not execute browser JavaScript and therefore cannot
-detect that regression; retain the CSP assertion and add browser-driven installer smoke
+gateway. The source regression test asserts that directive. The installed smoke now
+exchanges a real one-time token, captures the HttpOnly cookie, and requires an authenticated
+HTML response from `/`; this rejects a gateway whose web child is missing. It still does not
+execute browser JavaScript, so retain the CSP assertion and add browser-driven installer
 coverage before a public Stable release. Do not weaken the gateway by removing
 authentication.
 
@@ -786,14 +788,14 @@ Profile values are currently centralized in JavaScript for common staging, but t
 builders also contain channel mappings. When a profile changes, search for the old value
 across `packaging/`, workflow files, docs, tests, and UI copy to prevent drift.
 
-## 20. Personal 0.1.13 release record
+## 20. Rejected Personal 0.1.13 release record
 
 | Item            | Value                                                                          |
 | --------------- | ------------------------------------------------------------------------------ |
 | Source commit   | `adf446eae71b6849d386e089dd5ccf23322ae924`                                     |
 | Tag             | `personal-v0.1.13`                                                             |
 | Workflow run    | `37981842239`                                                                  |
-| Runtime result  | All four targets passed installed cold/existing-agent second-launch smoke      |
+| Runtime result  | Native smoke passed; real Intel macOS web process was unavailable after launch |
 | Browser fix     | Bootstrap CSP permits the session exchange with `connect-src 'self'`           |
 | Signing         | None; internal test only                                                       |
 | Artifact expiry | 2026-10-23                                                                     |
@@ -807,13 +809,16 @@ GitHub artifact archive sizes and digests:
 | `reachcut-personal-macOS-X64`   | 599,453,787 | `c260a0bb555f3cb88a28c3d64c204bfe0971c12a0fe56fae348f8bff7a01c417` |
 | `reachcut-personal-Linux-X64`   | 635,034,713 | `fbb87e33d71bfcbe062c10dc8fca83e997fbfe0beeae30a8f28f08d3f2099db9` |
 
-This Personal candidate fixes the real-browser authorization failure found in 0.1.12.
+This Personal candidate fixed the real-browser authorization failure found in 0.1.12.
 The gateway still uses one-time bootstrap tokens and HttpOnly session cookies; the change
 only permits the bootstrap page to make its same-origin session request. The Intel macOS
 job built and installed the x64 PKG, activated the installer-started background agent, and
-passed the installed-runtime test. A manual browser launch on the target Intel Mac remains
-the final acceptance check because the current smoke harness does not execute browser
-JavaScript.
+passed the then-current installed-runtime test. Real Intel macOS testing subsequently reached
+the authorized gateway but received `ReachCut is starting` because the internal web process
+was unavailable. The old smoke only checked that a fresh URL was issued, so it missed this.
+It also exposed poor app behavior from the shell executable: no startup feedback and a
+misleading Finder “not open anymore” message after handoff. The native launcher and
+authenticated HTML smoke replace those paths; 0.1.13 remains rejected.
 
 ## 21. Rejected Personal 0.1.12 release record
 
