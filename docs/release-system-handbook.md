@@ -364,8 +364,8 @@ changed to support release behavior.
 | `package.json`                             | Modified | Adds agent/build scripts, pins `pnpm@11.19.0`, includes static FFmpeg/ffprobe packages, and makes API checks/tests install dev extras.                                 |
 | `pnpm-workspace.yaml`                      | Modified | Allows the aliased static ffprobe package's install/build behavior.                                                                                                    |
 | `pnpm-lock.yaml`                           | Modified | Locks the new Node packaging dependencies and exact transitive graph. CI uses it with `--frozen-lockfile`.                                                             |
-| `apps/api/pyproject.toml`                  | Modified | Pins `onnxruntime==1.23.1` so supported wheels exist consistently across the release matrix.                                                                           |
-| `apps/api/uv.lock`                         | Modified | Locks the updated Python dependency graph used by CI and PyInstaller.                                                                                                  |
+| `apps/api/pyproject.toml`                  | Modified | Pins ONNX Runtime and cryptography to versions with supported native wheels across the release matrix, including Intel macOS.                                          |
+| `apps/api/uv.lock`                         | Modified | Locks the updated Python dependency graph and platform wheels used by CI and PyInstaller.                                                                              |
 
 ### Common build and packaging implementation
 
@@ -532,8 +532,8 @@ Use Personal for private daily use and release qualification.
 6. Create and push the Personal tag:
 
    ```bash
-   git tag -a personal-v0.1.7 -m "ReachCut Personal 0.1.7"
-   git push origin personal-v0.1.7
+   git tag -a personal-v0.2.0 -m "ReachCut Personal 0.2.0"
+   git push origin personal-v0.2.0
    ```
 
 7. Monitor the four GitHub Actions jobs.
@@ -542,9 +542,11 @@ Use Personal for private daily use and release qualification.
 10. Install it and run the smoke-test checklist below.
 11. Use the Personal build for real work long enough to expose upgrade/runtime problems.
 
-The obsolete `personal-v0.1.0` through `personal-v0.1.6` tags are historical CI attempts.
+The obsolete `personal-v0.1.0` through `personal-v0.1.8` tags are historical CI attempts.
 Do not reuse them. Although all four `personal-v0.1.6` packaging jobs passed, installed
 macOS testing rejected that release because the staged symlinks pointed to the CI runner.
+The new runtime gate rejected `0.1.7` for Windows module resolution and `0.1.8` for an
+Intel-only cryptography/OpenSSL mismatch; neither failed artifact was uploaded.
 
 ## 13. Stable release procedure
 
