@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import {
   lstat,
   mkdtemp,
@@ -16,6 +17,7 @@ import { after, describe, test } from "node:test";
 import {
   copyDirectoryDereferenced,
   copyDirectoryPreservingLinks,
+  copyPnpmStandaloneDereferenced,
   validatePortableLinks,
 } from "./copy-directory.mjs";
 
@@ -133,6 +135,79 @@ describe(
       await mkdir(brokenRoot);
       await symlink("missing", path.join(brokenRoot, "link"));
       await assert.rejects(validatePortableLinks(brokenRoot), /is broken/);
+    });
+  },
+);
+
+describe(
+  "dereferenced pnpm standalone copy",
+  { skip: process.platform === "win32" && "requires symbolic-link access" },
+  async () => {
+    const temporaryRoot = await mkdtemp(
+      path.join(os.tmpdir(), "reachcut-pnpm-copy-test-"),
+    );
+    after(() => rm(temporaryRoot, { recursive: true, force: true }));
+
+    test("materializes the hoisted dependencies required by linked packages", async () => {
+      const source = path.join(temporaryRoot, "source");
+      const destination = path.join(temporaryRoot, "destination");
+      const virtualStore = path.join(source, "node_modules", ".pnpm");
+      const dependency = path.join(
+        virtualStore,
+        "dependency@1.0.0",
+        "node_modules",
+        "dependency",
+      );
+      const packageDirectory = path.join(
+        virtualStore,
+        "package@1.0.0",
+        "node_modules",
+        "package",
+      );
+      const hoistedDependency = path.join(
+        virtualStore,
+        "node_modules",
+        "dependency",
+      );
+      const applicationModules = path.join(
+        source,
+        "apps",
+        "web",
+        "node_modules",
+      );
+      await mkdir(dependency, { recursive: true });
+      await mkdir(packageDirectory, { recursive: true });
+      await mkdir(path.dirname(hoistedDependency), { recursive: true });
+      await mkdir(applicationModules, { recursive: true });
+      await writeFile(
+        path.join(dependency, "index.js"),
+        "module.exports = 'dependency found';\n",
+      );
+      await writeFile(
+        path.join(packageDirectory, "index.js"),
+        "module.exports = require('dependency');\n",
+      );
+      await symlink(
+        path.relative(path.dirname(hoistedDependency), dependency),
+        hoistedDependency,
+      );
+      await symlink(
+        path.relative(applicationModules, packageDirectory),
+        path.join(applicationModules, "package"),
+      );
+
+      await copyPnpmStandaloneDereferenced(source, destination);
+
+      const requireFromApplication = createRequire(
+        path.join(destination, "apps", "web", "server.js"),
+      );
+      assert.equal(requireFromApplication("package"), "dependency found");
+      assert.equal(
+        (
+          await lstat(path.join(destination, "node_modules", "dependency"))
+        ).isSymbolicLink(),
+        false,
+      );
     });
   },
 );

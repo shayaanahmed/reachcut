@@ -62,6 +62,39 @@ export async function copyDirectoryDereferenced(source, destination) {
   await copyEntry(source, destination, new Set());
 }
 
+export async function copyPnpmStandaloneDereferenced(source, destination) {
+  await copyDirectoryDereferenced(source, destination);
+
+  // Dereferencing apps/web/node_modules/next moves the package out of pnpm's
+  // virtual-store directory. Materialize pnpm's hoisted dependency view at the
+  // ordinary node_modules root so Node can still resolve Next's dependencies.
+  const hoistedDependencies = path.join(
+    source,
+    "node_modules",
+    ".pnpm",
+    "node_modules",
+  );
+  try {
+    const metadata = await lstat(hoistedDependencies);
+    if (!metadata.isDirectory()) {
+      throw new Error(
+        `pnpm hoisted dependency directory is invalid: ${hoistedDependencies}`,
+      );
+    }
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      throw new Error(
+        `pnpm hoisted dependency directory is missing: ${hoistedDependencies}`,
+      );
+    }
+    throw error;
+  }
+  await copyDirectoryDereferenced(
+    hoistedDependencies,
+    path.join(destination, "node_modules"),
+  );
+}
+
 export async function copyDirectoryPreservingLinks(source, destination) {
   await cp(source, destination, {
     recursive: true,

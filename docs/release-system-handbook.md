@@ -375,8 +375,8 @@ changed to support release behavior.
 | `packaging/release-profile.test.mjs`  | New   | Proves that Personal and Stable identities/ports are distinct and rejects unknown channels.                                                                                     |
 | `packaging/build-release.mjs`         | New   | Top-level native build orchestrator. Validates semantic versions, builds Next.js, invokes PyInstaller, stages files, and dispatches to the current OS builder without a shell.  |
 | `packaging/build-stage.mjs`           | New   | Creates the immutable stage, copies runtimes/assets, validates required outputs and portable links, and writes `reachcut-package.json`.                                         |
-| `packaging/copy-directory.mjs`        | New   | Dereferences links for Windows, preserves relative links on POSIX, and rejects absolute, escaping, or broken staged links.                                                      |
-| `packaging/copy-directory.test.mjs`   | New   | Regression tests for Windows-style dereferencing and portable POSIX-link preservation/validation. Included in `pnpm test:agent` and therefore in `pnpm test`/CI.                |
+| `packaging/copy-directory.mjs`        | New   | Dereferences links and materializes pnpm's hoisted dependency view for Windows, preserves relative links on POSIX, and rejects unsafe staged links.                             |
+| `packaging/copy-directory.test.mjs`   | New   | Regression tests for Windows dereferencing/module resolution and portable POSIX-link preservation/validation. Included in `pnpm test:agent` and therefore in `pnpm test`/CI.    |
 | `packaging/smoke-installed.mjs`       | New   | CI smoke harness that starts the Node supervisor from an installed/extracted native package, waits for API/web/gateway readiness, redacts the bootstrap token, and shuts down.  |
 | `packaging/runtime/api_entry.py`      | New   | Executable entry point for the packaged API. Starts uvicorn on loopback and also supports recursive `-m yt_dlp` calls used by URL imports.                                      |
 | `packaging/runtime/reachcut-api.spec` | New   | PyInstaller recipe. Collects dynamic modules, native libraries, model metadata, and plugin data for clipper, AV, CTranslate2, OpenCV, faster-whisper, ONNX Runtime, and yt-dlp. |
@@ -447,21 +447,23 @@ or removed after the active package paths are fully settled.
 
 ### Web setup, branding, and same-origin transport
 
-| File                                               | State    | Purpose and consumer                                                                                       |
-| -------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------- |
-| `apps/web/app/icon.svg`                            | New      | ReachCut application/PWA SVG icon; also installed as the Linux desktop icon.                               |
-| `apps/web/app/manifest.ts`                         | New      | Channel-aware PWA manifest with name, standalone display mode, colors, scope, and icon.                    |
-| `apps/web/app/layout.tsx`                          | Modified | Displays Personal or Stable branding at build time, registers the manifest, and adds Setup navigation.     |
-| `apps/web/app/page.tsx`                            | Modified | Replaces direct dashboard rendering with the first-run readiness gate.                                     |
-| `apps/web/app/setup/page.tsx`                      | New      | Always-available setup/diagnostics route.                                                                  |
-| `apps/web/app/styles.css`                          | Modified | Adds responsive styles for setup status, actions, warnings, and loading state.                             |
-| `apps/web/features/setup/api.ts`                   | New      | API client functions for setup status and model pull; all HTTP behavior stays outside components.          |
-| `apps/web/features/setup/setup-assistant.tsx`      | New      | Presents Ollama, editorial model, Whisper, and bundled-tool readiness and explicit setup actions.          |
-| `apps/web/features/setup/setup-gate.tsx`           | New      | Checks readiness before showing the dashboard and transitions to it once setup succeeds.                   |
-| `apps/web/features/setup/setup-assistant.test.tsx` | New      | Tests model-download behavior and the official Ollama link/disabled state.                                 |
-| `apps/web/lib/contracts.ts`                        | Modified | Adds Zod validation and the TypeScript type for setup responses.                                           |
-| `apps/web/lib/http.ts`                             | Modified | Makes uploads use the same `/api` origin by default, allowing the gateway to authenticate and stream them. |
-| `apps/web/lib/api.test.ts`                         | Modified | Updates transport tests for same-origin upload and URL-import requests.                                    |
+| File                                               | State    | Purpose and consumer                                                                                                                                |
+| -------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/web/app/icon.svg`                            | New      | ReachCut application/PWA SVG icon; also installed as the Linux desktop icon.                                                                        |
+| `apps/web/app/manifest.ts`                         | New      | Channel-aware PWA manifest with name, standalone display mode, colors, scope, and icon.                                                             |
+| `apps/web/app/layout.tsx`                          | Modified | Displays Personal or Stable branding at build time, registers the manifest, and adds Setup navigation.                                              |
+| `apps/web/app/page.tsx`                            | Modified | Replaces direct dashboard rendering with the first-run readiness gate.                                                                              |
+| `apps/web/app/setup/page.tsx`                      | New      | Always-available setup/diagnostics route.                                                                                                           |
+| `apps/web/app/styles.css`                          | Modified | Adds responsive styles for setup status, actions, warnings, and loading state.                                                                      |
+| `apps/web/features/setup/api.ts`                   | New      | API client functions for setup status and model pull; all HTTP behavior stays outside components.                                                   |
+| `apps/web/features/setup/setup-assistant.tsx`      | New      | Presents Ollama, editorial model, Whisper, and bundled-tool readiness and explicit setup actions.                                                   |
+| `apps/web/features/setup/setup-gate.tsx`           | New      | Checks readiness before showing the dashboard and transitions to it once setup succeeds.                                                            |
+| `apps/web/features/setup/setup-assistant.test.tsx` | New      | Tests model-download behavior and the official Ollama link/disabled state.                                                                          |
+| `apps/web/lib/contracts.ts`                        | Modified | Adds Zod validation and the TypeScript type for setup responses.                                                                                    |
+| `apps/web/lib/http.ts`                             | Modified | Makes uploads use the same `/api` origin by default, allowing the gateway to authenticate and stream them.                                          |
+| `apps/web/lib/api.test.ts`                         | Modified | Updates transport tests for same-origin upload and URL-import requests.                                                                             |
+| `apps/web/test/setup.ts`                           | New      | Runs Testing Library cleanup after every web test so React work cannot leak into the destroyed jsdom environment and make release validation flaky. |
+| `apps/web/vitest.config.ts`                        | Modified | Loads the shared web-test setup file in every Vitest worker.                                                                                        |
 
 `apps/web/next.config.ts` was not created by this release diff, but it is essential to the
 release. Its `output: "standalone"` setting produces the deployable web tree, and its

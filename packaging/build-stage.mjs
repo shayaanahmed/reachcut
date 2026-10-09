@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 import {
   copyDirectoryDereferenced,
   copyDirectoryPreservingLinks,
+  copyPnpmStandaloneDereferenced,
   validatePortableLinks,
 } from "./copy-directory.mjs";
 import { profileDataDirectory, releaseProfile } from "./release-profile.mjs";
@@ -42,7 +43,12 @@ function requireDirectory(directory, description) {
   return path.resolve(directory);
 }
 
-async function copyDirectory(source, destination, description) {
+async function copyDirectory(
+  source,
+  destination,
+  description,
+  { pnpmStandalone = false } = {},
+) {
   console.log(`Copying ${description}...`);
   if (process.platform !== "win32") {
     await copyDirectoryPreservingLinks(source, destination);
@@ -51,7 +57,11 @@ async function copyDirectory(source, destination, description) {
 
   // pnpm's standalone output contains directory links that Windows runners
   // cannot follow or recreate. Resolve each link and stage ordinary content.
-  await copyDirectoryDereferenced(source, destination);
+  if (pnpmStandalone) {
+    await copyPnpmStandaloneDereferenced(source, destination);
+  } else {
+    await copyDirectoryDereferenced(source, destination);
+  }
 }
 
 const platform = option("--platform", process.platform);
@@ -101,6 +111,7 @@ await copyDirectory(
   standaloneDirectory,
   path.join(outputDirectory, "web"),
   "standalone web application",
+  { pnpmStandalone: true },
 );
 await copyDirectory(
   staticDirectory,
