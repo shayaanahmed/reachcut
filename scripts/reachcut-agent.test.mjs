@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import http from "node:http";
+import os from "node:os";
+import path from "node:path";
 import { after, before, describe, test } from "node:test";
 
 import {
@@ -7,8 +10,12 @@ import {
   gatewayIsRunning,
   parseCommand,
   parsePort,
+  readActivationState,
+  removeActivationState,
+  requestGatewayActivation,
   resolveUserDataDir,
   validateLocalHostname,
+  writeActivationState,
 } from "./reachcut-agent-lib.mjs";
 
 function listen(server) {
@@ -117,11 +124,50 @@ describe("local agent configuration", () => {
       "/data/reachcut-personal",
     );
   });
+
+  test("stores the running-agent activation secret in a private profile file", () => {
+    const directory = mkdtempSync(path.join(os.tmpdir(), "reachcut-agent-"));
+    const statePath = path.join(directory, "agent-activation.json");
+    const activationToken = "a".repeat(43);
+    try {
+      writeActivationState(statePath, {
+        publicHostname: "studio.personal.reachcut.localhost",
+        publicPort: 47_331,
+        activationToken,
+      });
+      assert.equal(statSync(statePath).mode & 0o777, 0o600);
+      assert.deepEqual(
+        readActivationState(
+          statePath,
+          "studio.personal.reachcut.localhost",
+          47_331,
+        ),
+        {
+          schemaVersion: 1,
+          hostname: "studio.personal.reachcut.localhost",
+          port: 47_331,
+          token: activationToken,
+        },
+      );
+      assert.throws(
+        () =>
+          readActivationState(statePath, "studio.reachcut.localhost", 47_321),
+        /another profile/,
+      );
+      removeActivationState(statePath, "wrong-token".repeat(4));
+      assert.match(readFileSync(statePath, "utf8"), /schemaVersion/);
+      removeActivationState(statePath, activationToken);
+      assert.throws(() => readFileSync(statePath, "utf8"), /ENOENT/);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("authenticated local gateway", () => {
   const publicHostname = "studio.reachcut.localhost";
   const apiToken = "internal-api-secret";
+  const activationToken = "launcher-activation-secret";
   const bootstrapToken = "one-time-bootstrap";
   const sessionToken = "browser-session";
   let apiServer;
@@ -160,6 +206,7 @@ describe("authenticated local gateway", () => {
       apiPort,
       webPort,
       apiToken,
+      activationToken,
       bootstrapToken,
       sessionToken,
     });
@@ -228,6 +275,55 @@ describe("authenticated local gateway", () => {
         Host: authority,
         Origin: origin,
         "X-ReachCut-Bootstrap": bootstrapToken,
+      },
+    });
+    assert.equal(replay.status, 401);
+  });
+
+  test("issues a fresh one-time browser URL to an authenticated second launch", async () => {
+    await assert.rejects(
+      requestGatewayActivation(
+        publicHostname,
+        gatewayPort,
+        "wrong-activation-secret",
+      ),
+      /rejected activation/,
+    );
+
+    const firstUrl = await requestGatewayActivation(
+      publicHostname,
+      gatewayPort,
+      activationToken,
+    );
+    const secondUrl = await requestGatewayActivation(
+      publicHostname,
+      gatewayPort,
+      activationToken,
+    );
+    assert.notEqual(firstUrl, secondUrl);
+
+    const url = new URL(firstUrl);
+    const freshToken = new URLSearchParams(url.hash.slice(1)).get("token");
+    const exchange = await request({
+      port: gatewayPort,
+      path: "/__reachcut/session",
+      method: "POST",
+      headers: {
+        Host: authority,
+        Origin: origin,
+        "X-ReachCut-Bootstrap": freshToken,
+      },
+    });
+    assert.equal(exchange.status, 204);
+
+    const replay = await request({
+      port: gatewayPort,
+      path: "/__reachcut/session",
+      method: "POST",
+      headers: {
+        Host: authority,
+        Origin: origin,
+        "X-ReachCut-Bootstrap": freshToken,
       },
     });
     assert.equal(replay.status, 401);

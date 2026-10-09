@@ -51,8 +51,19 @@ sed \
   "$SCRIPT_DIR/com.reachcut.agent.plist" \
   > "$BUILD_DIR/root/Library/LaunchAgents/$AGENT_ID.plist"
 
+mkdir -p "$BUILD_DIR/scripts"
+for INSTALL_SCRIPT in preinstall postinstall; do
+  sed \
+    -e "s/__REACHCUT_AGENT_ID__/$AGENT_ID/g" \
+    -e "s/__REACHCUT_APP_BUNDLE__/$APP_BUNDLE/g" \
+    "$SCRIPT_DIR/$INSTALL_SCRIPT" \
+    > "$BUILD_DIR/scripts/$INSTALL_SCRIPT"
+  chmod 755 "$BUILD_DIR/scripts/$INSTALL_SCRIPT"
+done
+
 pkgbuild \
   --root "$BUILD_DIR/root" \
+  --scripts "$BUILD_DIR/scripts" \
   --identifier "$BUNDLE_ID" \
   --version "$VERSION" \
   --install-location / \

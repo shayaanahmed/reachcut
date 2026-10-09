@@ -5,18 +5,20 @@ This is the technical source of truth for the native ReachCut release system on 
 the build and runtime flows, Personal and Stable channels, installation behavior, release
 commands, validation, and the work still required before customer distribution.
 
-The current validated internal build is `personal-v0.1.9` from commit `ef1e87e`, built on
-2026-10-09. Its four native CI jobs installed and started their packaged runtimes before
-uploading artifacts. Earlier `0.1.6`–`0.1.8` artifacts are rejected; see the release
-records below. Update this document whenever the release architecture, installer layout,
-profiles, CI workflow, or customer procedure changes.
+The most recent built internal version is `personal-v0.1.9` from commit `ef1e87e`, built
+on 2026-10-09. Its four native CI jobs installed and started their packaged runtimes, but
+real Intel macOS testing subsequently found that opening the app while its login agent was
+already running opened an unauthenticated URL. Therefore `0.1.9`, like `0.1.6`–`0.1.8`,
+is rejected. The activation fix is awaiting a newer Personal build. Update this document
+whenever the release architecture, installer layout, profiles, CI workflow, or customer
+procedure changes.
 
 ## 1. Current release status
 
 The release system can build native, self-contained application installers for four
 targets:
 
-| Target              | Native output                 | `personal-v0.1.9` status                   |
+| Target              | Native output                 | `personal-v0.1.9` CI result                |
 | ------------------- | ----------------------------- | ------------------------------------------ |
 | Windows x64         | Inno Setup `.exe`             | Installed runtime passed                   |
 | macOS Apple Silicon | `.pkg` and `.dmg`             | PKG runtime passed; DMG checksum verified  |
@@ -27,10 +29,11 @@ The validated `personal-v0.1.9` workflow is:
 
 <https://github.com/shayaanahmed/reachcut/actions/runs/37918322192>
 
-Those artifacts are **unsigned internal-test builds**. The native smoke tests make them
-suitable for Personal testing, but they are not ready to be presented as customer
-releases. Code signing, Apple notarization, release publication, automatic updates,
-rollback, and customer clean-machine testing remain release gates.
+Those artifacts are **rejected unsigned internal-test builds** and must not be
+distributed. The CI smoke test proved cold startup but did not exercise a second app-icon
+launch against the background agent. Code signing, Apple notarization, release
+publication, automatic updates, rollback, expanded lifecycle testing, and customer
+clean-machine testing remain release gates.
 
 The code currently lives on `release-bundle`. The repository's default branch is `main`
 (locally it is also available as `master`/`origin/main` at the same older commit). The
@@ -230,8 +233,9 @@ When the user opens ReachCut:
 1. The OS launcher starts the bundled Node runtime with `reachcut-agent.mjs`.
 2. The agent reads the package manifest and chooses the correct channel profile.
 3. It creates/uses the channel's mutable data directory.
-4. It generates three independent random secrets in memory:
+4. It generates four independent random secrets:
    - an API token between the gateway and FastAPI;
+   - a launcher activation token stored in the channel's user-only data file;
    - a one-use browser bootstrap token;
    - a browser session token.
 5. It starts FastAPI on the private API port.
@@ -244,11 +248,20 @@ When the user opens ReachCut:
 11. Authenticated `/api/*` traffic is streamed to FastAPI with the private API header.
 12. Other authenticated traffic is streamed to Next.js.
 
+When the OS login agent is already running and the user opens the app icon, the second
+launcher reads `agent-activation.json` from that channel's user data directory. It sends
+the private activation token to the loopback gateway using a custom header. The gateway
+returns a newly generated two-minute, single-use bootstrap URL, and the launcher opens
+that URL. The browser never receives the activation token, and a plain visit to the
+branded origin remains unauthorized. The state file is written with user-only mode `0600`
+on POSIX systems and is removed only by the agent instance that owns its token.
+
 Security controls include:
 
 - exact `Host` validation;
 - loopback-only binding;
 - one-use, two-minute bootstrap credentials;
+- per-launch bootstrap issuance authenticated by a per-user activation secret;
 - constant-time secret comparison;
 - mutation-origin checks;
 - removal of browser-supplied internal-token and cookie headers before proxying;
@@ -370,25 +383,25 @@ changed to support release behavior.
 
 ### Common build and packaging implementation
 
-| File                                  | State | Purpose and consumer                                                                                                                                                            |
-| ------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packaging/release-profile.mjs`       | New   | Single source of truth for Personal and Stable names, IDs, slugs, ports, origins, and data-directory names. Imported by both release and staging scripts.                       |
-| `packaging/release-profile.test.mjs`  | New   | Proves that Personal and Stable identities/ports are distinct and rejects unknown channels.                                                                                     |
-| `packaging/build-release.mjs`         | New   | Top-level native build orchestrator. Validates semantic versions, builds Next.js, invokes PyInstaller, stages files, and dispatches to the current OS builder without a shell.  |
-| `packaging/build-stage.mjs`           | New   | Creates the immutable stage, copies runtimes/assets, validates required outputs and portable links, and writes `reachcut-package.json`.                                         |
-| `packaging/copy-directory.mjs`        | New   | Dereferences links and materializes pnpm's hoisted dependency view for Windows, preserves relative links on POSIX, and rejects unsafe staged links.                             |
-| `packaging/copy-directory.test.mjs`   | New   | Regression tests for Windows dereferencing/module resolution and portable POSIX-link preservation/validation. Included in `pnpm test:agent` and therefore in `pnpm test`/CI.    |
-| `packaging/smoke-installed.mjs`       | New   | CI smoke harness that starts the Node supervisor from an installed/extracted native package, waits for API/web/gateway readiness, redacts the bootstrap token, and shuts down.  |
-| `packaging/runtime/api_entry.py`      | New   | Executable entry point for the packaged API. Starts uvicorn on loopback and also supports recursive `-m yt_dlp` calls used by URL imports.                                      |
-| `packaging/runtime/reachcut-api.spec` | New   | PyInstaller recipe. Collects dynamic modules, native libraries, model metadata, and plugin data for clipper, AV, CTranslate2, OpenCV, faster-whisper, ONNX Runtime, and yt-dlp. |
+| File                                  | State | Purpose and consumer                                                                                                                                                              |
+| ------------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packaging/release-profile.mjs`       | New   | Single source of truth for Personal and Stable names, IDs, slugs, ports, origins, and data-directory names. Imported by both release and staging scripts.                         |
+| `packaging/release-profile.test.mjs`  | New   | Proves that Personal and Stable identities/ports are distinct and rejects unknown channels.                                                                                       |
+| `packaging/build-release.mjs`         | New   | Top-level native build orchestrator. Validates semantic versions, builds Next.js, invokes PyInstaller, stages files, and dispatches to the current OS builder without a shell.    |
+| `packaging/build-stage.mjs`           | New   | Creates the immutable stage, copies runtimes/assets, validates required outputs and portable links, and writes `reachcut-package.json`.                                           |
+| `packaging/copy-directory.mjs`        | New   | Dereferences links and materializes pnpm's hoisted dependency view for Windows, preserves relative links on POSIX, and rejects unsafe staged links.                               |
+| `packaging/copy-directory.test.mjs`   | New   | Regression tests for Windows dereferencing/module resolution and portable POSIX-link preservation/validation. Included in `pnpm test:agent` and therefore in `pnpm test`/CI.      |
+| `packaging/smoke-installed.mjs`       | New   | CI smoke harness that starts an installed/extracted package, verifies cold readiness, runs a second launcher, requires a fresh authorization URL, redacts tokens, and shuts down. |
+| `packaging/runtime/api_entry.py`      | New   | Executable entry point for the packaged API. Starts uvicorn on loopback and also supports recursive `-m yt_dlp` calls used by URL imports.                                        |
+| `packaging/runtime/reachcut-api.spec` | New   | PyInstaller recipe. Collects dynamic modules, native libraries, model metadata, and plugin data for clipper, AV, CTranslate2, OpenCV, faster-whisper, ONNX Runtime, and yt-dlp.   |
 
 ### Supervisor and authenticated local gateway
 
-| File                              | State | Purpose and consumer                                                                                                                                                                            |
-| --------------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `scripts/reachcut-agent.mjs`      | New   | Main supervisor. Loads configuration/manifest, resolves data paths, creates secrets, starts API/web children, waits for health, starts the gateway, opens the browser, and shuts children down. |
-| `scripts/reachcut-agent-lib.mjs`  | New   | Pure gateway/configuration helpers: hostname/port/command validation, OS data paths, authentication, proxying, security headers, WebSocket upgrades, health polling, and tokens.                |
-| `scripts/reachcut-agent.test.mjs` | New   | Tests configuration validation, OS paths, Host checks, bootstrap exchange, session enforcement, proxy security, origin checks, and private API-token injection.                                 |
+| File                              | State | Purpose and consumer                                                                                                                                                                      |
+| --------------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scripts/reachcut-agent.mjs`      | New   | Main supervisor. Loads configuration/manifest, resolves data paths, creates secrets, activates an existing instance, starts API/web children, opens the browser, and shuts children down. |
+| `scripts/reachcut-agent-lib.mjs`  | New   | Gateway/configuration helpers: OS data paths, private activation-state lifecycle, authenticated second-launch activation, proxying, security headers, health polling, and tokens.         |
+| `scripts/reachcut-agent.test.mjs` | New   | Tests configuration, private activation state, fresh second-launch URLs, one-use exchange, session enforcement, proxy security, origin checks, and private API-token injection.           |
 
 ### Windows package
 
@@ -400,12 +413,14 @@ changed to support release behavior.
 
 ### macOS package
 
-| File                                       | State | Purpose and consumer                                                                                                                           |
-| ------------------------------------------ | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packaging/macos/build-installer.sh`       | New   | Builds the channel-specific `.app`, substitutes plist IDs/version/name, writes a LaunchAgent, creates the PKG, and creates the compressed DMG. |
-| `packaging/macos/Info.plist`               | New   | App-bundle metadata template: name, identifier, executable, version, macOS 13 minimum, and background-agent UI mode.                           |
-| `packaging/macos/ReachCut`                 | New   | App executable shell launcher. Resolves the bundle resource folder and execs the packaged Node agent in production mode.                       |
-| `packaging/macos/com.reachcut.agent.plist` | New   | Active LaunchAgent template installed by the PKG. Starts the channel-specific agent at login with no browser.                                  |
+| File                                       | State | Purpose and consumer                                                                                                                         |
+| ------------------------------------------ | ----- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packaging/macos/build-installer.sh`       | New   | Builds the channel-specific `.app`, LaunchAgent and upgrade scripts, creates the PKG with lifecycle scripts, and creates the compressed DMG. |
+| `packaging/macos/Info.plist`               | New   | App-bundle metadata template: name, identifier, executable, version, macOS 13 minimum, and background-agent UI mode.                         |
+| `packaging/macos/ReachCut`                 | New   | App executable shell launcher. Resolves the bundle resource folder and execs the packaged Node agent in production mode.                     |
+| `packaging/macos/com.reachcut.agent.plist` | New   | Active LaunchAgent template installed by the PKG. Starts the channel-specific agent at login with no browser.                                |
+| `packaging/macos/preinstall`               | New   | PKG lifecycle template. Stops the channel's loaded login agent and any matching old supervisor before application files are upgraded.        |
+| `packaging/macos/postinstall`              | New   | PKG lifecycle template. Loads and starts the newly installed login agent for the currently logged-in user after installation or upgrade.     |
 
 ### Linux package
 
@@ -624,6 +639,7 @@ Every candidate should be tested on a clean supported machine or VM.
 - [ ] Verify FFmpeg/ffprobe are the bundled versions.
 - [ ] Restart the application and confirm the project remains.
 - [ ] Reboot/login and test background startup plus browser authorization.
+- [ ] Open the app icon repeatedly while the background agent is running; every launch authorizes the browser without restarting the services.
 - [ ] Install the next version over the current version.
 - [ ] Confirm data survives the upgrade.
 - [ ] Uninstall application files.
@@ -769,16 +785,16 @@ Profile values are currently centralized in JavaScript for common staging, but t
 builders also contain channel mappings. When a profile changes, search for the old value
 across `packaging/`, workflow files, docs, tests, and UI copy to prevent drift.
 
-## 20. Personal 0.1.9 release record
+## 20. Rejected Personal 0.1.9 release record
 
-| Item            | Value                                                          |
-| --------------- | -------------------------------------------------------------- |
-| Source commit   | `ef1e87e00ace2290f024eeb6be12ea7c2296653d`                     |
-| Tag             | `personal-v0.1.9`                                              |
-| Workflow run    | `37918322192`                                                  |
-| Runtime result  | Windows, macOS ARM/Intel, Linux DEB, and Linux portable passed |
-| Signing         | None; internal test only                                       |
-| Artifact expiry | 2026-10-23                                                     |
+| Item            | Value                                                       |
+| --------------- | ----------------------------------------------------------- |
+| Source commit   | `ef1e87e00ace2290f024eeb6be12ea7c2296653d`                  |
+| Tag             | `personal-v0.1.9`                                           |
+| Workflow run    | `37918322192`                                               |
+| Runtime result  | Cold-start CI passed; real Intel macOS second launch failed |
+| Signing         | None; internal test only                                    |
+| Artifact expiry | 2026-10-23                                                  |
 
 GitHub artifact archive sizes:
 
@@ -789,9 +805,12 @@ GitHub artifact archive sizes:
 | `reachcut-personal-macOS-X64`   | 599,148,610 |
 | `reachcut-personal-Linux-X64`   | 635,029,298 |
 
-This is the first candidate protected by native install-and-start checks. It is suitable
-for Personal clean-machine testing, but it remains unsigned and is not a customer Stable
-release.
+This was the first candidate protected by native install-and-start checks. Real Intel
+macOS testing then showed that clicking the app while its login agent was already running
+opened only the plain origin. Because the gateway correctly requires a session cookie,
+the browser displayed “Authorization failed.” The second launcher now authenticates to
+the running agent and requests a fresh single-use bootstrap URL. `0.1.9` itself remains
+rejected and must be replaced by a newer Personal build.
 
 ## 21. Rejected Personal 0.1.6 release record
 

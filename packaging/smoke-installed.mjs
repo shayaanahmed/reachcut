@@ -66,11 +66,14 @@ for (const requiredPath of [executable, agent]) {
 const dataDirectory = await mkdtemp(
   path.join(os.tmpdir(), "reachcut-installed-smoke-"),
 );
+const runtimeEnvironment = {
+  ...process.env,
+  REACHCUT_DATA_DIR: dataDirectory,
+};
 const child = spawn(executable, [agent, "--production", "--no-browser"], {
   cwd: root,
   env: {
-    ...process.env,
-    REACHCUT_DATA_DIR: dataDirectory,
+    ...runtimeEnvironment,
     REACHCUT_NO_BROWSER: "1",
   },
   shell: false,
@@ -110,8 +113,54 @@ try {
       120_000,
     );
   });
+  const initialUrl = output.match(/One-time browser URL: (\S+)/)?.[1];
+  if (!initialUrl) throw new Error("Cold start did not print a browser URL");
+
+  const activation = spawn(
+    executable,
+    [agent, "--production", "--print-browser-url"],
+    {
+      cwd: root,
+      env: { ...runtimeEnvironment, REACHCUT_NO_BROWSER: "0" },
+      shell: false,
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    },
+  );
+  let activationOutput = "";
+  for (const stream of [activation.stdout, activation.stderr]) {
+    stream.on("data", (chunk) => {
+      activationOutput = `${activationOutput}${chunk}`.slice(-20_000);
+    });
+  }
+  const activationExit = await new Promise((resolve, reject) => {
+    const activationTimeout = setTimeout(() => {
+      activation.kill();
+      reject(new Error("Timed out testing a second app launch"));
+    }, 10_000);
+    activation.once("error", (error) => {
+      clearTimeout(activationTimeout);
+      reject(error);
+    });
+    activation.once("exit", (code, signal) => {
+      clearTimeout(activationTimeout);
+      resolve({ code, signal });
+    });
+  });
+  const activatedUrl = activationOutput.match(
+    /One-time browser URL: (\S+)/,
+  )?.[1];
+  if (
+    activationExit.code !== 0 ||
+    !activatedUrl ||
+    activatedUrl === initialUrl
+  ) {
+    throw new Error(
+      `Second app launch did not receive a fresh browser URL (${activationExit.signal ?? `exit ${activationExit.code}`}).\n${redact(activationOutput)}`,
+    );
+  }
   console.log(
-    `Installed runtime smoke test passed for ${manifest.product} ${manifest.version}`,
+    `Installed runtime and second-launch smoke tests passed for ${manifest.product} ${manifest.version}`,
   );
 } finally {
   clearTimeout(timeout);

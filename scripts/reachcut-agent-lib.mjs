@@ -1,4 +1,11 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
+import {
+  chmodSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import http from "node:http";
 import path from "node:path";
 
@@ -109,6 +116,65 @@ export function resolveUserDataDir(
   );
 }
 
+export function readActivationState(filePath, publicHostname, publicPort) {
+  let state;
+  try {
+    state = JSON.parse(readFileSync(filePath, "utf8"));
+  } catch (error) {
+    throw new Error(
+      `could not read the local activation state: ${error.message}`,
+    );
+  }
+  if (
+    state?.schemaVersion !== 1 ||
+    state.hostname !== publicHostname ||
+    state.port !== publicPort ||
+    typeof state.token !== "string" ||
+    state.token.length < 32
+  ) {
+    throw new Error(
+      "local activation state is invalid or belongs to another profile",
+    );
+  }
+  return state;
+}
+
+export function writeActivationState(
+  filePath,
+  { publicHostname, publicPort, activationToken },
+) {
+  const temporaryPath = `${filePath}.${process.pid}.${randomToken(8)}.tmp`;
+  const payload = `${JSON.stringify({
+    schemaVersion: 1,
+    hostname: publicHostname,
+    port: publicPort,
+    token: activationToken,
+  })}\n`;
+  try {
+    writeFileSync(temporaryPath, payload, { encoding: "utf8", mode: 0o600 });
+    chmodSync(temporaryPath, 0o600);
+    rmSync(filePath, { force: true });
+    renameSync(temporaryPath, filePath);
+  } catch (error) {
+    rmSync(temporaryPath, { force: true });
+    throw error;
+  }
+}
+
+export function removeActivationState(filePath, activationToken) {
+  try {
+    const state = JSON.parse(readFileSync(filePath, "utf8"));
+    if (
+      typeof state?.token === "string" &&
+      equalSecret(state.token, activationToken)
+    ) {
+      rmSync(filePath, { force: true });
+    }
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+}
+
 export function gatewayIsRunning(publicHostname, publicPort, timeoutMs = 750) {
   return new Promise((resolve) => {
     const authority = `${publicHostname}${publicPort === 80 ? "" : `:${publicPort}`}`;
@@ -126,6 +192,72 @@ export function gatewayIsRunning(publicHostname, publicPort, timeoutMs = 750) {
     );
     request.setTimeout(timeoutMs, () => request.destroy());
     request.once("error", () => resolve(false));
+  });
+}
+
+export function requestGatewayActivation(
+  publicHostname,
+  publicPort,
+  activationToken,
+  timeoutMs = 2_000,
+) {
+  return new Promise((resolve, reject) => {
+    const authority = `${publicHostname}${publicPort === 80 ? "" : `:${publicPort}`}`;
+    const request = http.request(
+      {
+        hostname: "127.0.0.1",
+        port: publicPort,
+        path: "/__reachcut/activate",
+        method: "POST",
+        headers: {
+          Host: authority,
+          "Content-Length": "0",
+          "X-ReachCut-Activation": activationToken,
+        },
+      },
+      (response) => {
+        const chunks = [];
+        response.on("data", (chunk) => chunks.push(chunk));
+        response.on("end", () => {
+          const body = Buffer.concat(chunks).toString("utf8");
+          if (response.statusCode !== 200) {
+            reject(
+              new Error(
+                `running ReachCut agent rejected activation (HTTP ${response.statusCode ?? "unknown"})`,
+              ),
+            );
+            return;
+          }
+          try {
+            const payload = JSON.parse(body);
+            if (typeof payload.url !== "string")
+              throw new Error("activation response did not include a URL");
+            const url = new URL(payload.url);
+            if (
+              url.protocol !== "http:" ||
+              url.hostname !== publicHostname ||
+              Number(url.port || 80) !== publicPort ||
+              url.pathname !== "/__reachcut/bootstrap" ||
+              !url.hash.startsWith("#token=")
+            ) {
+              throw new Error("activation response included an invalid URL");
+            }
+            resolve(payload.url);
+          } catch (error) {
+            reject(
+              new Error(
+                `invalid response from running ReachCut agent: ${error.message}`,
+              ),
+            );
+          }
+        });
+      },
+    );
+    request.setTimeout(timeoutMs, () =>
+      request.destroy(new Error("timed out activating running ReachCut agent")),
+    );
+    request.once("error", reject);
+    request.end();
   });
 }
 
@@ -283,6 +415,7 @@ export function createGateway({
   apiPort,
   webPort,
   apiToken,
+  activationToken,
   bootstrapToken,
   sessionToken,
   bootstrapLifetimeMs = 120_000,
@@ -290,9 +423,34 @@ export function createGateway({
   logger = console,
 }) {
   const hostname = validateLocalHostname(publicHostname);
-  const createdAt = Date.now();
-  let bootstrapConsumed = false;
+  const bootstrapTokens = new Map([[bootstrapToken, Date.now()]]);
   let server;
+
+  function pruneBootstrapTokens() {
+    const cutoff = Date.now() - bootstrapLifetimeMs;
+    for (const [token, createdAt] of bootstrapTokens) {
+      if (createdAt < cutoff) bootstrapTokens.delete(token);
+    }
+  }
+
+  function freshBootstrapUrl() {
+    pruneBootstrapTokens();
+    const token = randomToken();
+    bootstrapTokens.set(token, Date.now());
+    return `${origin()}/__reachcut/bootstrap#token=${encodeURIComponent(token)}`;
+  }
+
+  function consumeBootstrapToken(supplied) {
+    if (typeof supplied !== "string") return false;
+    pruneBootstrapTokens();
+    for (const token of bootstrapTokens.keys()) {
+      if (equalSecret(supplied, token)) {
+        bootstrapTokens.delete(token);
+        return true;
+      }
+    }
+    return false;
+  }
 
   function resolvedPort() {
     if (publicPort) return publicPort;
@@ -378,25 +536,31 @@ export function createGateway({
       bootstrapPage(response);
       return;
     }
+    if (request.method === "POST" && path === "/__reachcut/activate") {
+      const supplied = request.headers["x-reachcut-activation"];
+      if (
+        typeof activationToken !== "string" ||
+        typeof supplied !== "string" ||
+        !equalSecret(supplied, activationToken)
+      ) {
+        sendJson(response, 401, { detail: "invalid activation token" });
+        return;
+      }
+      sendJson(response, 200, { url: freshBootstrapUrl() });
+      return;
+    }
     if (request.method === "POST" && path === "/__reachcut/session") {
       if (!validMutationOrigin(request)) {
         sendJson(response, 403, { detail: "invalid request origin" });
         return;
       }
       const supplied = request.headers["x-reachcut-bootstrap"];
-      const expired = Date.now() - createdAt > bootstrapLifetimeMs;
-      if (
-        bootstrapConsumed ||
-        expired ||
-        typeof supplied !== "string" ||
-        !equalSecret(supplied, bootstrapToken)
-      ) {
+      if (!consumeBootstrapToken(supplied)) {
         sendJson(response, 401, {
           detail: "invalid or expired bootstrap token",
         });
         return;
       }
-      bootstrapConsumed = true;
       response.writeHead(204, {
         "Cache-Control": "no-store",
         "Set-Cookie": `${SESSION_COOKIE}=${sessionToken}; HttpOnly; SameSite=Strict; Max-Age=31536000; Path=/`,

@@ -13,9 +13,13 @@ import {
   parseCommand,
   parsePort,
   randomToken,
+  readActivationState,
+  removeActivationState,
+  requestGatewayActivation,
   resolveUserDataDir,
   validateLocalHostname,
   waitForHttp,
+  writeActivationState,
 } from "./reachcut-agent-lib.mjs";
 
 const rootDir = path.resolve(
@@ -46,6 +50,7 @@ const production =
 const noBrowser =
   process.argv.includes("--no-browser") ||
   process.env.REACHCUT_NO_BROWSER === "1";
+const printBrowserUrl = process.argv.includes("--print-browser-url");
 const publicHostname = validateLocalHostname(
   process.env.REACHCUT_LOCAL_HOSTNAME ??
     packageManifest?.localHostname ??
@@ -73,6 +78,7 @@ if (new Set([publicPort, apiPort, webPort]).size !== 3) {
 
 const publicOrigin = `http://${publicHostname}${publicPort === 80 ? "" : `:${publicPort}`}`;
 const apiToken = randomToken();
+const activationToken = randomToken();
 const bootstrapToken = randomToken();
 const sessionToken = randomToken();
 const replacements = { apiPort, webPort, origin: publicOrigin, rootDir };
@@ -138,16 +144,19 @@ if (
 const children = new Set();
 let stopping = false;
 
+const dataDir = process.env.REACHCUT_DATA_DIR
+  ? path.resolve(process.env.REACHCUT_DATA_DIR)
+  : resolveUserDataDir(
+      process.platform,
+      process.env,
+      os.homedir(),
+      packageManifest?.dataDirectoryName,
+    );
+const activationStatePath = path.join(dataDir, "agent-activation.json");
+mkdirSync(dataDir, { recursive: true });
+
 const packagedEnvironment = {};
 if (packageManifest) {
-  const dataDir = process.env.REACHCUT_DATA_DIR
-    ? path.resolve(process.env.REACHCUT_DATA_DIR)
-    : resolveUserDataDir(
-        process.platform,
-        process.env,
-        os.homedir(),
-        packageManifest.dataDirectoryName,
-      );
   const cacheDir = path.join(dataDir, "cache");
   const binariesDir = path.join(rootDir, "bin");
   mkdirSync(dataDir, { recursive: true });
@@ -240,8 +249,28 @@ function openBrowser(url) {
 
 if (await gatewayIsRunning(publicHostname, publicPort)) {
   console.log(`ReachCut is already running at ${publicOrigin}`);
-  if (!noBrowser) openBrowser(publicOrigin);
-  process.exit(0);
+  if (!noBrowser) {
+    try {
+      const state = readActivationState(
+        activationStatePath,
+        publicHostname,
+        publicPort,
+      );
+      const launchUrl = await requestGatewayActivation(
+        publicHostname,
+        publicPort,
+        state.token,
+      );
+      if (printBrowserUrl) console.log(`One-time browser URL: ${launchUrl}`);
+      else openBrowser(launchUrl);
+    } catch (error) {
+      console.error(
+        `Could not authorize the browser with the running ReachCut agent: ${error.message}`,
+      );
+      process.exitCode = 1;
+    }
+  }
+  process.exit(process.exitCode ?? 0);
 }
 
 const gateway = createGateway({
@@ -250,6 +279,7 @@ const gateway = createGateway({
   apiPort,
   webPort,
   apiToken,
+  activationToken,
   bootstrapToken,
   sessionToken,
   development: !production,
@@ -265,6 +295,7 @@ async function shutdown(exitCode = 0) {
   stopping = true;
   console.log("Stopping ReachCut local services…");
   await closeGateway();
+  removeActivationState(activationStatePath, activationToken);
   await Promise.all([...children].map(stopChild));
   process.exitCode = exitCode;
 }
@@ -294,9 +325,15 @@ try {
     gateway.server.once("error", reject);
     gateway.server.listen(publicPort, "127.0.0.1", resolve);
   });
+  writeActivationState(activationStatePath, {
+    publicHostname,
+    publicPort,
+    activationToken,
+  });
   const launchUrl = gateway.bootstrapUrl();
   console.log(`ReachCut is ready at ${publicOrigin}`);
-  if (noBrowser) console.log(`One-time browser URL: ${launchUrl}`);
+  if (noBrowser || printBrowserUrl)
+    console.log(`One-time browser URL: ${launchUrl}`);
   else openBrowser(launchUrl);
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
