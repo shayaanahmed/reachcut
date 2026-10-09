@@ -4,6 +4,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import http from "node:http";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -35,6 +36,40 @@ function gatewayIsRunning(hostname, port, timeoutMs = 1_000) {
     request.setTimeout(timeoutMs, () => request.destroy());
     request.once("error", () => resolve(false));
   });
+}
+
+function portIsListening(port, timeoutMs = 500) {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host: "127.0.0.1", port });
+    const finish = (listening) => {
+      socket.destroy();
+      resolve(listening);
+    };
+    socket.setTimeout(timeoutMs, () => finish(false));
+    socket.once("connect", () => finish(true));
+    socket.once("error", () => finish(false));
+  });
+}
+
+async function waitForInstallerStartedAgent() {
+  const occupied = await Promise.all([
+    portIsListening(manifest.localPort),
+    portIsListening(manifest.internalApiPort),
+    portIsListening(manifest.internalWebPort),
+  ]);
+  if (!occupied.some(Boolean)) return false;
+
+  console.log("ReachCut ports are active; waiting for the installed agent…");
+  const deadline = Date.now() + 120_000;
+  while (Date.now() < deadline) {
+    if (await gatewayIsRunning(manifest.localHostname, manifest.localPort)) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error(
+    "Installed ReachCut processes occupied their ports but did not become healthy",
+  );
 }
 
 function gatewayRequest({ port, path: requestPath, method = "GET", headers }) {
@@ -219,7 +254,11 @@ async function requestPrintedLaunch(environment) {
   });
 }
 
-if (await gatewayIsRunning(manifest.localHostname, manifest.localPort)) {
+const backgroundAgentReady =
+  (await gatewayIsRunning(manifest.localHostname, manifest.localPort)) ||
+  (await waitForInstallerStartedAgent());
+
+if (backgroundAgentReady) {
   const launchUrl = await requestPrintedLaunch(process.env);
   await verifyBrowserUi(launchUrl);
   console.log(
