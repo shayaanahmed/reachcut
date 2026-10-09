@@ -786,7 +786,36 @@ Profile values are currently centralized in JavaScript for common staging, but t
 builders also contain channel mappings. When a profile changes, search for the old value
 across `packaging/`, workflow files, docs, tests, and UI copy to prevent drift.
 
-## 20. Rejected Personal 0.1.12 release record
+## 20. Personal 0.1.13 release record
+
+| Item            | Value                                                                          |
+| --------------- | ------------------------------------------------------------------------------ |
+| Source commit   | `adf446eae71b6849d386e089dd5ccf23322ae924`                                     |
+| Tag             | `personal-v0.1.13`                                                             |
+| Workflow run    | `37981842239`                                                                  |
+| Runtime result  | All four targets passed installed cold/existing-agent second-launch smoke      |
+| Browser fix     | Bootstrap CSP permits the session exchange with `connect-src 'self'`           |
+| Signing         | None; internal test only                                                       |
+| Artifact expiry | 2026-10-23                                                                     |
+
+GitHub artifact archive sizes and digests:
+
+| Artifact                        |       Bytes | SHA-256                                                            |
+| ------------------------------- | ----------: | ------------------------------------------------------------------ |
+| `reachcut-personal-Windows-X64` | 210,606,813 | `e0b1789dccdd40905a129409d5a7e5c970e3e49f721542c176d7573611f282af` |
+| `reachcut-personal-macOS-ARM64` | 576,374,606 | `03a804a31b2c20aa39880ffec5a3198365298ebb3598724772ac3a501fb726db` |
+| `reachcut-personal-macOS-X64`   | 599,453,787 | `c260a0bb555f3cb88a28c3d64c204bfe0971c12a0fe56fae348f8bff7a01c417` |
+| `reachcut-personal-Linux-X64`   | 635,034,713 | `fbb87e33d71bfcbe062c10dc8fca83e997fbfe0beeae30a8f28f08d3f2099db9` |
+
+This Personal candidate fixes the real-browser authorization failure found in 0.1.12.
+The gateway still uses one-time bootstrap tokens and HttpOnly session cookies; the change
+only permits the bootstrap page to make its same-origin session request. The Intel macOS
+job built and installed the x64 PKG, activated the installer-started background agent, and
+passed the installed-runtime test. A manual browser launch on the target Intel Mac remains
+the final acceptance check because the current smoke harness does not execute browser
+JavaScript.
+
+## 21. Rejected Personal 0.1.12 release record
 
 | Item            | Value                                                                     |
 | --------------- | ------------------------------------------------------------------------- |
@@ -817,7 +846,7 @@ permits only same-origin connections with `connect-src 'self'`; 0.1.12 remains r
 `personal-v0.1.11` was rejected after its older smoke harness tried to start a duplicate
 agent even though Intel macOS postinstall had already started one. Neither tag is reusable.
 
-## 21. Rejected Personal 0.1.9 release record
+## 22. Rejected Personal 0.1.9 release record
 
 | Item            | Value                                                       |
 | --------------- | ----------------------------------------------------------- |
@@ -844,7 +873,7 @@ the browser displayed “Authorization failed.” The second launcher now authen
 the running agent and requests a fresh single-use bootstrap URL. `0.1.9` itself remains
 rejected and must be replaced by a newer Personal build.
 
-## 22. Rejected Personal 0.1.6 release record
+## 23. Rejected Personal 0.1.6 release record
 
 | Item            | Value                                                        |
 | --------------- | ------------------------------------------------------------ |
