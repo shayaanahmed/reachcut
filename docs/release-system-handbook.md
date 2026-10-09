@@ -731,15 +731,17 @@ uploads artifacts.
 ### Background-start browser authorization
 
 Background startup launches the agent with `--no-browser`. The agent's session secret is
-regenerated on every start, invalidating the old browser cookie. If a user then launches a
-second shortcut while the background agent is already running, the second process currently
-opens the ordinary origin rather than obtaining a new one-time bootstrap URL from the
-running process. On a fresh login this can show “authorization required.”
+regenerated on every start, invalidating the old browser cookie. A later app launch reads a
+private per-profile activation secret and asks the running loopback agent for a fresh,
+single-use bootstrap URL. The browser exchanges the URL-fragment token for an HttpOnly
+session cookie and the gateway removes the token after one use.
 
-This must be fixed before relying on background auto-start for customers. Appropriate
-solutions include a protected local activation IPC endpoint, OS-specific activation
-handoff, or securely persisted/rekeyed browser authorization. Do not weaken the gateway by
-removing authentication.
+The bootstrap page's Content Security Policy must include `connect-src 'self'`. Without it,
+`default-src 'none'` blocks the page's same-origin `fetch()` before the token reaches the
+gateway. Direct HTTP smoke tests do not execute browser JavaScript and therefore cannot
+detect that regression; retain the CSP assertion and add browser-driven installer smoke
+coverage before a public Stable release. Do not weaken the gateway by removing
+authentication.
 
 ### Version consistency
 
@@ -784,14 +786,14 @@ Profile values are currently centralized in JavaScript for common staging, but t
 builders also contain channel mappings. When a profile changes, search for the old value
 across `packaging/`, workflow files, docs, tests, and UI copy to prevent drift.
 
-## 20. Personal 0.1.12 release record
+## 20. Rejected Personal 0.1.12 release record
 
 | Item            | Value                                                                     |
 | --------------- | ------------------------------------------------------------------------- |
 | Source commit   | `b6976162b66208db82a4a78ac5713793bcc9168a`                                |
 | Tag             | `personal-v0.1.12`                                                        |
 | Workflow run    | `37941031139`                                                             |
-| Runtime result  | All four targets passed installed cold/existing-agent second-launch smoke |
+| Runtime result  | Native smoke passed; real Intel macOS browser authorization failed        |
 | Signing         | None; internal test only                                                  |
 | Artifact expiry | 2026-10-23                                                                |
 
@@ -807,6 +809,10 @@ GitHub artifact archive sizes and digests:
 This is the first Personal build whose native smoke gate exercises repeated app launches.
 On Intel macOS, the PKG postinstall script started the login agent, and the smoke harness
 then activated that existing instance and received a fresh browser authorization URL.
+However, the smoke test exchanged the token directly over HTTP and did not execute the
+bootstrap page in a browser. Real Intel macOS testing showed the page's
+`default-src 'none'` policy blocked its own session `fetch()`. The gateway now explicitly
+permits only same-origin connections with `connect-src 'self'`; 0.1.12 remains rejected.
 `personal-v0.1.10` was cancelled after a Windows-only permission-bit assertion failed;
 `personal-v0.1.11` was rejected after its older smoke harness tried to start a duplicate
 agent even though Intel macOS postinstall had already started one. Neither tag is reusable.

@@ -254,6 +254,10 @@ describe("authenticated local gateway", () => {
     });
     assert.equal(page.status, 200);
     assert.doesNotMatch(page.body, new RegExp(bootstrapToken));
+    assert.match(
+      page.headers["content-security-policy"],
+      /connect-src 'self'/,
+    );
 
     const exchange = await request({
       port: gatewayPort,

@@ -357,7 +357,7 @@ function bootstrapPage(response) {
   response.writeHead(200, {
     "Cache-Control": "no-store",
     "Content-Length": payload.length,
-    "Content-Security-Policy": `default-src 'none'; script-src 'nonce-${nonce}'`,
+    "Content-Security-Policy": `default-src 'none'; script-src 'nonce-${nonce}'; connect-src 'self'`,
     "Content-Type": "text/html; charset=utf-8",
     "Referrer-Policy": "no-referrer",
     "X-Content-Type-Options": "nosniff",
