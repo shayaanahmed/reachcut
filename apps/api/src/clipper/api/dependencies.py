@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from clipper.config import settings
-from clipper.discovery import DiscoveryService
+from clipper.domain.editing_plan import ClipType
 from clipper.persistence import (
     Clip,
     Project,
@@ -13,7 +13,14 @@ from clipper.persistence import (
     PublicationAccountLink,
     SessionLocal,
 )
-from clipper.projects import ClipService, Pipeline, PublishingConnectionService
+from clipper.projects import (
+    AutomationService,
+    ClipService,
+    Pipeline,
+    PublicationService,
+    PublishingConnectionService,
+    RuntimeSettingsService,
+)
 from clipper.providers.credentials import EncryptedCredentialStore
 from clipper.providers.meta import FacebookPublishingAdapter, InstagramPublishingAdapter
 from clipper.providers.ollama import EditorialGenerationConfig, OllamaEditorialProvider
@@ -26,7 +33,6 @@ from clipper.providers.social_oauth import (
     XOAuthClient,
 )
 from clipper.providers.tiktok import TikTokPublishingAdapter
-from clipper.providers.trend_discovery import GoogleYouTubeDiscoveryProvider
 from clipper.providers.whisper import FasterWhisperProvider
 from clipper.providers.x import XPublishingAdapter
 from clipper.providers.youtube import (
@@ -53,18 +59,26 @@ def build_transcription_provider(language: str | None = None) -> FasterWhisperPr
 
 
 transcription_provider = build_transcription_provider()
-editorial_provider = OllamaEditorialProvider(
-    settings.editorial_base_url,
-    settings.editorial_model,
-    timeout_seconds=settings.editorial_timeout_seconds,
-    cache_dir=settings.data_dir / "cache" / "editorial",
-    generation=EditorialGenerationConfig(
-        num_ctx=settings.editorial_num_ctx,
-        num_predict=settings.editorial_num_predict,
-        retry_num_ctx=settings.editorial_retry_num_ctx,
-        retry_num_predict=settings.editorial_retry_num_predict,
-    ),
-)
+
+
+def build_editorial_provider(
+    base_url: str | None = None, model: str | None = None
+) -> OllamaEditorialProvider:
+    return OllamaEditorialProvider(
+        base_url or settings.editorial_base_url,
+        model or settings.editorial_model,
+        timeout_seconds=settings.editorial_timeout_seconds,
+        cache_dir=settings.data_dir / "cache" / "editorial",
+        generation=EditorialGenerationConfig(
+            num_ctx=settings.editorial_num_ctx,
+            num_predict=settings.editorial_num_predict,
+            retry_num_ctx=settings.editorial_retry_num_ctx,
+            retry_num_predict=settings.editorial_retry_num_predict,
+        ),
+    )
+
+
+editorial_provider = build_editorial_provider()
 caption_translation_provider = OllamaCaptionTranslationProvider(
     settings.editorial_base_url,
     settings.editorial_model,
@@ -92,13 +106,10 @@ media_downloader = YtDlpDownloader(
     settings.yt_dlp_repository,
     timeout_seconds=settings.yt_dlp_timeout_seconds,
 )
-discovery_service = DiscoveryService(
-    GoogleYouTubeDiscoveryProvider(
-        settings.yt_dlp_repository,
-        timeout_seconds=min(settings.yt_dlp_timeout_seconds, 60),
-    )
-)
 credential_store = EncryptedCredentialStore(settings.data_dir)
+runtime_settings_service = RuntimeSettingsService(settings)
+automation_service = AutomationService()
+publication_service = PublicationService()
 youtube_oauth = YouTubeOAuthClient(
     YouTubeOAuthConfig(
         client_id=settings.youtube_client_id,
@@ -152,28 +163,51 @@ publishing_adapters: dict[str, PublishingAdapter] = {
 metrics_adapters: dict[str, MetricsAdapter] = {"youtube": youtube_publisher}
 publishing_connections = PublishingConnectionService(social_oauth_clients, credential_store)
 pipeline_lock = threading.Lock()
+automation_lock = threading.Lock()
 logger = structlog.get_logger()
 
 
-def run_pipeline(project_id: str, language: str | None = None) -> None:
+def run_pipeline(
+    project_id: str,
+    language: str | None = None,
+    clip_types: tuple[ClipType, ...] = (),
+) -> None:
     """Background-task entry point with a fresh database session."""
 
     with pipeline_lock, SessionLocal() as session:
         try:
+            runtime = runtime_settings_service.get(session)
             selected_transcription = build_transcription_provider(language)
             selected_pipeline = Pipeline(
                 settings,
                 selected_transcription,
-                editorial_provider,
+                build_editorial_provider(runtime.ollama_base_url, runtime.editorial_model),
                 visual_tracking_provider,
             )
-            selected_pipeline.run(session, project_id)
+            selected_pipeline.run(session, project_id, clip_types=clip_types)
         except Exception as error:
             logger.exception(
                 "pipeline_failed",
                 project_id=project_id,
                 error_category=type(error).__name__,
             )
+
+
+def run_automation_cycle(pipeline_id: str | None = None) -> list[str]:
+    """Execute due publishing pipelines with a fresh database session."""
+
+    with automation_lock, SessionLocal() as session:
+        return automation_service.execute_due(
+            session,
+            clip_service,
+            publication_service,
+            publishing_adapters,
+            credential_store,
+            pipeline_id=pipeline_id,
+            analyze_project=lambda project_id, clip_types: run_pipeline(
+                project_id, None, clip_types
+            ),
+        )
 
 
 def find_project(session: Session, project_id: str) -> Project | None:

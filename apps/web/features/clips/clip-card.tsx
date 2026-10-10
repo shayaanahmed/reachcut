@@ -65,6 +65,7 @@ export function ClipCard({
           )}
           <span>{clip.plan.optimization_goal}</span>
           <span>{clip.plan.content_mode.replaceAll("_", " ")}</span>
+          <span>{clip.plan.clip_type}</span>
           <span
             className={`approval-pill ${clip.approval_status}`}
             aria-live="polite"

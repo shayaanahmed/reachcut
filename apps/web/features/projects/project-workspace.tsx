@@ -45,7 +45,10 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
       <ProjectCard
         project={project}
         language={workbench.languages[project.id] ?? ""}
+        selectedClipTypes={workbench.clipTypes[project.id] ?? []}
+        clipTypeSuggestions={workbench.clipTypeSuggestions[project.id] ?? []}
         setLanguages={workbench.setLanguages}
+        setClipTypes={workbench.setClipTypes}
         isPending={workbench.isPending}
         operationState={workbench.operationState}
         onProcess={workbench.process}

@@ -2,14 +2,21 @@ import type { Dispatch, SetStateAction } from "react";
 
 import { ClipCard } from "../clips/clip-card";
 import { ProjectPerformance } from "../publishing/project-performance";
-import type { Project } from "../../lib/contracts";
+import type {
+  ClipType,
+  ClipTypeSuggestion,
+  Project,
+} from "../../lib/contracts";
 import { ProjectProgress } from "./project-progress";
 import type { OperationState } from "./use-project-workbench";
 
 export function ProjectCard({
   project,
   language,
+  selectedClipTypes,
+  clipTypeSuggestions,
   setLanguages,
+  setClipTypes,
   isPending,
   operationState,
   onProcess,
@@ -20,7 +27,10 @@ export function ProjectCard({
 }: {
   project: Project;
   language: string;
+  selectedClipTypes: ClipType[];
+  clipTypeSuggestions: ClipTypeSuggestion[];
   setLanguages: Dispatch<SetStateAction<Record<string, string>>>;
+  setClipTypes: Dispatch<SetStateAction<Record<string, ClipType[]>>>;
   isPending: (key: string) => boolean;
   operationState: (key: string) => OperationState | undefined;
   onProcess: (id: string) => Promise<unknown>;
@@ -126,6 +136,34 @@ export function ProjectCard({
                 <option value="fr">French</option>
               </select>
             </label>
+            <fieldset className="clip-type-picker">
+              <legend>Moments to find</legend>
+              <div>
+                {clipTypeOptions.map((option) => (
+                  <label key={option.value}>
+                    <input
+                      type="checkbox"
+                      checked={selectedClipTypes.includes(option.value)}
+                      onChange={(event) =>
+                        setClipTypes((current) => {
+                          const selected = current[project.id] ?? [];
+                          return {
+                            ...current,
+                            [project.id]: event.target.checked
+                              ? [...selected, option.value]
+                              : selected.filter(
+                                  (item) => item !== option.value,
+                                ),
+                          };
+                        })
+                      }
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+              <small>Leave all unchecked for automatic discovery.</small>
+            </fieldset>
             <button
               className="secondary"
               disabled={processing}
@@ -141,6 +179,47 @@ export function ProjectCard({
         </div>
       )}
       {project.stages.length > 0 && <ProjectProgress project={project} />}
+      {clipTypeSuggestions.length > 0 && (
+        <section
+          className="clip-direction-panel"
+          aria-labelledby="clip-directions"
+        >
+          <div>
+            <span className="eyebrow">TRANSCRIPT SIGNALS</span>
+            <h2 id="clip-directions">Possible clip directions</h2>
+            <p>ReachCut found these themes after transcribing your video.</p>
+          </div>
+          <div className="clip-direction-list">
+            {clipTypeSuggestions.map((suggestion) => (
+              <button
+                type="button"
+                key={suggestion.clip_type}
+                className={
+                  selectedClipTypes.includes(suggestion.clip_type)
+                    ? "active"
+                    : ""
+                }
+                onClick={() =>
+                  setClipTypes((current) => ({
+                    ...current,
+                    [project.id]: selectedClipTypes.includes(
+                      suggestion.clip_type,
+                    )
+                      ? selectedClipTypes.filter(
+                          (item) => item !== suggestion.clip_type,
+                        )
+                      : [...selectedClipTypes, suggestion.clip_type],
+                  }))
+                }
+              >
+                <strong>{clipTypeLabel(suggestion.clip_type)}</strong>
+                <span>{suggestion.score}% signal</span>
+                <small>{suggestion.reason}</small>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
       <ProjectPerformance project={project} />
       {project.clips.length > 0 && (
         <section
@@ -178,4 +257,19 @@ export function ProjectCard({
       )}
     </article>
   );
+}
+
+const clipTypeOptions: { value: ClipType; label: string }[] = [
+  { value: "funny", label: "Funny" },
+  { value: "advice", label: "Advice" },
+  { value: "insight", label: "Insights" },
+  { value: "story", label: "Stories" },
+  { value: "debate", label: "Debate" },
+  { value: "educational", label: "Educational" },
+  { value: "emotional", label: "Emotional" },
+  { value: "promotional", label: "Promotional" },
+];
+
+function clipTypeLabel(value: ClipType) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }

@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from clipper.captions import caption_config_for_preset, caption_preset_for_mode
 from clipper.domain.editing_plan import (
     CTA,
+    ClipType,
     ContentMode,
     EditingPlanV1,
     Effect,
@@ -46,6 +47,7 @@ class EditorialCandidate(BaseModel):
     hashtags: list[str] = Field(min_length=3, max_length=6)
     caption_style: Literal["clean", "kinetic_highlight", "karaoke"] = "clean"
     cta_text: str = Field(default="Follow for more", min_length=1, max_length=100)
+    clip_type: ClipType = ClipType.HIGHLIGHT
 
     @field_validator("hashtags")
     @classmethod
@@ -346,7 +348,10 @@ class OllamaEditorialProvider:
                 if candidate.candidate_id in seen:
                     raise ValueError("candidate_id was duplicated")
                 seen.add(candidate.candidate_id)
-                valid.append(candidate.model_dump(mode="json"))
+                payload = candidate.model_dump(mode="json")
+                if "clip_type" not in candidate.model_fields_set:
+                    payload.pop("clip_type", None)
+                valid.append(payload)
             except (ValidationError, ValueError) as error:
                 if isinstance(error, ValidationError):
                     issue = error.errors(include_url=False)[0]
@@ -561,6 +566,7 @@ class OllamaEditorialProvider:
             source_slices=list(option.source_slices),
             optimization_goal=option.optimization_goal,
             content_mode=option.content_mode,
+            clip_type=candidate.clip_type,
             enhancement_level=EnhancementLevel.DYNAMIC,
             scores=candidate.scores,
             rationale=candidate.rationale,
@@ -778,18 +784,26 @@ class OllamaEditorialProvider:
         requested_count = min(3, len(options))
         context_text = ""
         if context:
+            requested_types = ", ".join(item.value for item in context.requested_clip_types)
             context_text = (
                 f"Project context: title={context.project_title!r}; "
                 f"original_filename={context.original_filename!r}. "
                 f"content_mode={context.content_mode}; "
                 "Use supported names from this context to make hooks and titles standalone; "
                 "do not invent unsupported facts. "
+                + (
+                    f"Only select moments matching these requested clip types: {requested_types}. "
+                    if requested_types
+                    else "Classify each moment by its strongest clip type. "
+                )
             )
         return (
             context_text + f"Rank exactly {requested_count} of the supplied transcript options. "
             "Return only JSON as "
             '{"candidates":[EditorialCandidate,...]}. Copy candidate_id exactly and return scores, '
-            "rationale, hook_text, cta_text, suggested_title, hashtags, and caption_style. Make "
+            "rationale, hook_text, cta_text, suggested_title, hashtags, clip_type, and "
+            "caption_style. clip_type must be one of highlight, funny, advice, insight, story, "
+            "debate, educational, emotional, or promotional. Make "
             "suggested_title concise, accurate, curiosity-driven, and catchy without misleading "
             "clickbait. Return 3-6 distinct, relevant, ready-to-paste hashtags, each beginning "
             "with # and containing no spaces. Do not generate or change timestamps, boundaries, "

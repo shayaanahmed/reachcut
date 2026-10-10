@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Protocol
 
-from clipper.domain.editing_plan import ContentMode, EditingPlanV1
+from clipper.domain.editing_plan import ClipType, ContentMode, EditingPlanV1
 from clipper.domain.transcript import Transcript
 from clipper.transcription.contracts import CancellationProbe, ProgressReporter
 
@@ -15,6 +15,7 @@ class EditorialContext:
     content_mode: ContentMode = ContentMode.AUTO
     face_coverage: float = 0
     motion_confidence: float = 0
+    requested_clip_types: tuple[ClipType, ...] = ()
 
 
 class EditorialLLMProvider(Protocol):

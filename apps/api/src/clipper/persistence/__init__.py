@@ -1,6 +1,7 @@
 """SQLAlchemy persistence adapter public API."""
 
 from clipper.persistence.models import (
+    AutomationPipeline,
     Base,
     Clip,
     MetricSnapshot,
@@ -9,6 +10,7 @@ from clipper.persistence.models import (
     Publication,
     PublicationAccountLink,
     PublicationProviderReference,
+    RuntimeSetting,
     SocialAccount,
     StageRun,
     StageStatus,
@@ -17,6 +19,7 @@ from clipper.persistence.models import (
 from clipper.persistence.session import SessionLocal, create_schema, engine, get_session
 
 __all__ = [
+    "AutomationPipeline",
     "Base",
     "Clip",
     "MetricSnapshot",
@@ -25,6 +28,7 @@ __all__ = [
     "Publication",
     "PublicationAccountLink",
     "PublicationProviderReference",
+    "RuntimeSetting",
     "SessionLocal",
     "SocialAccount",
     "StageRun",

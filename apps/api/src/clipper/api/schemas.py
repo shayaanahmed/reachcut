@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from clipper.domain.editing_plan import (
     CaptionConfig,
+    ClipType,
     ContentMode,
     EditingPlanV1,
     Effect,
@@ -96,6 +97,14 @@ class ApprovalRequest(BaseModel):
 
 class ProcessRequest(BaseModel):
     language: str | None = Field(default=None, pattern=r"^[a-z]{2}$")
+    clip_types: list[ClipType] = Field(default_factory=list, max_length=9)
+
+
+class ClipTypeSuggestionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    clip_type: ClipType
+    score: int
+    reason: str
 
 
 class ProjectUpdateRequest(BaseModel):
@@ -233,3 +242,52 @@ class HealthResponse(BaseModel):
     ffprobe: bool
     editorial_provider: str
     transcription_provider: str
+
+
+class RuntimeSettingsResponse(BaseModel):
+    ollama_base_url: str
+    editorial_model: str
+
+
+class RuntimeSettingsUpdateRequest(BaseModel):
+    ollama_base_url: str = Field(min_length=8, max_length=2_048)
+    editorial_model: str = Field(min_length=1, max_length=200)
+
+
+class OllamaModelsResponse(BaseModel):
+    models: list[str]
+
+
+class AutomationPipelineResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    name: str
+    project_id: str
+    social_account_ids: list[str]
+    clip_selection: Literal["all", "best"]
+    clip_types: list[ClipType]
+    schedule: Literal["once", "daily", "weekly"]
+    next_run_at: datetime
+    status: str
+    auto_approve: bool
+    title_template: str
+    description_template: str
+    last_run_at: datetime | None
+    last_error: str | None
+    created_at: datetime
+
+
+class AutomationPipelineCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    project_id: str = Field(min_length=1, max_length=36)
+    social_account_ids: list[str] = Field(min_length=1, max_length=10)
+    clip_selection: Literal["all", "best"] = "best"
+    clip_types: list[ClipType] = Field(default_factory=list, max_length=9)
+    schedule: Literal["once", "daily", "weekly"] = "once"
+    next_run_at: datetime
+    title_template: str = Field(default="{clip_title}", min_length=1, max_length=200)
+    description_template: str = Field(default="{hashtags}", max_length=5_000)
+
+
+class AutomationPipelineActiveRequest(BaseModel):
+    active: bool

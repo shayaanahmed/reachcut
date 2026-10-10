@@ -32,7 +32,7 @@ def assert_pure(path: Path) -> None:
 
 
 def test_domain_packages_do_not_depend_on_framework_or_persistence() -> None:
-    for package in ("captions", "discovery", "editorial", "transcription"):
+    for package in ("captions", "editorial", "transcription"):
         for path in (API_ROOT / package).glob("*.py"):
             assert_pure(path)
 

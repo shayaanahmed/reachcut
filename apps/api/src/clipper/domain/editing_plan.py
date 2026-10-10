@@ -47,6 +47,18 @@ class ContentMode(StrEnum):
     BROLL = "broll"
 
 
+class ClipType(StrEnum):
+    HIGHLIGHT = "highlight"
+    FUNNY = "funny"
+    ADVICE = "advice"
+    INSIGHT = "insight"
+    STORY = "story"
+    DEBATE = "debate"
+    EDUCATIONAL = "educational"
+    EMOTIONAL = "emotional"
+    PROMOTIONAL = "promotional"
+
+
 class EnhancementLevel(StrEnum):
     CLEAN = "clean"
     DYNAMIC = "dynamic"
@@ -217,6 +229,7 @@ class EditingPlanV1(StrictModel):
     source_slices: Annotated[list[TimeRange], Field(max_length=12)] = Field(default_factory=list)
     optimization_goal: Literal["views", "revenue"] = "views"
     content_mode: ContentMode = ContentMode.AUTO
+    clip_type: ClipType = ClipType.HIGHLIGHT
     enhancement_level: EnhancementLevel = EnhancementLevel.CLEAN
     scores: Scores
     rationale: Annotated[str, Field(min_length=1, max_length=600)]

@@ -30,11 +30,14 @@ export default function RootLayout({
               <Link href="/projects">
                 <span aria-hidden="true">▤</span> Projects
               </Link>
-              <Link href="/discover">
-                <span aria-hidden="true">⌁</span> Discover
+              <Link href="/automations">
+                <span aria-hidden="true">↻</span> Automations
               </Link>
               <Link href="/settings/accounts">
                 <span aria-hidden="true">⚙</span> Accounts
+              </Link>
+              <Link href="/settings/general">
+                <span aria-hidden="true">⋯</span> Settings
               </Link>
             </nav>
             <div className="sidebar-footer">

@@ -180,10 +180,12 @@ export function Dashboard({ workbench }: { workbench: Workbench }) {
       <section className="dashboard-actions" aria-label="Quick actions">
         <div>
           <strong>What do you want to make next?</strong>
-          <small>Start with your own media or explore current topics.</small>
+          <small>
+            Start with your own media or schedule a publishing flow.
+          </small>
         </div>
         <Link href="/projects/new">Import media</Link>
-        <Link href="/discover">Explore topics</Link>
+        <Link href="/automations">Build automation</Link>
       </section>
       {workbench.error && (
         <p role="alert" className="error">

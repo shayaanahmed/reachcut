@@ -12,7 +12,12 @@ import {
   uploadClipSecondaryMedia,
   type ClipStyleUpdate,
 } from "../clips/api";
-import type { Project, SocialAccount } from "../../lib/contracts";
+import type {
+  ClipType,
+  ClipTypeSuggestion,
+  Project,
+  SocialAccount,
+} from "../../lib/contracts";
 import {
   addMetricSnapshot,
   createPublication,
@@ -25,6 +30,7 @@ import {
 } from "../publishing/api";
 import {
   deleteProject,
+  getClipTypeSuggestions,
   getProject,
   importProjectUrl,
   listProjects,
@@ -183,6 +189,10 @@ export function useProjectWorkbench(
   const [loading, setLoading] = useState(loadProjects);
   const [error, setError] = useState<string | null>(null);
   const [languages, setLanguages] = useState<Record<string, string>>({});
+  const [clipTypes, setClipTypes] = useState<Record<string, ClipType[]>>({});
+  const [clipTypeSuggestions, setClipTypeSuggestions] = useState<
+    Record<string, ClipTypeSuggestion[]>
+  >({});
   const renderQueue = useRef<Promise<void>>(Promise.resolve());
   const busy = Object.keys(operations).length > 0;
   const hasProcessingProjects = projects.some(
@@ -222,6 +232,21 @@ export function useProjectWorkbench(
       .catch((caught: Error) => setError(caught.message))
       .finally(() => setLoading(false));
   }, [loadProjects, projectId]);
+
+  const reviewedProjectKey = projects
+    .filter((project) => project.status === "review")
+    .map((project) => project.id)
+    .join(",");
+
+  useEffect(() => {
+    if (!reviewedProjectKey) return;
+    const ids = reviewedProjectKey.split(",");
+    void Promise.all(
+      ids.map(async (id) => [id, await getClipTypeSuggestions(id)] as const),
+    )
+      .then((items) => setClipTypeSuggestions(Object.fromEntries(items)))
+      .catch((caught: Error) => setError(caught.message));
+  }, [reviewedProjectKey]);
 
   useEffect(() => {
     if (!loadAccounts) return;
@@ -392,7 +417,7 @@ export function useProjectWorkbench(
     withOperation(
       `project:${id}:process`,
       async () => {
-        await processProject(id, languages[id]);
+        await processProject(id, languages[id], clipTypes[id] ?? []);
         setProjects((items) =>
           items.map((item) =>
             item.id === id ? { ...item, status: "processing" } : item,
@@ -572,6 +597,8 @@ export function useProjectWorkbench(
     approve,
     busy,
     error,
+    clipTypes,
+    clipTypeSuggestions,
     languages,
     loading,
     operations,
@@ -594,6 +621,7 @@ export function useProjectWorkbench(
     uploadSecondaryMedia,
     removeSecondaryMedia,
     setLanguages,
+    setClipTypes,
     upload,
   };
 }

@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from clipper.config import Settings
-from clipper.domain.editing_plan import EditingPlanV1, TrackingConfig
+from clipper.domain.editing_plan import ClipType, EditingPlanV1, TrackingConfig
 from clipper.domain.transcript import Transcript
 from clipper.editorial import (
     EditorialContext,
@@ -59,7 +59,13 @@ class Pipeline:
         )
         self.renderer = VideoRenderer()
 
-    def run(self, session: Session, project_id: str, target_count: int = 5) -> None:
+    def run(
+        self,
+        session: Session,
+        project_id: str,
+        target_count: int = 5,
+        clip_types: tuple[ClipType, ...] = (),
+    ) -> None:
         project = session.get(Project, project_id)
         if not project:
             raise LookupError("project not found")
@@ -125,6 +131,7 @@ class Pipeline:
                 inferred_mode,
                 visual_analysis.face_coverage,
                 motion_confidence,
+                clip_types,
             )
             plans_payload = self.stage_runner.run(
                 session,
@@ -137,6 +144,7 @@ class Pipeline:
                     self.tracking.identity if self.tracking else "tracking:none",
                     inferred_mode,
                     str(target_count),
+                    *(item.value for item in clip_types),
                 ),
                 lambda progress: self._select_and_track(
                     transcript,

@@ -2,7 +2,7 @@
 
 ReachCut is a local-first application for turning media you are authorized to repurpose into reviewable vertical clips. The core pipeline uses local models and local FFmpeg processes. Official API adapters can upload approved clips to YouTube, TikTok, Instagram Reels, Facebook Reels, and X without opening each platform's upload interface.
 
-The current vertical slice provides secure local upload and allowlisted URL import through `yt-dlp`, media probing, durable stage state, provider-based `faster-whisper` transcription, Ollama/Qwen editorial selection, and schema-validated views- and revenue-oriented editing plans. The Creative Studio adds auto-curated source slices, content modes, OpenCV face/action tracking, caption presets and translation, hook/CTA/card overlays, transitions, zoom/progress effects, gameplay split-screen, B-roll, reaction PIP, SFX, music, and alternate source-audio selection. Deterministic FFmpeg rendering produces review previews and final 9:16 exports. Human approval is required before final rendering.
+The current vertical slice provides secure local upload and allowlisted URL import through `yt-dlp`, media probing, durable stage state, provider-based `faster-whisper` transcription, configurable Ollama editorial selection, and schema-validated views- and revenue-oriented editing plans. Transcript signals suggest useful clip directions such as funny moments, advice, stories, insights, and educational sections. The Creative Studio adds auto-curated source slices, content modes, OpenCV face/action tracking, caption presets and translation, hook/CTA/card overlays, transitions, zoom/progress effects, gameplay split-screen, B-roll, reaction PIP, SFX, music, and alternate source-audio selection. Deterministic FFmpeg rendering produces review previews and final 9:16 exports. Clips require human approval unless the user explicitly creates an automation pipeline that opts into approval, rendering, and publishing.
 
 For Urdu and other non-English media, select the spoken language before analysis. The default `large-v3-turbo` Whisper model substantially improves multilingual recognition, while ASS/libass captions preserve Unicode/RTL shaping. Caption position, font, size, colors, highlighted words, line length, and pop/karaoke animation can be reviewed and changed on each generated clip.
 
@@ -55,6 +55,11 @@ pnpm dev
 ```
 
 `pnpm dev` starts the API on port 8000 and web client on port 3000. Run `pnpm doctor` before processing media. Model downloads are explicit user actions; see [docs/models.md](docs/models.md).
+
+Use **Settings** in the ReachCut sidebar to change the Ollama URL and select any
+installed model. Use **Automations** to schedule one-time, daily, or weekly
+end-to-end flows that analyze a project, select either the best-scored clip or all
+matching clips, render them, and publish them to selected connected accounts.
 
 ReachCut retains the existing `CLIPPER_*` environment-variable prefix, `clipper`
 Python import package, database filename, and Docker data-volume name for backward

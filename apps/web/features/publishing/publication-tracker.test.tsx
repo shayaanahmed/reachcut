@@ -16,6 +16,7 @@ const clip = {
     source_slices: [],
     optimization_goal: "views",
     content_mode: "auto",
+    clip_type: "highlight",
     enhancement_level: "clean",
     scores: {
       overall: 88,

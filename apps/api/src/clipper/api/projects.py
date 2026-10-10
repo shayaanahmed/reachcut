@@ -16,12 +16,15 @@ from sqlalchemy.orm import Session, selectinload
 
 from clipper.api.dependencies import find_project, media_downloader, run_pipeline
 from clipper.api.schemas import (
+    ClipTypeSuggestionResponse,
     ProcessRequest,
     ProjectResponse,
     ProjectUpdateRequest,
     UrlImportRequest,
 )
 from clipper.config import settings
+from clipper.domain.transcript import Transcript
+from clipper.editorial import suggest_clip_types
 from clipper.media import MediaError, safe_filename, store_upload, validate_public_media_url
 from clipper.persistence import (
     Clip,
@@ -69,6 +72,17 @@ def projects(session: Session = Depends(get_session)) -> list[Project]:
 @router.get("/projects/{project_id}", response_model=ProjectResponse)
 def project(project_id: str, session: Session = Depends(get_session)) -> Project:
     return project_or_404(session, project_id)
+
+
+@router.get(
+    "/projects/{project_id}/clip-types",
+    response_model=list[ClipTypeSuggestionResponse],
+)
+def project_clip_types(project_id: str, session: Session = Depends(get_session)) -> list[object]:
+    selected = project_or_404(session, project_id)
+    if not selected.transcript:
+        return []
+    return list(suggest_clip_types(Transcript.model_validate(selected.transcript)))
 
 
 @router.put("/projects/{project_id}", response_model=ProjectResponse)
@@ -159,7 +173,12 @@ def process_project(
         raise HTTPException(status_code=409, detail="project is already processing")
     selected.status = "processing"
     session.commit()
-    background_tasks.add_task(run_pipeline, project_id, request.language if request else None)
+    background_tasks.add_task(
+        run_pipeline,
+        project_id,
+        request.language if request else None,
+        tuple(request.clip_types) if request else (),
+    )
     return {"status": "queued", "project_id": project_id}
 
 

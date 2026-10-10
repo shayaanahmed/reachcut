@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import uuid4
 
-from sqlalchemy import JSON, BigInteger, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -52,6 +52,41 @@ class Project(Base):
         back_populates="project", cascade="all, delete-orphan"
     )
     clips: Mapped[list[Clip]] = relationship(back_populates="project", cascade="all, delete-orphan")
+
+
+class RuntimeSetting(Base):
+    __tablename__ = "runtime_settings"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, onupdate=now_utc
+    )
+
+
+class AutomationPipeline(Base):
+    __tablename__ = "automation_pipelines"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    name: Mapped[str] = mapped_column(String(120))
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    social_account_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    clip_selection: Mapped[str] = mapped_column(String(16), default="best")
+    clip_types: Mapped[list[str]] = mapped_column(JSON, default=list)
+    schedule: Mapped[str] = mapped_column(String(16), default="once")
+    next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    status: Mapped[str] = mapped_column(String(16), default="active", index=True)
+    auto_approve: Mapped[bool] = mapped_column(Boolean, default=True)
+    title_template: Mapped[str] = mapped_column(String(200), default="{clip_title}")
+    description_template: Mapped[str] = mapped_column(Text, default="{hashtags}")
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, onupdate=now_utc
+    )
 
 
 class StageRun(Base):

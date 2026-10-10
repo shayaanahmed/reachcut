@@ -1,6 +1,12 @@
 """Project and clip application services."""
 
 from clipper.projects.artifacts import ArtifactPathError, ClipArtifactService, resolve_clip_artifact
+from clipper.projects.automations import (
+    AutomationCreate,
+    AutomationNotFoundError,
+    AutomationService,
+    AutomationStateError,
+)
 from clipper.projects.clips import ClipService, ClipStyleUpdate
 from clipper.projects.management import ProjectService
 from clipper.projects.pipeline import Pipeline
@@ -17,6 +23,11 @@ from clipper.projects.publishing_connections import (
     PublishingConnectionError,
     PublishingConnectionService,
 )
+from clipper.projects.runtime_settings import (
+    RuntimeConfiguration,
+    RuntimeSettingsError,
+    RuntimeSettingsService,
+)
 from clipper.projects.social_accounts import (
     SocialAccountCreate,
     SocialAccountNotFoundError,
@@ -29,6 +40,10 @@ __all__ = [
     "AccountConnectionReadiness",
     "ArtifactPathError",
     "AutomaticPublicationCreate",
+    "AutomationCreate",
+    "AutomationNotFoundError",
+    "AutomationService",
+    "AutomationStateError",
     "ClipArtifactService",
     "ClipService",
     "ClipStyleUpdate",
@@ -41,6 +56,9 @@ __all__ = [
     "PublicationStateError",
     "PublishingConnectionError",
     "PublishingConnectionService",
+    "RuntimeConfiguration",
+    "RuntimeSettingsError",
+    "RuntimeSettingsService",
     "SocialAccountCreate",
     "SocialAccountNotFoundError",
     "SocialAccountService",

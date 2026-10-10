@@ -1,4 +1,10 @@
-import { projectSchema, type Project } from "../../lib/contracts";
+import {
+  clipTypeSuggestionSchema,
+  projectSchema,
+  type ClipType,
+  type ClipTypeSuggestion,
+  type Project,
+} from "../../lib/contracts";
 import { API_URL, responseError, UPLOAD_API_URL } from "../../lib/http";
 
 export async function listProjects(): Promise<Project[]> {
@@ -69,11 +75,23 @@ export async function deleteProject(projectId: string): Promise<void> {
 export async function processProject(
   projectId: string,
   language?: string,
+  clipTypes: ClipType[] = [],
 ): Promise<void> {
   const response = await fetch(`${API_URL}/projects/${projectId}/process`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ language: language || null }),
+    body: JSON.stringify({ language: language || null, clip_types: clipTypes }),
   });
   if (!response.ok) throw await responseError(response, "Processing failed");
+}
+
+export async function getClipTypeSuggestions(
+  projectId: string,
+): Promise<ClipTypeSuggestion[]> {
+  const response = await fetch(`${API_URL}/projects/${projectId}/clip-types`, {
+    cache: "no-store",
+  });
+  if (!response.ok)
+    throw await responseError(response, "Could not load clip directions");
+  return clipTypeSuggestionSchema.array().parse(await response.json());
 }

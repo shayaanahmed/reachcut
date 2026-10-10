@@ -8,6 +8,18 @@ export const socialPlatformSchema = z.enum([
   "x",
 ]);
 
+export const clipTypeSchema = z.enum([
+  "highlight",
+  "funny",
+  "advice",
+  "insight",
+  "story",
+  "debate",
+  "educational",
+  "emotional",
+  "promotional",
+]);
+
 const timeRange = z.object({
   start_seconds: z.number(),
   end_seconds: z.number(),
@@ -43,6 +55,7 @@ const editingPlan = z.object({
   source_slices: z.array(timeRange).default([]),
   optimization_goal: z.enum(["views", "revenue"]).default("views"),
   content_mode: contentMode.default("auto"),
+  clip_type: clipTypeSchema.default("highlight"),
   enhancement_level: z
     .enum(["clean", "dynamic", "aggressive"])
     .default("clean"),
@@ -273,9 +286,42 @@ export const projectSchema = z.object({
   ),
 });
 
+export const clipTypeSuggestionSchema = z.object({
+  clip_type: clipTypeSchema,
+  score: z.number(),
+  reason: z.string(),
+});
+
+export const runtimeSettingsSchema = z.object({
+  ollama_base_url: z.string(),
+  editorial_model: z.string(),
+});
+
+export const automationPipelineSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  project_id: z.string(),
+  social_account_ids: z.array(z.string()),
+  clip_selection: z.enum(["all", "best"]),
+  clip_types: z.array(clipTypeSchema),
+  schedule: z.enum(["once", "daily", "weekly"]),
+  next_run_at: z.string(),
+  status: z.string(),
+  auto_approve: z.boolean(),
+  title_template: z.string(),
+  description_template: z.string(),
+  last_run_at: z.string().nullable(),
+  last_error: z.string().nullable(),
+  created_at: z.string(),
+});
+
 export type Project = z.infer<typeof projectSchema>;
 export type SocialAccount = z.infer<typeof socialAccountSchema>;
 export type SocialPlatform = z.infer<typeof socialPlatformSchema>;
 export type AccountConnectionReadiness = z.infer<
   typeof accountConnectionReadinessSchema
 >;
+export type ClipType = z.infer<typeof clipTypeSchema>;
+export type ClipTypeSuggestion = z.infer<typeof clipTypeSuggestionSchema>;
+export type RuntimeSettings = z.infer<typeof runtimeSettingsSchema>;
+export type AutomationPipeline = z.infer<typeof automationPipelineSchema>;
