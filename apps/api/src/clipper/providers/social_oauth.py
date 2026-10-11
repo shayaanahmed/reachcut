@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -21,6 +22,7 @@ class OAuthAppConfig:
     client_id: str
     client_secret: str
     redirect_uri: str
+    configuration_id: str = ""
 
     @property
     def configured(self) -> bool:
@@ -46,6 +48,31 @@ class _OAuthHttpClient:
             return OAuthProviderError(f"{platform} authorization failed: {detail}")
         return OAuthProviderError(f"{platform} authorization failed: {error}")
 
+    @staticmethod
+    def meta_permission_statuses(
+        client: httpx.Client,
+        base_url: str,
+        access_token: str,
+    ) -> dict[str, str] | None:
+        """Return Meta's permission statuses without masking the primary OAuth error."""
+        try:
+            response = client.get(
+                f"{base_url}/me/permissions",
+                params={"access_token": access_token},
+            )
+            response.raise_for_status()
+        except httpx.HTTPError:
+            return None
+        payload = response.json()
+        permissions = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(permissions, list):
+            return None
+        return {
+            str(permission["permission"]): str(permission.get("status") or "")
+            for permission in permissions
+            if isinstance(permission, dict) and permission.get("permission")
+        }
+
 
 class TikTokOAuthClient(_OAuthHttpClient):
     def __init__(
@@ -63,6 +90,8 @@ class TikTokOAuthClient(_OAuthHttpClient):
 
     def authorization_url(self, state: str) -> str:
         self._require_configured()
+        verifier = _pkce_verifier(state, self._config.client_secret)
+        challenge = hashlib.sha256(verifier.encode()).hexdigest()
         query = urlencode(
             {
                 "client_key": self._config.client_id,
@@ -70,12 +99,13 @@ class TikTokOAuthClient(_OAuthHttpClient):
                 "scope": "user.info.basic,video.publish,video.upload",
                 "redirect_uri": self._config.redirect_uri,
                 "state": state,
+                "code_challenge": challenge,
+                "code_challenge_method": "S256",
             }
         )
         return f"https://www.tiktok.com/v2/auth/authorize/?{query}"
 
     def exchange_code(self, code: str, state: str = "") -> OAuthConnection:
-        del state
         self._require_configured()
         try:
             with self.client_session() as client:
@@ -87,6 +117,7 @@ class TikTokOAuthClient(_OAuthHttpClient):
                         "code": code,
                         "grant_type": "authorization_code",
                         "redirect_uri": self._config.redirect_uri,
+                        "code_verifier": _pkce_verifier(state, self._config.client_secret),
                     },
                     headers={"Content-Type": "application/x-www-form-urlencoded"},
                 )
@@ -119,47 +150,43 @@ class TikTokOAuthClient(_OAuthHttpClient):
             raise OAuthConfigurationError("TikTok OAuth is not configured")
 
 
-class MetaOAuthClient(_OAuthHttpClient):
+class InstagramOAuthClient(_OAuthHttpClient):
     def __init__(
         self,
         config: OAuthAppConfig,
         graph_version: str,
-        platform: str,
         *,
         client: httpx.Client | None = None,
     ) -> None:
         super().__init__(client=client)
-        if platform not in {"instagram", "facebook"}:
-            raise ValueError("Meta OAuth platform must be instagram or facebook")
         self._config = config
         self._base = f"https://graph.facebook.com/{graph_version}"
-        self._platform = platform
 
     @property
     def configured(self) -> bool:
-        return self._config.configured
+        return self._config.configured and bool(self._config.configuration_id)
 
     def authorization_url(self, state: str) -> str:
         self._require_configured()
-        scopes = ["pages_show_list", "pages_read_engagement"]
-        if self._platform == "instagram":
-            scopes.extend(["instagram_basic", "instagram_content_publish"])
-        else:
-            scopes.append("pages_manage_posts")
         query = urlencode(
             {
                 "client_id": self._config.client_id,
                 "redirect_uri": self._config.redirect_uri,
                 "response_type": "code",
-                "scope": ",".join(scopes),
+                "config_id": self._config.configuration_id,
+                "override_default_response_type": "true",
                 "state": state,
+                "auth_type": "rerequest",
+                "return_scopes": "true",
             }
         )
-        return f"https://www.facebook.com/{self._base.rsplit('/', 1)[-1]}/dialog/oauth?{query}"
+        version = self._base.rsplit("/", 1)[-1]
+        return f"https://www.facebook.com/{version}/dialog/oauth?{query}"
 
     def exchange_code(self, code: str, state: str = "") -> OAuthConnection:
         del state
         self._require_configured()
+        permission_statuses: dict[str, str] | None = None
         try:
             with self.client_session() as client:
                 token_response = client.get(
@@ -187,48 +214,82 @@ class MetaOAuthClient(_OAuthHttpClient):
                 )
                 accounts_response.raise_for_status()
                 accounts_payload = accounts_response.json()
-                accounts = (
-                    accounts_payload.get("data") if isinstance(accounts_payload, dict) else None
-                )
+                pages = accounts_payload.get("data") if isinstance(accounts_payload, dict) else None
+                if pages == []:
+                    permission_statuses = self.meta_permission_statuses(
+                        client,
+                        self._base,
+                        str(user_token),
+                    )
         except httpx.HTTPError as error:
             raise self.provider_error("Meta", error) from error
-        connection = self._connection_from_pages(accounts)
+        connection = self._connection_from_pages(pages)
         if connection is None:
-            raise self._missing_connection_error(accounts)
+            raise self._missing_connection_error(pages, permission_statuses)
         return connection
 
-    def _connection_from_pages(self, pages: object) -> OAuthConnection | None:
+    @staticmethod
+    def _connection_from_pages(pages: object) -> OAuthConnection | None:
         if not isinstance(pages, list):
             return None
         for page in pages:
             if not isinstance(page, dict) or not page.get("access_token"):
                 continue
-            if self._platform == "facebook" and page.get("id"):
-                return OAuthConnection(
-                    access_token=str(page["access_token"]),
-                    external_account_id=str(page["id"]),
-                    display_name=str(page.get("name") or "Facebook Page"),
-                    profile_url=f"https://www.facebook.com/{page['id']}",
-                )
             instagram = page.get("instagram_business_account")
-            if isinstance(instagram, dict) and instagram.get("id"):
-                username = str(instagram.get("username") or "").lstrip("@")
-                return OAuthConnection(
-                    access_token=str(page["access_token"]),
-                    external_account_id=str(instagram["id"]),
-                    display_name=str(instagram.get("name") or username or "Instagram account"),
-                    username=username,
-                    profile_url=(f"https://www.instagram.com/{username}/" if username else ""),
-                )
+            if not isinstance(instagram, dict) or not instagram.get("id"):
+                continue
+            username = str(instagram.get("username") or "").lstrip("@")
+            return OAuthConnection(
+                access_token=str(page["access_token"]),
+                external_account_id=str(instagram["id"]),
+                display_name=str(instagram.get("name") or username or "Instagram account"),
+                username=username,
+                profile_url=(f"https://www.instagram.com/{username}/" if username else ""),
+            )
         return None
 
-    def _missing_connection_error(self, pages: object) -> OAuthProviderError:
+    @staticmethod
+    def _missing_connection_error(
+        pages: object,
+        permission_statuses: dict[str, str] | None = None,
+    ) -> OAuthProviderError:
         if not isinstance(pages, list):
             return OAuthProviderError("Meta returned an invalid Facebook Page list")
         if not pages:
+            required = {
+                "business_management",
+                "instagram_basic",
+                "instagram_content_publish",
+                "pages_read_engagement",
+                "pages_show_list",
+            }
+            if permission_statuses is not None:
+                missing = sorted(
+                    permission
+                    for permission in required
+                    if permission_statuses.get(permission) != "granted"
+                )
+                if missing:
+                    return OAuthProviderError(
+                        "Meta login did not grant the required permission(s): "
+                        f"{', '.join(missing)}. In Facebook Login for Business > "
+                        "Configurations, edit the Configuration ID used by ReachCut, choose a "
+                        "User access token, add those permissions, save it, remove ReachCut from "
+                        "Facebook Settings > Business Integrations, and reconnect."
+                    )
+                return OAuthProviderError(
+                    "Meta granted the required Instagram and Page permissions, but /me/accounts "
+                    "returned no Facebook Pages even with business_management. Confirm the "
+                    "token belongs to the personal Facebook profile that manages the Page and "
+                    "that the destination is a true Facebook Page, not an additional or "
+                    "professional-mode profile."
+                )
             return OAuthProviderError(
-                "Meta returned no Facebook Pages for this login. Confirm the Facebook user "
-                "has Page access and granted pages_show_list and pages_read_engagement."
+                "Meta returned no Facebook Pages for this login. App administrator access is "
+                "not Page access: give this Facebook user direct Facebook access to the Page, "
+                "remove ReachCut from Facebook Settings > Business Integrations if it was "
+                "previously authorized, then reconnect and select the Page while granting "
+                "pages_show_list and pages_read_engagement."
             )
         pages_with_tokens = [
             page for page in pages if isinstance(page, dict) and page.get("access_token")
@@ -238,17 +299,163 @@ class MetaOAuthClient(_OAuthHttpClient):
                 "Meta returned Facebook Pages without Page access tokens. Reconnect and grant "
                 "pages_show_list and pages_read_engagement."
             )
-        if self._platform == "instagram":
+        return OAuthProviderError(
+            f"Meta returned {len(pages_with_tokens)} accessible Facebook Page(s), but none has "
+            "a linked Instagram professional account. Link the Instagram account to one of "
+            "those Pages in Meta Business Suite, then reconnect."
+        )
+
+    def _require_configured(self) -> None:
+        if not self.configured:
+            raise OAuthConfigurationError("Instagram OAuth is not configured")
+
+
+class FacebookOAuthClient(_OAuthHttpClient):
+    def __init__(
+        self,
+        config: OAuthAppConfig,
+        graph_version: str,
+        *,
+        client: httpx.Client | None = None,
+    ) -> None:
+        super().__init__(client=client)
+        self._config = config
+        self._base = f"https://graph.facebook.com/{graph_version}"
+
+    @property
+    def configured(self) -> bool:
+        return self._config.configured and bool(self._config.configuration_id)
+
+    def authorization_url(self, state: str) -> str:
+        self._require_configured()
+        query = urlencode(
+            {
+                "client_id": self._config.client_id,
+                "redirect_uri": self._config.redirect_uri,
+                "response_type": "code",
+                "config_id": self._config.configuration_id,
+                "override_default_response_type": "true",
+                "state": state,
+                "auth_type": "rerequest",
+                "return_scopes": "true",
+            }
+        )
+        return f"https://www.facebook.com/{self._base.rsplit('/', 1)[-1]}/dialog/oauth?{query}"
+
+    def exchange_code(self, code: str, state: str = "") -> OAuthConnection:
+        del state
+        self._require_configured()
+        permission_statuses: dict[str, str] | None = None
+        try:
+            with self.client_session() as client:
+                token_response = client.get(
+                    f"{self._base}/oauth/access_token",
+                    params={
+                        "client_id": self._config.client_id,
+                        "client_secret": self._config.client_secret,
+                        "redirect_uri": self._config.redirect_uri,
+                        "code": code,
+                    },
+                )
+                token_response.raise_for_status()
+                user_token = token_response.json().get("access_token")
+                if not user_token:
+                    raise OAuthProviderError("Meta did not return an access token")
+                accounts_response = client.get(
+                    f"{self._base}/me/accounts",
+                    params={
+                        "fields": ("id,name,access_token,tasks"),
+                        "access_token": user_token,
+                    },
+                )
+                accounts_response.raise_for_status()
+                accounts_payload = accounts_response.json()
+                accounts = (
+                    accounts_payload.get("data") if isinstance(accounts_payload, dict) else None
+                )
+                if accounts == []:
+                    permission_statuses = self.meta_permission_statuses(
+                        client,
+                        self._base,
+                        str(user_token),
+                    )
+        except httpx.HTTPError as error:
+            raise self.provider_error("Meta", error) from error
+        connection = self._connection_from_pages(accounts)
+        if connection is None:
+            raise self._missing_connection_error(accounts, permission_statuses)
+        return connection
+
+    def _connection_from_pages(self, pages: object) -> OAuthConnection | None:
+        if not isinstance(pages, list):
+            return None
+        for page in pages:
+            if not isinstance(page, dict) or not page.get("access_token"):
+                continue
+            if page.get("id"):
+                return OAuthConnection(
+                    access_token=str(page["access_token"]),
+                    external_account_id=str(page["id"]),
+                    display_name=str(page.get("name") or "Facebook Page"),
+                    profile_url=f"https://www.facebook.com/{page['id']}",
+                )
+        return None
+
+    def _missing_connection_error(
+        self,
+        pages: object,
+        permission_statuses: dict[str, str] | None = None,
+    ) -> OAuthProviderError:
+        if not isinstance(pages, list):
+            return OAuthProviderError("Meta returned an invalid Facebook Page list")
+        if not pages:
+            required = {
+                "business_management",
+                "pages_manage_posts",
+                "pages_read_engagement",
+                "pages_show_list",
+            }
+            if permission_statuses is not None:
+                missing = sorted(
+                    permission
+                    for permission in required
+                    if permission_statuses.get(permission) != "granted"
+                )
+                if missing:
+                    return OAuthProviderError(
+                        "Meta login did not grant the required permission(s): "
+                        f"{', '.join(missing)}. In Facebook Login for Business > "
+                        "Configurations, edit the Configuration ID used by ReachCut, choose a "
+                        "User access token, add those permissions, save it, remove ReachCut from "
+                        "Facebook Settings > Business Integrations, and reconnect."
+                    )
+                return OAuthProviderError(
+                    "Meta granted the required Facebook Page permissions, but /me/accounts "
+                    "returned no Facebook Pages even with business_management. Confirm the "
+                    "token belongs to the personal Facebook profile that manages the Page and "
+                    "that the destination is a true Facebook Page, not an additional or "
+                    "professional-mode profile."
+                )
             return OAuthProviderError(
-                f"Meta returned {len(pages_with_tokens)} accessible Facebook Page(s), but none "
-                "has a linked Instagram professional account. Link the Instagram account to "
-                "one of those Pages in Meta Business Suite, then reconnect."
+                "Meta returned no Facebook Pages for this login. App administrator access is "
+                "not Page access: give this Facebook user direct Facebook access to the Page, "
+                "remove ReachCut from Facebook Settings > Business Integrations if it was "
+                "previously authorized, then reconnect and select the Page while granting "
+                "pages_show_list and pages_read_engagement."
+            )
+        pages_with_tokens = [
+            page for page in pages if isinstance(page, dict) and page.get("access_token")
+        ]
+        if not pages_with_tokens:
+            return OAuthProviderError(
+                "Meta returned Facebook Pages without Page access tokens. Reconnect and grant "
+                "pages_show_list and pages_read_engagement."
             )
         return OAuthProviderError("Meta could not find a Facebook Page available to this login")
 
     def _require_configured(self) -> None:
         if not self.configured:
-            raise OAuthConfigurationError(f"{self._platform.title()} OAuth is not configured")
+            raise OAuthConfigurationError("Facebook OAuth is not configured")
 
 
 class XOAuthClient(_OAuthHttpClient):
@@ -267,7 +474,7 @@ class XOAuthClient(_OAuthHttpClient):
 
     def authorization_url(self, state: str) -> str:
         self._require_configured()
-        verifier = _pkce_verifier(state)
+        verifier = _pkce_verifier(state, self._config.client_secret)
         challenge = _base64url(hashlib.sha256(verifier.encode()).digest())
         query = urlencode(
             {
@@ -289,7 +496,7 @@ class XOAuthClient(_OAuthHttpClient):
             "grant_type": "authorization_code",
             "client_id": self._config.client_id,
             "redirect_uri": self._config.redirect_uri,
-            "code_verifier": _pkce_verifier(state),
+            "code_verifier": _pkce_verifier(state, self._config.client_secret),
         }
         try:
             with self.client_session() as client:
@@ -330,8 +537,8 @@ class XOAuthClient(_OAuthHttpClient):
             raise OAuthConfigurationError("X OAuth is not configured")
 
 
-def _pkce_verifier(state: str) -> str:
-    return _base64url(hashlib.sha256(f"clipper:{state}".encode()).digest())
+def _pkce_verifier(state: str, client_secret: str) -> str:
+    return _base64url(hmac.new(client_secret.encode(), state.encode(), hashlib.sha256).digest())
 
 
 def _base64url(value: bytes) -> str:

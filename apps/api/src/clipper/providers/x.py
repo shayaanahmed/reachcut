@@ -4,7 +4,11 @@ import time
 
 import httpx
 
-from clipper.providers.publishing_http import ProviderApiError, PublishingHttpClient
+from clipper.providers.publishing_http import (
+    ProviderApiError,
+    PublishingHttpClient,
+    local_video_size,
+)
 from clipper.publishing import OAuthConnection, PublishedPost, PublishRequest
 
 
@@ -25,7 +29,7 @@ class XPublishingAdapter(PublishingHttpClient):
         if not connection.access_token:
             raise ProviderApiError("X requires a user access token")
         headers = {"Authorization": f"Bearer {connection.access_token}"}
-        size = request.media_path.stat().st_size
+        size = local_video_size(request.media_path, "X")
         try:
             with self.client_session() as client:
                 initialized = client.post(

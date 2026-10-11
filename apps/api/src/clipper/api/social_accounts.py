@@ -72,6 +72,7 @@ def publishing_capabilities() -> PublishingCapabilitiesResponse:
                     [
                         "CLIPPER_INSTAGRAM_APP_ID",
                         "CLIPPER_INSTAGRAM_APP_SECRET",
+                        "CLIPPER_INSTAGRAM_LOGIN_CONFIG_ID",
                         "CLIPPER_INSTAGRAM_REDIRECT_URI",
                     ],
                     "https://developers.facebook.com/apps/",
@@ -82,6 +83,7 @@ def publishing_capabilities() -> PublishingCapabilitiesResponse:
                     [
                         "CLIPPER_FACEBOOK_APP_ID",
                         "CLIPPER_FACEBOOK_APP_SECRET",
+                        "CLIPPER_FACEBOOK_LOGIN_CONFIG_ID",
                         "CLIPPER_FACEBOOK_REDIRECT_URI",
                     ],
                     "https://developers.facebook.com/apps/",

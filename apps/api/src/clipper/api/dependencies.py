@@ -27,7 +27,8 @@ from clipper.providers.ollama import EditorialGenerationConfig, OllamaEditorialP
 from clipper.providers.ollama_translation import OllamaCaptionTranslationProvider
 from clipper.providers.opencv_tracking import OpenCvVisualTrackingProvider
 from clipper.providers.social_oauth import (
-    MetaOAuthClient,
+    FacebookOAuthClient,
+    InstagramOAuthClient,
     OAuthAppConfig,
     TikTokOAuthClient,
     XOAuthClient,
@@ -127,23 +128,23 @@ social_oauth_clients: dict[PublishingPlatform, OAuthClient] = {
             settings.tiktok_redirect_uri,
         )
     ),
-    "instagram": MetaOAuthClient(
+    "instagram": InstagramOAuthClient(
         OAuthAppConfig(
             settings.instagram_app_id,
             settings.instagram_app_secret,
             settings.instagram_redirect_uri,
+            settings.instagram_login_config_id,
         ),
-        settings.meta_graph_version,
-        "instagram",
+        settings.graph_api_version,
     ),
-    "facebook": MetaOAuthClient(
+    "facebook": FacebookOAuthClient(
         OAuthAppConfig(
             settings.facebook_app_id,
             settings.facebook_app_secret,
             settings.facebook_redirect_uri,
+            settings.facebook_login_config_id,
         ),
-        settings.meta_graph_version,
-        "facebook",
+        settings.graph_api_version,
     ),
     "x": XOAuthClient(
         OAuthAppConfig(
@@ -157,8 +158,8 @@ youtube_publisher = YouTubePublishingAdapter(youtube_oauth)
 publishing_adapters: dict[str, PublishingAdapter] = {
     "youtube": youtube_publisher,
     "tiktok": TikTokPublishingAdapter(settings.tiktok_client_key, settings.tiktok_client_secret),
-    "instagram": InstagramPublishingAdapter(settings.meta_graph_version),
-    "facebook": FacebookPublishingAdapter(settings.meta_graph_version),
+    "instagram": InstagramPublishingAdapter(settings.graph_api_version),
+    "facebook": FacebookPublishingAdapter(settings.graph_api_version),
     "x": XPublishingAdapter(settings.x_client_id, settings.x_client_secret),
 }
 metrics_adapters: dict[str, MetricsAdapter] = {"youtube": youtube_publisher}

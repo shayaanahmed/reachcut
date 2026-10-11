@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import httpx
@@ -9,6 +10,17 @@ import httpx
 
 class ProviderApiError(RuntimeError):
     pass
+
+
+def local_video_size(path: Path, provider: str) -> int:
+    """Validate a rendered file before starting a provider upload."""
+
+    if not path.is_file():
+        raise ProviderApiError(f"{provider} cannot publish because the rendered video is missing")
+    size = path.stat().st_size
+    if size <= 0:
+        raise ProviderApiError(f"{provider} cannot publish an empty rendered video")
+    return size
 
 
 def trusted_upload_url(

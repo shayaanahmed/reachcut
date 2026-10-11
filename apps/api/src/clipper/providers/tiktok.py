@@ -5,6 +5,7 @@ import httpx
 from clipper.providers.publishing_http import (
     ProviderApiError,
     PublishingHttpClient,
+    local_video_size,
     trusted_upload_url,
 )
 from clipper.publishing import OAuthConnection, PublishedPost, PublishRequest
@@ -33,9 +34,8 @@ class TikTokPublishingAdapter(PublishingHttpClient):
         }.get(request.privacy_status)
         if not privacy:
             raise ProviderApiError("unsupported TikTok privacy status")
-        size = request.media_path.stat().st_size
-        chunk_size = min(size, 32 * 1024 * 1024)
-        total_chunks = (size + chunk_size - 1) // chunk_size
+        size = local_video_size(request.media_path, "TikTok")
+        chunk_size, total_chunks = _tiktok_chunk_plan(size)
         headers = {
             "Authorization": f"Bearer {connection.access_token}",
             "Content-Type": "application/json; charset=UTF-8",
@@ -97,7 +97,15 @@ class TikTokPublishingAdapter(PublishingHttpClient):
                 )
                 with request.media_path.open("rb") as media:
                     offset = 0
-                    while chunk := media.read(chunk_size):
+                    for chunk_index in range(total_chunks):
+                        read_size = chunk_size
+                        if chunk_index == total_chunks - 1:
+                            read_size = size - offset
+                        chunk = media.read(read_size)
+                        if len(chunk) != read_size:
+                            raise ProviderApiError(
+                                "TikTok could not read the complete rendered video"
+                            )
                         final_byte = offset + len(chunk) - 1
                         uploaded = client.put(
                             upload_url,
@@ -191,3 +199,12 @@ class TikTokPublishingAdapter(PublishingHttpClient):
             refresh_token=str(refresh_token),
             external_account_id=connection.external_account_id,
         )
+
+
+def _tiktok_chunk_plan(size: int) -> tuple[int, int]:
+    """Plan chunks so only the final upload may differ from ``chunk_size``."""
+
+    if size <= 64 * 1024 * 1024:
+        return size, 1
+    chunk_size = 32 * 1024 * 1024
+    return chunk_size, size // chunk_size

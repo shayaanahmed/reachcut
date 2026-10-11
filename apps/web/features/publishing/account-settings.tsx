@@ -41,7 +41,7 @@ const platformDetails: Record<
     label: "Instagram Reels",
     short: "Instagram",
     mark: "◎",
-    description: "Professional account linked to a Page",
+    description: "Local upload through a Page-linked professional account",
   },
   facebook: {
     label: "Facebook Reels",
@@ -70,22 +70,24 @@ const providerGuides: Record<
     scopes: "youtube.upload and youtube.readonly",
   },
   tiktok: {
-    app: "Create a TikTok for Developers app and complete its website and policy details.",
-    products: "Add Login Kit and Content Posting API, then enable Direct Post.",
+    app: "Create a TikTok for Developers app configured for Desktop Login Kit.",
+    products:
+      "Add Desktop Login Kit and Content Posting API, then enable Direct Post; ReachCut uses PKCE with a loopback callback.",
     scopes: "user.info.basic, video.publish, and video.upload",
   },
   instagram: {
-    app: "Create a dedicated Meta app for an Instagram professional account.",
+    app: "Create a Meta Business app for the Facebook account that manages the linked Page.",
     products:
-      "Add Facebook Login and Instagram API; link the Instagram account to a Facebook Page.",
+      "Add Facebook Login for Business and Instagram API with Facebook Login, then create a User access token configuration and copy its Configuration ID.",
     scopes:
-      "instagram_basic, instagram_content_publish, pages_show_list, and pages_read_engagement",
+      "pages_show_list, pages_read_engagement, business_management, instagram_basic, and instagram_content_publish",
   },
   facebook: {
     app: "Create a dedicated Meta app whose login can access the destination Page.",
     products:
-      "Add Facebook Login and keep the app in Development while testing with an app role.",
-    scopes: "pages_show_list, pages_read_engagement, and pages_manage_posts",
+      "Add Facebook Login for Business, create a User access token configuration, and keep the app in Development while testing with an app role.",
+    scopes:
+      "pages_show_list, pages_read_engagement, pages_manage_posts, and business_management",
   },
   x: {
     app: "Create an X Project and App, then enable OAuth 2.0 as a confidential Web App.",
@@ -427,7 +429,7 @@ export function AccountSettings() {
                     </small>
                   )}
                   <details className="account-edit">
-                    <summary>Publishing defaults and profile</summary>
+                    <summary>Publishing defaults</summary>
                     <AccountForm
                       account={account}
                       busy={isPending(updateKey)}
@@ -492,7 +494,7 @@ function ProviderSetupGuide({
         <li>
           <strong>Register this exact callback.</strong>
           <code>
-            {setup?.redirect_uri || "Set a public callback URL in .env first"}
+            {setup?.redirect_uri || "Set the local callback URL in .env first"}
           </code>
         </li>
         <li>

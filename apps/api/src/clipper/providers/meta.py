@@ -7,6 +7,7 @@ import httpx
 from clipper.providers.publishing_http import (
     ProviderApiError,
     PublishingHttpClient,
+    local_video_size,
     trusted_upload_url,
 )
 from clipper.publishing import OAuthConnection, PublishedPost, PublishRequest
@@ -18,7 +19,13 @@ class InstagramPublishingAdapter(PublishingHttpClient):
         self._base = f"https://graph.facebook.com/{graph_version}"
 
     def publish(self, request: PublishRequest, connection: OAuthConnection) -> PublishedPost:
+        if connection.refresh_token and connection.refresh_token == connection.access_token:
+            raise ProviderApiError(
+                "Instagram is connected with the old direct-login credentials. Reconnect the "
+                "account through Facebook Login to enable local video upload."
+            )
         account_id, token = _meta_credentials(connection, "Instagram")
+        size = local_video_size(request.media_path, "Instagram")
         try:
             with self.client_session() as client:
                 created = client.post(
@@ -41,12 +48,12 @@ class InstagramPublishingAdapter(PublishingHttpClient):
                     provider="Instagram",
                     allowed_host_suffixes=("facebook.com",),
                 )
-                size = request.media_path.stat().st_size
                 with request.media_path.open("rb") as media:
                     uploaded = client.post(
                         upload_uri,
                         headers={
                             "Authorization": f"OAuth {token}",
+                            "Content-Type": "application/octet-stream",
                             "offset": "0",
                             "file_size": str(size),
                         },
@@ -102,6 +109,7 @@ class FacebookPublishingAdapter(PublishingHttpClient):
 
     def publish(self, request: PublishRequest, connection: OAuthConnection) -> PublishedPost:
         page_id, token = _meta_credentials(connection, "Facebook")
+        size = local_video_size(request.media_path, "Facebook")
         try:
             with self.client_session() as client:
                 started = client.post(
@@ -119,7 +127,6 @@ class FacebookPublishingAdapter(PublishingHttpClient):
                     provider="Facebook",
                     allowed_host_suffixes=("facebook.com",),
                 )
-                size = request.media_path.stat().st_size
                 with request.media_path.open("rb") as media:
                     uploaded = client.post(
                         upload_url,
@@ -181,7 +188,7 @@ def _wait_for_instagram_container(
     container_id: str,
     token: str,
 ) -> None:
-    for _ in range(30):
+    for _ in range(60):
         status = client.get(
             f"{base_url}/{container_id}",
             params={"fields": "status_code,status", "access_token": token},
@@ -193,4 +200,4 @@ def _wait_for_instagram_container(
         if payload.get("status_code") in {"ERROR", "EXPIRED"}:
             raise ProviderApiError(f"Instagram media processing failed: {payload.get('status')}")
         time.sleep(2)
-    raise ProviderApiError("Instagram media processing did not finish within one minute")
+    raise ProviderApiError("Instagram media processing did not finish within two minutes")

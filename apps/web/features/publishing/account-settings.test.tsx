@@ -54,13 +54,25 @@ describe("account settings", () => {
         {
           platform: "tiktok",
           configured: false,
-          redirect_uri: "https://api.example.test/api/oauth/tiktok/callback",
+          redirect_uri: "http://127.0.0.1:8000/api/oauth/tiktok/callback",
           credential_fields: [
             "CLIPPER_TIKTOK_CLIENT_KEY",
             "CLIPPER_TIKTOK_CLIENT_SECRET",
             "CLIPPER_TIKTOK_REDIRECT_URI",
           ],
           developer_portal_url: "https://developers.tiktok.com/apps/",
+        },
+        {
+          platform: "instagram",
+          configured: false,
+          redirect_uri: "http://localhost:8000/api/oauth/instagram/callback",
+          credential_fields: [
+            "CLIPPER_INSTAGRAM_APP_ID",
+            "CLIPPER_INSTAGRAM_APP_SECRET",
+            "CLIPPER_INSTAGRAM_LOGIN_CONFIG_ID",
+            "CLIPPER_INSTAGRAM_REDIRECT_URI",
+          ],
+          developer_portal_url: "https://developers.facebook.com/apps/",
         },
       ],
     });
@@ -120,8 +132,25 @@ describe("account settings", () => {
 
     expect(screen.getByText("Set up TikTok from scratch")).toBeTruthy();
     expect(
-      screen.getByText("https://api.example.test/api/oauth/tiktok/callback"),
+      screen.getByText("http://127.0.0.1:8000/api/oauth/tiktok/callback"),
     ).toBeTruthy();
     expect(screen.getByText(/CLIPPER_TIKTOK_CLIENT_KEY=/)).toBeTruthy();
+  });
+
+  it("describes local Instagram upload through a linked Facebook Page", async () => {
+    render(<AccountSettings />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Instagram/ }));
+
+    expect(
+      screen.getByText(
+        "Add Facebook Login for Business and Instagram API with Facebook Login, then create a User access token configuration and copy its Configuration ID.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "pages_show_list, pages_read_engagement, business_management, instagram_basic, and instagram_content_publish.",
+      ),
+    ).toBeTruthy();
   });
 });

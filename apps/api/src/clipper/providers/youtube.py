@@ -7,7 +7,11 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
 
-from clipper.providers.publishing_http import ProviderApiError, trusted_upload_url
+from clipper.providers.publishing_http import (
+    ProviderApiError,
+    local_video_size,
+    trusted_upload_url,
+)
 from clipper.publishing import (
     OAuthConfigurationError,
     OAuthConnection,
@@ -169,7 +173,7 @@ class YouTubePublishingAdapter:
         if request.privacy_status not in {"public", "unlisted", "private"}:
             raise YouTubeApiError("unsupported YouTube privacy status")
         access_token = self._oauth.access_token(connection)
-        size = request.media_path.stat().st_size
+        size = local_video_size(request.media_path, "YouTube")
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json; charset=UTF-8",

@@ -98,8 +98,10 @@ class PublishingConnectionService:
         provider_configured = account.platform in self.configured_platforms
         credentials_available = False
         credential_error = False
+        connection: OAuthConnection | None = None
         try:
-            credentials_available = self._credentials.load(account.id) is not None
+            connection = self._credentials.load(account.id)
+            credentials_available = connection is not None
         except CredentialStoreError:
             credential_error = True
 
@@ -112,6 +114,13 @@ class PublishingConnectionService:
             issues.append("credentials_unreadable")
         elif not credentials_available:
             issues.append("credentials_missing")
+        elif (
+            account.platform == "instagram"
+            and connection
+            and connection.refresh_token
+            and connection.refresh_token == connection.access_token
+        ):
+            issues.append("account_reconnect_required")
         return AccountConnectionReadiness(
             account_id=account.id,
             platform=account.platform,

@@ -1,7 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from clipper.api.dependencies import credential_store, metrics_adapters, publishing_adapters
+from clipper.api.dependencies import (
+    credential_store,
+    metrics_adapters,
+    publication_service,
+    publishing_adapters,
+)
 from clipper.api.projects import project_or_404
 from clipper.api.schemas import (
     AutomaticPublicationRequest,
@@ -15,7 +20,6 @@ from clipper.projects import (
     MetricCreate,
     PublicationCreate,
     PublicationNotFoundError,
-    PublicationService,
     PublicationStateError,
 )
 from clipper.providers.credentials import CredentialStoreError
@@ -23,7 +27,6 @@ from clipper.providers.publishing_http import ProviderApiError
 from clipper.providers.youtube import YouTubeApiError, YouTubeConfigurationError
 
 router = APIRouter()
-publication_service = PublicationService()
 
 
 @router.post("/clips/{clip_id}/publish", response_model=ProjectResponse)

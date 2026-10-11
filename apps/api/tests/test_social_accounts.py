@@ -205,6 +205,37 @@ def test_connection_readiness_detects_missing_and_available_credentials(tmp_path
         assert missing.issues == ("account_not_connected", "credentials_missing")
 
 
+def test_instagram_direct_credentials_require_reconnection_for_local_upload(
+    tmp_path: Path,
+) -> None:
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    credentials = EncryptedCredentialStore(tmp_path)
+    connections = PublishingConnectionService(
+        {"instagram": DiscoveredOAuthClient()},
+        credentials,
+    )
+
+    with Session(engine) as session:
+        account = add_account(session, "Instagram", platform="instagram")
+        account.connection_status = "connected"
+        credentials.save(
+            account.id,
+            OAuthConnection(
+                access_token="direct-token",  # noqa: S106
+                refresh_token="direct-token",  # noqa: S106
+                external_account_id="instagram-1",
+            ),
+        )
+        session.commit()
+
+        readiness = connections.connection_readiness(session, account.id)
+
+        assert readiness.credentials_available is True
+        assert readiness.publishing_ready is False
+        assert readiness.issues == ("account_reconnect_required",)
+
+
 def test_platform_first_oauth_creates_real_account_after_callback_and_deduplicates(
     tmp_path: Path,
 ) -> None:
