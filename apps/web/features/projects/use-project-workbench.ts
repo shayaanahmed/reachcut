@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import {
   analyzeClipTracking,
+  deleteClip,
   deleteClipSecondaryMedia,
   renderClip,
   setApproval,
@@ -490,6 +491,17 @@ export function useProjectWorkbench(
       "Secondary media removal failed",
     );
 
+  const removeClip = (clipId: string) =>
+    withOperation(
+      `clip:${clipId}:delete`,
+      async () => {
+        const updated = await deleteClip(clipId);
+        replaceProject(updated);
+        return true;
+      },
+      "Clip deletion failed",
+    );
+
   async function approve(clipId: string, approved: boolean) {
     const key = `clip:${clipId}:approval`;
     const previousStatus = projects
@@ -612,6 +624,7 @@ export function useProjectWorkbench(
     refreshPublishedPost,
     syncPublishedMetrics,
     remove,
+    removeClip,
     removePublication,
     rename,
     render,

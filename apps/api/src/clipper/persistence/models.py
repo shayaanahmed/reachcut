@@ -194,7 +194,7 @@ class SocialAccount(Base):
     default_cta: Mapped[str] = mapped_column(String(500), default="")
     default_campaign_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     currency: Mapped[str] = mapped_column(String(3), default="EUR")
-    connection_status: Mapped[str] = mapped_column(String(32), default="manual")
+    connection_status: Mapped[str] = mapped_column(String(32), default="disconnected")
     is_default: Mapped[bool] = mapped_column(default=False)
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)

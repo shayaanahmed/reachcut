@@ -11,6 +11,7 @@ function project(id: string, title: string, status: Project["status"]) {
     original_filename: `${title.toLowerCase()}.mp4`,
     status,
     duration_seconds: 60,
+    storage_bytes: id === "project-1" ? 1_572_864 : 512,
     authorization_confirmed_at: "2026-10-02T10:00:00Z",
     created_at:
       id === "project-1" ? "2026-10-02T10:00:00Z" : "2026-10-03T10:00:00Z",
@@ -37,6 +38,7 @@ describe("project list", () => {
     });
     expect(screen.getByText("Alpha Interview")).toBeTruthy();
     expect(screen.queryByText("Beta Tutorial")).toBeNull();
+    expect(screen.getByText("1.5 MB")).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Search projects"), {
       target: { value: "" },

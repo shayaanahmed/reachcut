@@ -92,16 +92,26 @@ class TikTokOAuthClient(_OAuthHttpClient):
                 )
                 response.raise_for_status()
                 payload = response.json()
+                access_token = payload.get("access_token")
+                refresh_token = payload.get("refresh_token")
+                if not access_token or not refresh_token:
+                    raise OAuthProviderError("TikTok authorization returned incomplete credentials")
+                profile_response = client.get(
+                    "https://open.tiktokapis.com/v2/user/info/",
+                    params={"fields": "open_id,union_id,avatar_url,display_name"},
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+                profile_response.raise_for_status()
         except httpx.HTTPError as error:
             raise self.provider_error("TikTok", error) from error
-        access_token = payload.get("access_token")
-        refresh_token = payload.get("refresh_token")
-        if not access_token or not refresh_token:
-            raise OAuthProviderError("TikTok authorization returned incomplete credentials")
+        profile_payload = profile_response.json()
+        profile = profile_payload.get("data", {}).get("user", {})
+        open_id = str(profile.get("open_id") or payload.get("open_id") or "")
         return OAuthConnection(
             access_token=str(access_token),
             refresh_token=str(refresh_token),
-            external_account_id=str(payload.get("open_id") or ""),
+            external_account_id=open_id,
+            display_name=str(profile.get("display_name") or "TikTok account"),
         )
 
     def _require_configured(self) -> None:
@@ -168,22 +178,23 @@ class MetaOAuthClient(_OAuthHttpClient):
                 accounts_response = client.get(
                     f"{self._base}/me/accounts",
                     params={
-                        "fields": "id,name,access_token,instagram_business_account",
+                        "fields": (
+                            "id,name,access_token,tasks,"
+                            "instagram_business_account{id,username,name,profile_picture_url}"
+                        ),
                         "access_token": user_token,
                     },
                 )
                 accounts_response.raise_for_status()
-                accounts = accounts_response.json().get("data", [])
+                accounts_payload = accounts_response.json()
+                accounts = (
+                    accounts_payload.get("data") if isinstance(accounts_payload, dict) else None
+                )
         except httpx.HTTPError as error:
             raise self.provider_error("Meta", error) from error
         connection = self._connection_from_pages(accounts)
         if connection is None:
-            target = (
-                "an Instagram professional account"
-                if self._platform == "instagram"
-                else "a Facebook Page"
-            )
-            raise OAuthProviderError(f"Meta could not find {target} available to this login")
+            raise self._missing_connection_error(accounts)
         return connection
 
     def _connection_from_pages(self, pages: object) -> OAuthConnection | None:
@@ -196,18 +207,48 @@ class MetaOAuthClient(_OAuthHttpClient):
                 return OAuthConnection(
                     access_token=str(page["access_token"]),
                     external_account_id=str(page["id"]),
+                    display_name=str(page.get("name") or "Facebook Page"),
+                    profile_url=f"https://www.facebook.com/{page['id']}",
                 )
             instagram = page.get("instagram_business_account")
             if isinstance(instagram, dict) and instagram.get("id"):
+                username = str(instagram.get("username") or "").lstrip("@")
                 return OAuthConnection(
                     access_token=str(page["access_token"]),
                     external_account_id=str(instagram["id"]),
+                    display_name=str(instagram.get("name") or username or "Instagram account"),
+                    username=username,
+                    profile_url=(f"https://www.instagram.com/{username}/" if username else ""),
                 )
         return None
 
+    def _missing_connection_error(self, pages: object) -> OAuthProviderError:
+        if not isinstance(pages, list):
+            return OAuthProviderError("Meta returned an invalid Facebook Page list")
+        if not pages:
+            return OAuthProviderError(
+                "Meta returned no Facebook Pages for this login. Confirm the Facebook user "
+                "has Page access and granted pages_show_list and pages_read_engagement."
+            )
+        pages_with_tokens = [
+            page for page in pages if isinstance(page, dict) and page.get("access_token")
+        ]
+        if not pages_with_tokens:
+            return OAuthProviderError(
+                "Meta returned Facebook Pages without Page access tokens. Reconnect and grant "
+                "pages_show_list and pages_read_engagement."
+            )
+        if self._platform == "instagram":
+            return OAuthProviderError(
+                f"Meta returned {len(pages_with_tokens)} accessible Facebook Page(s), but none "
+                "has a linked Instagram professional account. Link the Instagram account to "
+                "one of those Pages in Meta Business Suite, then reconnect."
+            )
+        return OAuthProviderError("Meta could not find a Facebook Page available to this login")
+
     def _require_configured(self) -> None:
         if not self.configured:
-            raise OAuthConfigurationError("Meta OAuth is not configured")
+            raise OAuthConfigurationError(f"{self._platform.title()} OAuth is not configured")
 
 
 class XOAuthClient(_OAuthHttpClient):
@@ -262,14 +303,26 @@ class XOAuthClient(_OAuthHttpClient):
                 )
                 response.raise_for_status()
                 payload = response.json()
+                access_token = payload.get("access_token")
+                if not access_token:
+                    raise OAuthProviderError("X did not return an access token")
+                profile_response = client.get(
+                    "https://api.x.com/2/users/me",
+                    params={"user.fields": "id,name,username"},
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+                profile_response.raise_for_status()
         except httpx.HTTPError as error:
             raise self.provider_error("X", error) from error
-        access_token = payload.get("access_token")
-        if not access_token:
-            raise OAuthProviderError("X did not return an access token")
+        profile = profile_response.json().get("data", {})
+        username = str(profile.get("username") or "").lstrip("@")
         return OAuthConnection(
             access_token=str(access_token),
             refresh_token=str(payload.get("refresh_token") or ""),
+            external_account_id=str(profile.get("id") or ""),
+            display_name=str(profile.get("name") or username or "X account"),
+            username=username,
+            profile_url=(f"https://x.com/{username}" if username else ""),
         )
 
     def _require_configured(self) -> None:

@@ -1,3 +1,4 @@
+from typing import cast
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -7,9 +8,8 @@ from sqlalchemy.orm import Session
 from clipper.api.dependencies import publishing_connections
 from clipper.api.schemas import (
     AccountConnectionReadinessResponse,
-    ApiConnectionRequest,
+    ProviderSetupResponse,
     PublishingCapabilitiesResponse,
-    SocialAccountCreateRequest,
     SocialAccountResponse,
     SocialAccountUpdateRequest,
 )
@@ -17,7 +17,6 @@ from clipper.config import settings
 from clipper.persistence import SocialAccount, get_session
 from clipper.projects import (
     PublishingConnectionError,
-    SocialAccountCreate,
     SocialAccountNotFoundError,
     SocialAccountService,
     SocialAccountUpdate,
@@ -25,8 +24,8 @@ from clipper.projects import (
 from clipper.providers.credentials import CredentialStoreError
 from clipper.publishing import (
     OAuthConfigurationError,
-    OAuthConnection,
     OAuthProviderError,
+    PublishingPlatform,
 )
 
 router = APIRouter()
@@ -35,10 +34,70 @@ account_service = SocialAccountService()
 
 @router.get("/publishing/capabilities", response_model=PublishingCapabilitiesResponse)
 def publishing_capabilities() -> PublishingCapabilitiesResponse:
+    configured = publishing_connections.configured_platforms
     return PublishingCapabilitiesResponse(
-        youtube_configured=publishing_connections.youtube_configured,
-        automatic_platforms=["youtube", "tiktok", "instagram", "facebook", "x"],
-        configured_platforms=publishing_connections.configured_platforms,
+        configured_platforms=configured,
+        provider_setup=[
+            ProviderSetupResponse(
+                platform=cast(PublishingPlatform, platform),
+                configured=platform in configured,
+                redirect_uri=redirect_uri,
+                credential_fields=fields,
+                developer_portal_url=portal,
+            )
+            for platform, redirect_uri, fields, portal in [
+                (
+                    "youtube",
+                    settings.youtube_redirect_uri,
+                    [
+                        "CLIPPER_YOUTUBE_CLIENT_ID",
+                        "CLIPPER_YOUTUBE_CLIENT_SECRET",
+                        "CLIPPER_YOUTUBE_REDIRECT_URI",
+                    ],
+                    "https://console.cloud.google.com/apis/credentials",
+                ),
+                (
+                    "tiktok",
+                    settings.tiktok_redirect_uri,
+                    [
+                        "CLIPPER_TIKTOK_CLIENT_KEY",
+                        "CLIPPER_TIKTOK_CLIENT_SECRET",
+                        "CLIPPER_TIKTOK_REDIRECT_URI",
+                    ],
+                    "https://developers.tiktok.com/apps/",
+                ),
+                (
+                    "instagram",
+                    settings.instagram_redirect_uri,
+                    [
+                        "CLIPPER_INSTAGRAM_APP_ID",
+                        "CLIPPER_INSTAGRAM_APP_SECRET",
+                        "CLIPPER_INSTAGRAM_REDIRECT_URI",
+                    ],
+                    "https://developers.facebook.com/apps/",
+                ),
+                (
+                    "facebook",
+                    settings.facebook_redirect_uri,
+                    [
+                        "CLIPPER_FACEBOOK_APP_ID",
+                        "CLIPPER_FACEBOOK_APP_SECRET",
+                        "CLIPPER_FACEBOOK_REDIRECT_URI",
+                    ],
+                    "https://developers.facebook.com/apps/",
+                ),
+                (
+                    "x",
+                    settings.x_redirect_uri,
+                    [
+                        "CLIPPER_X_CLIENT_ID",
+                        "CLIPPER_X_CLIENT_SECRET",
+                        "CLIPPER_X_REDIRECT_URI",
+                    ],
+                    "https://developer.x.com/en/portal/dashboard",
+                ),
+            ]
+        ],
     )
 
 
@@ -71,31 +130,46 @@ def connect_social_account(
     return RedirectResponse(url)
 
 
-@router.get("/social-accounts/{account_id}/connect/youtube")
-def connect_youtube_compatibility(
-    account_id: str,
-    session: Session = Depends(get_session),
-) -> RedirectResponse:
-    return connect_social_account(account_id, session)
+@router.get("/social-accounts/connect/{platform}")
+def connect_social_platform(platform: PublishingPlatform) -> RedirectResponse:
+    try:
+        url = publishing_connections.authorization_url_for_platform(platform)
+    except PublishingConnectionError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except OAuthConfigurationError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    return RedirectResponse(url)
 
 
 @router.get("/oauth/{platform}/callback")
 def oauth_callback(
     platform: str,
-    code: str,
     state: str,
+    code: str | None = None,
+    error: str | None = None,
+    error_description: str | None = None,
     session: Session = Depends(get_session),
 ) -> RedirectResponse:
+    if error or not code:
+        message = error_description or error or "Authorization was cancelled"
+        return _account_settings_redirect(connection_error=message)
     try:
         account = publishing_connections.complete_authorization(session, platform, state, code)
     except PublishingConnectionError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from error
+        return _account_settings_redirect(connection_error=str(error))
     except OAuthConfigurationError as error:
-        raise HTTPException(status_code=503, detail=str(error)) from error
+        return _account_settings_redirect(connection_error=str(error))
     except (CredentialStoreError, OAuthProviderError) as error:
-        raise HTTPException(status_code=502, detail=str(error)) from error
-    query = urlencode({"connected": account.platform})
-    return RedirectResponse(f"{settings.web_base_url.rstrip('/')}/settings/accounts?{query}")
+        return _account_settings_redirect(connection_error=str(error))
+    return _account_settings_redirect(connected=account.platform)
+
+
+def _account_settings_redirect(**parameters: str) -> RedirectResponse:
+    query = urlencode(parameters)
+    return RedirectResponse(
+        f"{settings.web_base_url.rstrip('/')}/settings/accounts?{query}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
 
 
 @router.delete(
@@ -112,40 +186,9 @@ def disconnect_social_account(
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@router.post(
-    "/social-accounts/{account_id}/connection",
-    response_model=SocialAccountResponse,
-)
-def save_social_account_connection(
-    account_id: str,
-    request: ApiConnectionRequest,
-    session: Session = Depends(get_session),
-) -> SocialAccount:
-    try:
-        return publishing_connections.save_api_connection(
-            session,
-            account_id,
-            OAuthConnection(**request.model_dump()),
-        )
-    except PublishingConnectionError as error:
-        raise HTTPException(status_code=409, detail=str(error)) from error
-
-
 @router.get("/social-accounts", response_model=list[SocialAccountResponse])
 def social_accounts(session: Session = Depends(get_session)) -> list[SocialAccount]:
     return account_service.list(session)
-
-
-@router.post(
-    "/social-accounts",
-    response_model=SocialAccountResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-def create_social_account(
-    request: SocialAccountCreateRequest,
-    session: Session = Depends(get_session),
-) -> SocialAccount:
-    return account_service.create(session, SocialAccountCreate(**request.model_dump()))
 
 
 @router.put("/social-accounts/{account_id}", response_model=SocialAccountResponse)

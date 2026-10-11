@@ -27,6 +27,9 @@ class EncryptedCredentialStore:
                 "refresh_token": connection.refresh_token,
                 "access_token": connection.access_token,
                 "external_account_id": connection.external_account_id,
+                "display_name": connection.display_name,
+                "username": connection.username,
+                "profile_url": connection.profile_url,
             }
         ).encode()
         target = self._directory / f"{account_id}.token"
@@ -43,6 +46,9 @@ class EncryptedCredentialStore:
                 refresh_token=str(payload.get("refresh_token", "")),
                 access_token=str(payload.get("access_token", "")),
                 external_account_id=str(payload.get("external_account_id", "")),
+                display_name=str(payload.get("display_name", "")),
+                username=str(payload.get("username", "")),
+                profile_url=str(payload.get("profile_url", "")),
             )
         except (InvalidToken, KeyError, ValueError, json.JSONDecodeError) as error:
             raise CredentialStoreError("stored publishing credentials could not be read") from error

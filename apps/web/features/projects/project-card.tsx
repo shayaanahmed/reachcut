@@ -7,6 +7,7 @@ import type {
   ClipTypeSuggestion,
   Project,
 } from "../../lib/contracts";
+import { formatBytes } from "../../lib/format";
 import { ProjectProgress } from "./project-progress";
 import type { OperationState } from "./use-project-workbench";
 
@@ -21,6 +22,7 @@ export function ProjectCard({
   operationState,
   onProcess,
   onApprove,
+  onDeleteClip,
   onRender,
   onRename,
   onDelete,
@@ -35,6 +37,7 @@ export function ProjectCard({
   operationState: (key: string) => OperationState | undefined;
   onProcess: (id: string) => Promise<unknown>;
   onApprove: (clipId: string, approved: boolean) => Promise<unknown>;
+  onDeleteClip: (clipId: string) => Promise<unknown>;
   onRender: (clipId: string) => Promise<unknown>;
   onRename: (id: string, title: string) => Promise<unknown>;
   onDelete: (id: string) => Promise<unknown>;
@@ -65,6 +68,7 @@ export function ProjectCard({
             {project.duration_seconds
               ? ` · ${Math.round(project.duration_seconds)}s`
               : ""}
+            {` · ${formatBytes(project.storage_bytes)} stored`}
           </p>
         </div>
         <div className="project-admin-actions">
@@ -247,8 +251,10 @@ export function ProjectCard({
                 index={index}
                 bestToPublish={clip.id === bestClipId}
                 approvalPending={isPending(`clip:${clip.id}:approval`)}
+                deletionPending={isPending(`clip:${clip.id}:delete`)}
                 renderState={operationState(`clip:${clip.id}:render`)}
                 onApprove={onApprove}
+                onDelete={onDeleteClip}
                 onRender={onRender}
               />
             ))}

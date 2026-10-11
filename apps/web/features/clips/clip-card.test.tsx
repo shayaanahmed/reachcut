@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { Project } from "../../lib/contracts";
@@ -76,7 +76,9 @@ describe("clip card", () => {
         index={0}
         bestToPublish={true}
         approvalPending={false}
+        deletionPending={false}
         onApprove={vi.fn()}
+        onDelete={vi.fn()}
         onRender={vi.fn()}
       />,
     );
@@ -99,8 +101,10 @@ describe("clip card", () => {
         index={0}
         bestToPublish={false}
         approvalPending={false}
+        deletionPending={false}
         renderState="queued"
         onApprove={vi.fn()}
+        onDelete={vi.fn()}
         onRender={vi.fn()}
       />,
     );
@@ -117,5 +121,32 @@ describe("clip card", () => {
       (card.getByRole("button", { name: "Reject" }) as HTMLButtonElement)
         .disabled,
     ).toBe(false);
+  });
+
+  it("confirms before deleting every local artifact for the clip", () => {
+    const onDelete = vi.fn();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { container } = render(
+      <ClipCard
+        projectId="project-1"
+        clip={clip}
+        index={0}
+        bestToPublish={false}
+        approvalPending={false}
+        deletionPending={false}
+        onApprove={vi.fn()}
+        onDelete={onDelete}
+        onRender={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(
+      within(container).getByRole("button", { name: "Delete clip" }),
+    );
+
+    expect(window.confirm).toHaveBeenCalledWith(
+      expect.stringContaining("previews, final render, attached media"),
+    );
+    expect(onDelete).toHaveBeenCalledWith("clip-1");
   });
 });

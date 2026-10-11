@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AccountSettings } from "./account-settings";
@@ -37,9 +37,32 @@ describe("account settings", () => {
       },
     ]);
     vi.mocked(api.publishingCapabilities).mockResolvedValue({
-      youtube_configured: true,
-      automatic_platforms: ["youtube"],
       configured_platforms: ["youtube"],
+      provider_setup: [
+        {
+          platform: "youtube",
+          configured: true,
+          redirect_uri: "http://127.0.0.1:8000/api/oauth/youtube/callback",
+          credential_fields: [
+            "CLIPPER_YOUTUBE_CLIENT_ID",
+            "CLIPPER_YOUTUBE_CLIENT_SECRET",
+            "CLIPPER_YOUTUBE_REDIRECT_URI",
+          ],
+          developer_portal_url:
+            "https://console.cloud.google.com/apis/credentials",
+        },
+        {
+          platform: "tiktok",
+          configured: false,
+          redirect_uri: "https://api.example.test/api/oauth/tiktok/callback",
+          credential_fields: [
+            "CLIPPER_TIKTOK_CLIENT_KEY",
+            "CLIPPER_TIKTOK_CLIENT_SECRET",
+            "CLIPPER_TIKTOK_REDIRECT_URI",
+          ],
+          developer_portal_url: "https://developers.tiktok.com/apps/",
+        },
+      ],
     });
     vi.mocked(api.socialAccountReadiness).mockResolvedValue([
       {
@@ -85,5 +108,20 @@ describe("account settings", () => {
     expect(screen.getByText("Secure credentials").className).toBe(
       "needs-action",
     );
+  });
+
+  it("shows credential setup instead of creating a placeholder account", async () => {
+    render(<AccountSettings />);
+
+    const setupButton = await screen.findByRole("button", {
+      name: /TikTok/,
+    });
+    fireEvent.click(setupButton);
+
+    expect(screen.getByText("Set up TikTok from scratch")).toBeTruthy();
+    expect(
+      screen.getByText("https://api.example.test/api/oauth/tiktok/callback"),
+    ).toBeTruthy();
+    expect(screen.getByText(/CLIPPER_TIKTOK_CLIENT_KEY=/)).toBeTruthy();
   });
 });

@@ -9,35 +9,96 @@ import type {
 } from "../../lib/contracts";
 import {
   archiveSocialAccount,
-  createSocialAccount,
   disconnectSocialAccount,
   listSocialAccounts,
   publishingCapabilities,
   socialAccountReadiness,
   socialConnectUrl,
+  socialPlatformConnectUrl,
   updateSocialAccount,
+  type ProviderSetup,
   type PublishingCapabilities,
   type SocialAccountUpdate,
 } from "./api";
 
 const platformDetails: Record<
   SocialPlatform,
-  { label: string; short: string; mark: string }
+  { label: string; short: string; mark: string; description: string }
 > = {
-  youtube: { label: "YouTube Shorts", short: "YouTube", mark: "▶" },
-  tiktok: { label: "TikTok", short: "TikTok", mark: "♪" },
-  instagram: { label: "Instagram Reels", short: "Instagram", mark: "◎" },
-  facebook: { label: "Facebook Reels", short: "Facebook", mark: "f" },
-  x: { label: "X", short: "X", mark: "X" },
+  youtube: {
+    label: "YouTube Shorts",
+    short: "YouTube",
+    mark: "▶",
+    description: "Connect a channel with Google OAuth",
+  },
+  tiktok: {
+    label: "TikTok",
+    short: "TikTok",
+    mark: "♪",
+    description: "Direct Post through TikTok Login Kit",
+  },
+  instagram: {
+    label: "Instagram Reels",
+    short: "Instagram",
+    mark: "◎",
+    description: "Professional account linked to a Page",
+  },
+  facebook: {
+    label: "Facebook Reels",
+    short: "Facebook",
+    mark: "f",
+    description: "Publish to a Facebook Page",
+  },
+  x: {
+    label: "X",
+    short: "X",
+    mark: "X",
+    description: "OAuth 2.0 with read and write access",
+  },
 };
 
 const platforms = Object.keys(platformDetails) as SocialPlatform[];
 
+const providerGuides: Record<
+  SocialPlatform,
+  { app: string; products: string; scopes: string }
+> = {
+  youtube: {
+    app: "Create a Google Cloud project and an OAuth client of type Web application.",
+    products:
+      "Enable YouTube Data API v3 and configure the Google Auth consent screen.",
+    scopes: "youtube.upload and youtube.readonly",
+  },
+  tiktok: {
+    app: "Create a TikTok for Developers app and complete its website and policy details.",
+    products: "Add Login Kit and Content Posting API, then enable Direct Post.",
+    scopes: "user.info.basic, video.publish, and video.upload",
+  },
+  instagram: {
+    app: "Create a dedicated Meta app for an Instagram professional account.",
+    products:
+      "Add Facebook Login and Instagram API; link the Instagram account to a Facebook Page.",
+    scopes:
+      "instagram_basic, instagram_content_publish, pages_show_list, and pages_read_engagement",
+  },
+  facebook: {
+    app: "Create a dedicated Meta app whose login can access the destination Page.",
+    products:
+      "Add Facebook Login and keep the app in Development while testing with an app role.",
+    scopes: "pages_show_list, pages_read_engagement, and pages_manage_posts",
+  },
+  x: {
+    app: "Create an X Project and App, then enable OAuth 2.0 as a confidential Web App.",
+    products:
+      "Set read and write permissions and add the required website URL.",
+    scopes:
+      "tweet.read, tweet.write, users.read, media.write, and offline.access",
+  },
+};
+
 function accountData(data: FormData): SocialAccountUpdate {
   return {
     label: String(data.get("label")),
-    username: String(data.get("username")),
-    profile_url: String(data.get("profile_url") || "") || null,
     default_hashtags: String(data.get("default_hashtags") || "")
       .split(/[\s,]+/)
       .map((tag) => tag.trim())
@@ -56,10 +117,13 @@ export function AccountSettings() {
   const [loading, setLoading] = useState(true);
   const [operations, setOperations] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [selectedSetup, setSelectedSetup] = useState<SocialPlatform | null>(
+    null,
+  );
   const [capabilities, setCapabilities] = useState<PublishingCapabilities>({
-    youtube_configured: false,
-    automatic_platforms: [],
     configured_platforms: [],
+    provider_setup: [],
   });
 
   async function refresh() {
@@ -72,14 +136,26 @@ export function AccountSettings() {
   }
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get("connected") as SocialPlatform | null;
+    const connectionError = params.get("connection_error");
     void Promise.all([
       listSocialAccounts(),
       publishingCapabilities(),
       socialAccountReadiness(),
     ])
       .then(([items, available, states]) => {
+        if (connected && platformDetails[connected]) {
+          setNotice(
+            `${platformDetails[connected].short} is connected and ready to review.`,
+          );
+        }
+        if (connectionError) setError(connectionError);
         setAccounts(items);
-        setCapabilities(available);
+        setCapabilities({
+          ...available,
+          provider_setup: available.provider_setup ?? [],
+        });
         setReadiness(states);
       })
       .catch((caught: Error) => setError(caught.message))
@@ -105,29 +181,11 @@ export function AccountSettings() {
     }
   }
 
-  async function addAndConnect(platform: SocialPlatform) {
+  function addAndConnect(platform: SocialPlatform) {
     const operationKey = `platform:${platform}:connect`;
     setOperations((current) => ({ ...current, [operationKey]: true }));
     setError(null);
-    try {
-      const created = await createSocialAccount({
-        platform,
-        label: platformDetails[platform].label,
-        username: "",
-        profile_url: null,
-        default_hashtags: [],
-        default_cta: "",
-        default_campaign_url: null,
-        currency: "EUR",
-        is_default: !accounts.some((account) => account.platform === platform),
-      });
-      window.location.assign(socialConnectUrl(created.id));
-    } catch (caught) {
-      setError(
-        caught instanceof Error ? caught.message : "Could not add account",
-      );
-      setOperations((current) => ({ ...current, [operationKey]: false }));
-    }
+    window.location.assign(socialPlatformConnectUrl(platform));
   }
 
   const readyCount = readiness.filter((state) => state.publishing_ready).length;
@@ -154,6 +212,12 @@ export function AccountSettings() {
       {error && (
         <p role="alert" className="error">
           {error}
+        </p>
+      )}
+      {notice && (
+        <p role="status" className="connection-notice">
+          <b aria-hidden="true">✓</b>
+          {notice}
         </p>
       )}
       <section className="account-health-grid" aria-label="Account health">
@@ -189,7 +253,8 @@ export function AccountSettings() {
             <h2 id="connect-heading">Where do you publish?</h2>
           </div>
           <small>
-            OAuth credentials stay encrypted in your private data folder.
+            ReachCut creates the account only after the provider confirms its
+            identity. Access tokens stay encrypted locally.
           </small>
         </div>
         <div className="platform-picker">
@@ -206,21 +271,30 @@ export function AccountSettings() {
                 key={platform}
                 type="button"
                 className={`platform-choice ${platform}`}
-                disabled={pending || !configured}
+                disabled={pending}
                 title={
                   configured
                     ? `Connect ${detail.short}`
-                    : `${detail.short} OAuth has not been configured by the workspace owner`
+                    : `Set up ${detail.short} developer credentials`
                 }
-                onClick={() => void addAndConnect(platform)}
+                onClick={() => {
+                  if (configured) addAndConnect(platform);
+                  else setSelectedSetup(platform);
+                }}
               >
-                <span aria-hidden="true">{detail.mark}</span>
+                <span className="platform-choice-heading">
+                  <i aria-hidden="true">{detail.mark}</i>
+                  <em className={configured ? "configured" : ""}>
+                    {configured ? "Ready" : "Setup required"}
+                  </em>
+                </span>
                 <strong>{detail.short}</strong>
+                <p>{detail.description}</p>
                 <small>
                   {pending
                     ? "Opening…"
                     : !configured
-                      ? "Provider setup required"
+                      ? "View credential guide →"
                       : accountCount > 0
                         ? `Add another · ${accountCount} active`
                         : "Connect account →"}
@@ -229,6 +303,15 @@ export function AccountSettings() {
             );
           })}
         </div>
+        {selectedSetup && (
+          <ProviderSetupGuide
+            platform={selectedSetup}
+            setup={capabilities.provider_setup.find(
+              (item) => item.platform === selectedSetup,
+            )}
+            onClose={() => setSelectedSetup(null)}
+          />
+        )}
       </section>
       <section className="section-block" aria-labelledby="configured-accounts">
         <div className="section-heading">
@@ -365,6 +448,76 @@ export function AccountSettings() {
   );
 }
 
+function ProviderSetupGuide({
+  platform,
+  setup,
+  onClose,
+}: {
+  platform: SocialPlatform;
+  setup?: ProviderSetup;
+  onClose: () => void;
+}) {
+  const detail = platformDetails[platform];
+  const guide = providerGuides[platform];
+  const envLines = setup?.credential_fields.map((field) =>
+    field.endsWith("_REDIRECT_URI")
+      ? `${field}=${setup.redirect_uri}`
+      : `${field}=<copy from developer portal>`,
+  );
+
+  return (
+    <aside className="provider-setup-guide" aria-live="polite">
+      <div className="provider-setup-heading">
+        <div>
+          <span className="eyebrow">DEVELOPER APP SETUP</span>
+          <h3>Set up {detail.short} from scratch</h3>
+        </div>
+        <button type="button" onClick={onClose} aria-label="Close setup guide">
+          ×
+        </button>
+      </div>
+      <ol>
+        <li>
+          <strong>Create the provider app.</strong>
+          <span>{guide.app}</span>
+        </li>
+        <li>
+          <strong>Enable publishing.</strong>
+          <span>{guide.products}</span>
+        </li>
+        <li>
+          <strong>Request the minimum scopes.</strong>
+          <span>{guide.scopes}.</span>
+        </li>
+        <li>
+          <strong>Register this exact callback.</strong>
+          <code>
+            {setup?.redirect_uri || "Set a public callback URL in .env first"}
+          </code>
+        </li>
+        <li>
+          <strong>
+            Copy the generated credentials into your private .env file.
+          </strong>
+          {envLines?.length ? (
+            <pre>{envLines.join("\n")}</pre>
+          ) : (
+            <span>Restart the API to load provider setup details.</span>
+          )}
+        </li>
+      </ol>
+      <div className="provider-setup-actions">
+        {setup?.developer_portal_url && (
+          <a href={setup.developer_portal_url} target="_blank" rel="noreferrer">
+            Open {detail.short} developer portal ↗
+          </a>
+        )}
+        <span>Restart ReachCut after editing .env, then connect here.</span>
+      </div>
+    </aside>
+  );
+}
+
 function ReadinessCheck({
   ready,
   label,
@@ -401,23 +554,6 @@ function AccountForm({
           defaultValue={account.label}
           maxLength={100}
           required
-        />
-      </label>
-      <label>
-        Username or channel
-        <input
-          name="username"
-          defaultValue={account.username}
-          maxLength={100}
-        />
-      </label>
-      <label>
-        Profile URL
-        <input
-          name="profile_url"
-          type="url"
-          pattern="https://.*"
-          defaultValue={account.profile_url ?? ""}
         />
       </label>
       <label>

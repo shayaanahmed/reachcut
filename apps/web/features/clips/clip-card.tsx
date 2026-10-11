@@ -12,8 +12,10 @@ export function ClipCard({
   index,
   bestToPublish,
   approvalPending,
+  deletionPending,
   renderState,
   onApprove,
+  onDelete,
   onRender,
 }: {
   projectId: string;
@@ -21,8 +23,10 @@ export function ClipCard({
   index: number;
   bestToPublish: boolean;
   approvalPending: boolean;
+  deletionPending: boolean;
   renderState?: OperationState;
   onApprove: (clipId: string, approved: boolean) => Promise<unknown>;
+  onDelete: (clipId: string) => Promise<unknown>;
   onRender: (clipId: string) => Promise<unknown>;
 }) {
   const slices = clip.plan.source_slices.length
@@ -160,6 +164,21 @@ export function ClipCard({
             Download final
           </a>
         )}
+        <button
+          type="button"
+          className="clip-delete-button"
+          disabled={deletionPending || approvalPending || Boolean(renderState)}
+          onClick={() => {
+            if (
+              window.confirm(
+                `Delete “${title}” completely? Its previews, final render, attached media, and local publishing records will be removed. Published social posts will remain live.`,
+              )
+            )
+              void onDelete(clip.id);
+          }}
+        >
+          {deletionPending ? "Deleting…" : "Delete clip"}
+        </button>
       </div>
     </article>
   );

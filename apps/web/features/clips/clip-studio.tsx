@@ -3,6 +3,7 @@
 import type { CSSProperties } from "react";
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import { useProjectWorkbench } from "../projects/use-project-workbench";
 import { previewUrl } from "./api";
@@ -23,6 +24,7 @@ export function ClipStudio({
   clipId: string;
 }) {
   const workbench = useProjectWorkbench(projectId);
+  const router = useRouter();
   const project = workbench.projects.find((item) => item.id === projectId);
   const clip = project?.clips.find((item) => item.id === clipId);
   const [preview, setPreview] = useState<StudioPreviewState | null>(null);
@@ -58,7 +60,9 @@ export function ClipStudio({
   const assetBusy = Object.keys(workbench.operations).some((key) =>
     key.startsWith(`clip:${clip.id}:asset`),
   );
-  const mutationBusy = saving || translating || tracking || assetBusy;
+  const deleting = workbench.isPending(`clip:${clip.id}:delete`);
+  const mutationBusy =
+    saving || translating || tracking || assetBusy || deleting;
   const title =
     clip.plan.suggested_title ?? clip.plan.hook?.text ?? "Untitled clip";
 
@@ -90,6 +94,24 @@ export function ClipStudio({
             <h1>{title}</h1>
           </div>
           <div className="studio-header-actions">
+            <button
+              type="button"
+              className="danger-button"
+              disabled={mutationBusy || approvalPending || Boolean(renderState)}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `Delete “${title}” completely? Its previews, final render, attached media, and local publishing records will be removed. Published social posts will remain live.`,
+                  )
+                ) {
+                  void workbench.removeClip(clip.id).then((removed) => {
+                    if (removed) router.push(`/projects/${project.id}`);
+                  });
+                }
+              }}
+            >
+              {deleting ? "Deleting…" : "Delete clip"}
+            </button>
             <button
               type="button"
               className={

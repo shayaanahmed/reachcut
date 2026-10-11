@@ -40,3 +40,30 @@ def test_model_runtime_settings_are_loaded_from_environment(
     assert settings.tracking_sample_interval_seconds == 1.25
     assert settings.max_secondary_media_bytes == 4096
     assert settings.tiktok_redirect_uri == ""
+
+
+def test_instagram_and_facebook_oauth_credentials_are_independent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CLIPPER_INSTAGRAM_APP_ID", "instagram-app")
+    monkeypatch.setenv("CLIPPER_INSTAGRAM_APP_SECRET", "instagram-secret")
+    monkeypatch.setenv("CLIPPER_INSTAGRAM_REDIRECT_URI", "https://example.test/instagram")
+    monkeypatch.setenv("CLIPPER_FACEBOOK_APP_ID", "facebook-app")
+    monkeypatch.setenv("CLIPPER_FACEBOOK_APP_SECRET", "facebook-secret")
+    monkeypatch.setenv("CLIPPER_FACEBOOK_REDIRECT_URI", "https://example.test/facebook")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.instagram_app_id == "instagram-app"
+    assert settings.instagram_app_secret == "instagram-secret"  # noqa: S105
+    assert settings.instagram_redirect_uri == "https://example.test/instagram"
+    assert settings.facebook_app_id == "facebook-app"
+    assert settings.facebook_app_secret == "facebook-secret"  # noqa: S105
+    assert settings.facebook_redirect_uri == "https://example.test/facebook"
+
+
+def test_meta_oauth_defaults_use_localhost_redirects() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.instagram_redirect_uri == ("http://localhost:8000/api/oauth/instagram/callback")
+    assert settings.facebook_redirect_uri == "http://localhost:8000/api/oauth/facebook/callback"

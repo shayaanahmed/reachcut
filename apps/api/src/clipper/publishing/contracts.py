@@ -12,6 +12,9 @@ class OAuthConnection:
     refresh_token: str = ""
     access_token: str = ""
     external_account_id: str = ""
+    display_name: str = ""
+    username: str = ""
+    profile_url: str = ""
 
 
 class OAuthConfigurationError(RuntimeError):

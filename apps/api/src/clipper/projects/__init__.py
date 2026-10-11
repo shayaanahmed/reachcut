@@ -29,12 +29,12 @@ from clipper.projects.runtime_settings import (
     RuntimeSettingsService,
 )
 from clipper.projects.social_accounts import (
-    SocialAccountCreate,
     SocialAccountNotFoundError,
     SocialAccountService,
     SocialAccountUpdate,
 )
 from clipper.projects.stages import StageRunner
+from clipper.projects.storage import directory_size, project_storage_bytes
 
 __all__ = [
     "AccountConnectionReadiness",
@@ -59,10 +59,11 @@ __all__ = [
     "RuntimeConfiguration",
     "RuntimeSettingsError",
     "RuntimeSettingsService",
-    "SocialAccountCreate",
     "SocialAccountNotFoundError",
     "SocialAccountService",
     "SocialAccountUpdate",
     "StageRunner",
+    "directory_size",
+    "project_storage_bytes",
     "resolve_clip_artifact",
 ]

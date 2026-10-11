@@ -7,12 +7,13 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+import clipper.api.clips as clip_routes
 import clipper.api.projects as project_routes
 from clipper.config import settings
 from clipper.main import app
 from clipper.media import StoredUpload
-from clipper.persistence import Base, get_session
-from clipper.projects import ProjectService
+from clipper.persistence import Base, Clip, Project, Publication, get_session, now_utc
+from clipper.projects import ClipService, ProjectService
 
 
 def test_health_exposes_local_dependencies() -> None:
@@ -110,6 +111,7 @@ def test_project_routes_support_create_read_update_and_delete(
             )
             assert created.status_code == 201
             project_id = created.json()["id"]
+            assert created.json()["storage_bytes"] == len(b"\x00\x00\x00\x18ftypisom")
 
             assert client.get(f"/api/projects/{project_id}").status_code == 200
             updated = client.put(
@@ -134,5 +136,75 @@ def test_project_routes_support_create_read_update_and_delete(
             )
             assert imported.status_code == 201
             assert imported.json()["original_filename"] == "source.mp4"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_delete_clip_removes_its_record_publications_and_owned_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    make_plan,  # type: ignore[no-untyped-def]
+) -> None:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    projects_root = tmp_path / "projects"
+    source = projects_root / "project-1" / "source" / "source.mp4"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"source")
+    clip_root = source.parent / "clips" / "clip-1"
+    (clip_root / "assets" / "asset-1").mkdir(parents=True)
+    preview = clip_root / "preview.mp4"
+    final = clip_root / "final.mp4"
+    preview.write_bytes(b"preview")
+    final.write_bytes(b"final")
+    (clip_root / "assets" / "asset-1" / "game.mp4").write_bytes(b"asset")
+
+    with Session(engine) as session:
+        project = Project(
+            id="project-1",
+            title="Fixture",
+            original_filename=source.name,
+            source_path=str(source),
+            media_sha256="a" * 64,
+            authorization_confirmed_at=now_utc(),
+            status="review",
+        )
+        clip = Clip(
+            id="clip-1",
+            project=project,
+            plan=make_plan().model_dump(mode="json"),
+            preview_path=str(preview),
+            final_path=str(final),
+        )
+        Publication(id="publication-1", clip=clip, platform="youtube")
+        session.add(project)
+        session.commit()
+
+    def session_override() -> Generator[Session]:
+        with Session(engine) as session:
+            yield session
+
+    monkeypatch.setattr(settings, "data_dir", tmp_path)
+    monkeypatch.setattr(
+        clip_routes,
+        "clip_service",
+        ClipService(None, None, projects_root=projects_root),  # type: ignore[arg-type]
+    )
+    app.dependency_overrides[get_session] = session_override
+    try:
+        with TestClient(app) as client:
+            deleted = client.delete("/api/clips/clip-1")
+            assert deleted.status_code == 200
+            assert deleted.json()["clips"] == []
+            assert deleted.json()["storage_bytes"] == len(b"source")
+        with Session(engine) as session:
+            assert session.get(Clip, "clip-1") is None
+            assert session.get(Publication, "publication-1") is None
+        assert not clip_root.exists()
+        assert source.exists()
     finally:
         app.dependency_overrides.clear()

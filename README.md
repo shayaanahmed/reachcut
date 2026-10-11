@@ -80,9 +80,20 @@ token, Page ID, or Instagram account ID. The workspace owner must still register
 developer app with each provider once and place that app's client credentials in the
 private `.env` file.
 
+The connection flow is provider-first: choosing a configured platform starts OAuth
+without creating an empty database record. After the provider callback, ReachCut
+fetches the authorized channel/profile identity, creates or reconnects that real
+account, and stores its tokens in the encrypted credential store. Reauthorizing the
+same provider account updates the existing connection instead of adding a duplicate.
+This follows the useful separation used by BrightBean Studio—developer-app
+configuration is an administrator concern, while connecting a publishing identity is
+a short end-user OAuth action—without importing its Django implementation.
+
 If a platform says **Setup required** under **Settings → Connected accounts**, its
-required environment variables are empty. ReachCut only reports that a provider is
-ready when its client ID/key, client secret, and redirect URI are present.
+required environment variables are empty. Select that platform to open an in-app
+from-scratch guide with the current callback URI, required scopes, `.env` variable
+names, and a link to the provider's developer portal. ReachCut only reports that a
+provider is ready when its client ID/key, client secret, and redirect URI are present.
 
 ### Callback URLs and environment variables
 
@@ -94,9 +105,17 @@ application.
 | --------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | YouTube   | `http://127.0.0.1:8000/api/oauth/youtube/callback`       | `CLIPPER_YOUTUBE_CLIENT_ID`, `CLIPPER_YOUTUBE_CLIENT_SECRET`, `CLIPPER_YOUTUBE_REDIRECT_URI` |
 | TikTok    | `https://YOUR-PUBLIC-API-HOST/api/oauth/tiktok/callback` | `CLIPPER_TIKTOK_CLIENT_KEY`, `CLIPPER_TIKTOK_CLIENT_SECRET`, `CLIPPER_TIKTOK_REDIRECT_URI`   |
-| Instagram | `http://127.0.0.1:8000/api/oauth/meta/callback`          | `CLIPPER_META_APP_ID`, `CLIPPER_META_APP_SECRET`, `CLIPPER_META_REDIRECT_URI`                |
-| Facebook  | Same Meta callback as Instagram                          | Same Meta variables as Instagram                                                             |
+| Instagram | `http://localhost:8000/api/oauth/instagram/callback`     | `CLIPPER_INSTAGRAM_APP_ID`, `CLIPPER_INSTAGRAM_APP_SECRET`, `CLIPPER_INSTAGRAM_REDIRECT_URI` |
+| Facebook  | `http://localhost:8000/api/oauth/facebook/callback`      | `CLIPPER_FACEBOOK_APP_ID`, `CLIPPER_FACEBOOK_APP_SECRET`, `CLIPPER_FACEBOOK_REDIRECT_URI`   |
 | X         | `http://127.0.0.1:8000/api/oauth/x/callback`             | `CLIPPER_X_CLIENT_ID`, `CLIPPER_X_CLIENT_SECRET`, `CLIPPER_X_REDIRECT_URI`                   |
+
+Instagram and Facebook intentionally use separate Meta developer apps and separate
+platform-specific environment variables.
+
+For local Meta OAuth, use the literal `localhost` hostname and keep the Meta app in
+Development mode. Meta may reject `127.0.0.1` as an insecure redirect even though it
+reaches the same machine. For a Live app or any remote deployment, expose the API over
+HTTPS and register that exact public HTTPS callback instead.
 
 TikTok Login Kit for web requires an absolute, static HTTPS redirect URI. For local
 development, expose port 8000 through an HTTPS reverse proxy or temporary tunnel and
@@ -119,9 +138,13 @@ CLIPPER_TIKTOK_CLIENT_KEY=
 CLIPPER_TIKTOK_CLIENT_SECRET=
 CLIPPER_TIKTOK_REDIRECT_URI=https://api.reachcut.example.com/api/oauth/tiktok/callback
 
-CLIPPER_META_APP_ID=
-CLIPPER_META_APP_SECRET=
-CLIPPER_META_REDIRECT_URI=https://api.reachcut.example.com/api/oauth/meta/callback
+CLIPPER_INSTAGRAM_APP_ID=
+CLIPPER_INSTAGRAM_APP_SECRET=
+CLIPPER_INSTAGRAM_REDIRECT_URI=https://api.reachcut.example.com/api/oauth/instagram/callback
+
+CLIPPER_FACEBOOK_APP_ID=
+CLIPPER_FACEBOOK_APP_SECRET=
+CLIPPER_FACEBOOK_REDIRECT_URI=https://api.reachcut.example.com/api/oauth/facebook/callback
 
 CLIPPER_X_CLIENT_ID=
 CLIPPER_X_CLIENT_SECRET=
@@ -206,14 +229,19 @@ Posting API audit before expecting public posts from production accounts.
 Official references: [Instagram API with Facebook Login](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-facebook-login/get-started)
 and Meta's [Instagram Reels publishing sample](https://github.com/fbsamples/reels_publishing_apis/tree/main/insta_reels_publishing_api_sample).
 
-1. The destination Instagram account must be a **professional Business account** and
-   must be connected to a Facebook Page. The Facebook user authorizing ReachCut must
-   have sufficient Page access to create content.
-2. Create an app in Meta for Developers using a business-oriented use case that
-   provides Facebook Login and the Instagram Graph API.
-3. Add/configure **Facebook Login** and register this exact valid OAuth redirect URI:
-   `http://127.0.0.1:8000/api/oauth/meta/callback`. Use the public HTTPS API URL for
-   production. Instagram and Facebook connections intentionally share this callback.
+1. The destination Instagram account must be a **professional account** (Business or
+   Creator) connected to a Facebook Page. The Facebook user authorizing ReachCut must
+   have sufficient access to that Page.
+2. Sign in at [Meta for Developers](https://developers.facebook.com/apps/), select
+   **My Apps → Create App**, and create a dedicated Instagram app. Choose a
+   business-oriented use case that provides Facebook Login and access to the Instagram
+   API. Meta changes the dashboard labels periodically; select the option for managing
+   content on an Instagram professional account through Facebook Login.
+3. In the app dashboard, add/configure **Facebook Login** (or **Facebook Login for
+   Business**) and the Instagram API. Under the login product's **Settings**, add this
+   exact **Valid OAuth Redirect URI**:
+   `http://localhost:8000/api/oauth/instagram/callback`. Use the public HTTPS API URL
+   for production.
 4. Enable/request the permissions used by ReachCut:
    `instagram_basic`, `instagram_content_publish`, `pages_show_list`, and
    `pages_read_engagement`.
@@ -221,12 +249,13 @@ and Meta's [Instagram Reels publishing sample](https://github.com/fbsamples/reel
    Meta app is in Development mode. For accounts without an app role, switch the app
    Live only after obtaining the required Advanced Access/App Review approvals and
    completing any requested business verification.
-6. Copy the Meta App ID and App Secret into:
+6. Open **App settings → Basic**. Copy this Instagram app's **App ID**, reveal/copy
+   its **App Secret**, and set:
 
    ```dotenv
-   CLIPPER_META_APP_ID=your-meta-app-id
-   CLIPPER_META_APP_SECRET=your-meta-app-secret
-   CLIPPER_META_REDIRECT_URI=http://127.0.0.1:8000/api/oauth/meta/callback
+   CLIPPER_INSTAGRAM_APP_ID=your-instagram-meta-app-id
+   CLIPPER_INSTAGRAM_APP_SECRET=your-instagram-meta-app-secret
+   CLIPPER_INSTAGRAM_REDIRECT_URI=http://localhost:8000/api/oauth/instagram/callback
    CLIPPER_META_GRAPH_VERSION=v24.0
    ```
 
@@ -235,24 +264,49 @@ and Meta's [Instagram Reels publishing sample](https://github.com/fbsamples/reel
    professional-account ID automatically; neither is entered in the UI.
 
 If the login succeeds but no Instagram destination is found, verify the account is a
-professional Business account, the Page is linked, and the authorizing Facebook user
+professional account, the Page is linked, and the authorizing Facebook user
 can manage that Page. The current connection flow selects the first eligible linked
-Instagram account returned by Meta.
+Instagram account returned by Meta. To isolate the issue, use Meta's Graph API
+Explorer with the same app and Facebook user to request:
+
+```text
+/me/accounts?fields=id,name,tasks,instagram_business_account
+```
+
+An empty `data` array means that user cannot expose a manageable Page to the app. A
+Page without `instagram_business_account` means the Instagram account is not linked
+to that Page for API purposes; adding both profiles to Accounts Center alone is not
+the same Page linkage. After correcting access or linkage, remove the app from the
+Facebook account's Business Integrations and reconnect so Meta asks for consent again.
 
 ### Facebook Reels
 
 Official reference: Meta's [Facebook Reels publishing sample](https://github.com/fbsamples/reels_publishing_apis/tree/main/fb_reels_publishing_api_sample).
 
-1. Reuse the Meta app and callback configured for Instagram, or create a dedicated
-   Meta app if you need separate review and release lifecycles.
+1. In [Meta for Developers](https://developers.facebook.com/apps/), select
+   **My Apps → Create App** and create a second, dedicated Facebook app. Choose a
+   business-oriented use case that supports Facebook Login and managing a Page.
 2. The authorizing Facebook user must have sufficient access to the destination Page.
    Personal profiles are not publishing destinations for this adapter.
-3. Enable/request `pages_show_list`, `pages_read_engagement`, and
+3. Add/configure **Facebook Login** (or **Facebook Login for Business**). In its
+   **Settings**, register this exact **Valid OAuth Redirect URI**:
+   `http://localhost:8000/api/oauth/facebook/callback`. Use the public HTTPS API URL
+   in production.
+4. Enable/request `pages_show_list`, `pages_read_engagement`, and
    `pages_manage_posts`. Complete App Review/Advanced Access and business verification
    when publishing for users who do not hold a role on the Meta app.
-4. Set the same `CLIPPER_META_APP_ID`, `CLIPPER_META_APP_SECRET`, and
-   `CLIPPER_META_REDIRECT_URI` values shown in the Instagram section.
-5. Restart ReachCut, select **Facebook**, and authorize the Facebook account that
+5. Open **App settings → Basic**, copy this Facebook app's **App ID** and **App
+   Secret**, and set:
+
+   ```dotenv
+   CLIPPER_FACEBOOK_APP_ID=your-facebook-meta-app-id
+   CLIPPER_FACEBOOK_APP_SECRET=your-facebook-meta-app-secret
+   CLIPPER_FACEBOOK_REDIRECT_URI=http://localhost:8000/api/oauth/facebook/callback
+   ```
+
+6. While the app is in Development mode, add the connecting Facebook account as an
+   app administrator, developer, or tester.
+7. Restart ReachCut, select **Facebook**, and authorize the Facebook account that
    manages the Page. ReachCut resolves and encrypts the Page access token and Page ID.
 
 The current connection flow selects the first eligible Page returned by Meta. Use a
@@ -303,9 +357,11 @@ curl -s http://127.0.0.1:8000/api/publishing/capabilities
 ```
 
 The `configured_platforms` array should contain every configured provider. Instagram
-and Facebook appear together because they share the same Meta app credentials. This
-endpoint only checks that configuration values exist; the provider validates the
-redirect URI, scopes, review status, and account eligibility during authorization.
+and Facebook are checked independently because ReachCut uses separate Meta developer
+app credentials for their release and review lifecycles. This endpoint only checks
+that configuration values exist; the provider validates the redirect URI, scopes,
+review status, and account eligibility during authorization. Its `provider_setup`
+array contains only non-secret setup metadata and never exposes client secrets.
 
 Finally, open **Settings → Connected accounts**, select a platform, approve access on
 the provider's site, then return to ReachCut. Approve and render a clip before using

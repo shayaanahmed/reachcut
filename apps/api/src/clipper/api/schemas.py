@@ -3,6 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from clipper.config import settings
 from clipper.domain.editing_plan import (
     CaptionConfig,
     ClipType,
@@ -16,6 +17,7 @@ from clipper.domain.editing_plan import (
     TranslationMode,
 )
 from clipper.editorial import PublishRecommendation, recommend_for_publishing
+from clipper.projects.storage import project_storage_bytes
 from clipper.publishing import PublishingPlatform
 
 SocialPlatform = PublishingPlatform
@@ -81,6 +83,7 @@ class ClipResponse(BaseModel):
 class ProjectResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
+    source_path: str = Field(exclude=True)
     title: str
     original_filename: str
     status: str
@@ -89,6 +92,15 @@ class ProjectResponse(BaseModel):
     created_at: datetime
     stages: list[StageResponse]
     clips: list[ClipResponse]
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def storage_bytes(self) -> int:
+        return project_storage_bytes(
+            settings.data_dir / "projects",
+            self.id,
+            self.source_path,
+        )
 
 
 class ApprovalRequest(BaseModel):
@@ -191,33 +203,26 @@ class SocialAccountResponse(BaseModel):
     updated_at: datetime
 
 
-class SocialAccountCreateRequest(BaseModel):
-    platform: SocialPlatform
-    label: str = Field(min_length=1, max_length=100)
-    username: str = Field(default="", max_length=100)
-    profile_url: str | None = Field(default=None, max_length=2_048, pattern=r"^https://")
-    default_hashtags: list[str] = Field(default_factory=list, max_length=30)
-    default_cta: str = Field(default="", max_length=500)
-    default_campaign_url: str | None = Field(default=None, max_length=2_048, pattern=r"^https://")
-    currency: str = Field(default="EUR", pattern=r"^[A-Z]{3}$")
-    is_default: bool = False
-
-
 class SocialAccountUpdateRequest(BaseModel):
     label: str = Field(min_length=1, max_length=100)
-    username: str = Field(default="", max_length=100)
-    profile_url: str | None = Field(default=None, max_length=2_048, pattern=r"^https://")
     default_hashtags: list[str] = Field(default_factory=list, max_length=30)
     default_cta: str = Field(default="", max_length=500)
     default_campaign_url: str | None = Field(default=None, max_length=2_048, pattern=r"^https://")
     currency: str = Field(default="EUR", pattern=r"^[A-Z]{3}$")
     is_default: bool = False
+
+
+class ProviderSetupResponse(BaseModel):
+    platform: SocialPlatform
+    configured: bool
+    redirect_uri: str
+    credential_fields: list[str]
+    developer_portal_url: str
 
 
 class PublishingCapabilitiesResponse(BaseModel):
-    youtube_configured: bool
-    automatic_platforms: list[SocialPlatform]
     configured_platforms: list[SocialPlatform]
+    provider_setup: list[ProviderSetupResponse]
 
 
 class AccountConnectionReadinessResponse(BaseModel):
@@ -228,12 +233,6 @@ class AccountConnectionReadinessResponse(BaseModel):
     credentials_available: bool
     publishing_ready: bool
     issues: list[str]
-
-
-class ApiConnectionRequest(BaseModel):
-    access_token: str = Field(min_length=1, max_length=8_192)
-    refresh_token: str = Field(default="", max_length=8_192)
-    external_account_id: str = Field(default="", max_length=255)
 
 
 class HealthResponse(BaseModel):

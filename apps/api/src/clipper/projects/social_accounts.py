@@ -26,23 +26,8 @@ class SocialAccountNotFoundError(LookupError):
 
 
 @dataclass(frozen=True)
-class SocialAccountCreate:
-    platform: str
-    label: str
-    username: str = ""
-    profile_url: str | None = None
-    default_hashtags: tuple[str, ...] = ()
-    default_cta: str = ""
-    default_campaign_url: str | None = None
-    currency: str = "EUR"
-    is_default: bool = False
-
-
-@dataclass(frozen=True)
 class SocialAccountUpdate:
     label: str
-    username: str = ""
-    profile_url: str | None = None
     default_hashtags: tuple[str, ...] = ()
     default_cta: str = ""
     default_campaign_url: str | None = None
@@ -58,35 +43,6 @@ class SocialAccountService:
         if not include_archived:
             statement = statement.where(SocialAccount.is_active.is_(True))
         return list(session.scalars(statement))
-
-    def create(self, session: Session, request: SocialAccountCreate) -> SocialAccount:
-        existing = list(
-            session.scalars(
-                select(SocialAccount).where(
-                    SocialAccount.platform == request.platform,
-                    SocialAccount.is_active.is_(True),
-                )
-            )
-        )
-        make_default = request.is_default or not existing
-        if make_default:
-            for account in existing:
-                account.is_default = False
-
-        account = SocialAccount(
-            platform=request.platform,
-            label=request.label.strip(),
-            username=request.username.strip().lstrip("@"),
-            profile_url=request.profile_url,
-            default_hashtags=normalized_hashtags(request.default_hashtags),
-            default_cta=request.default_cta.strip(),
-            default_campaign_url=request.default_campaign_url,
-            currency=request.currency.upper(),
-            is_default=make_default,
-        )
-        session.add(account)
-        session.commit()
-        return account
 
     def update(
         self,
@@ -110,8 +66,6 @@ class SocialAccountService:
                 sibling.is_default = False
 
         account.label = request.label.strip()
-        account.username = request.username.strip().lstrip("@")
-        account.profile_url = request.profile_url
         account.default_hashtags = normalized_hashtags(request.default_hashtags)
         account.default_cta = request.default_cta.strip()
         account.default_campaign_url = request.default_campaign_url

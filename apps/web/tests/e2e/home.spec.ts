@@ -140,9 +140,8 @@ test("keeps the primary product pages inside tablet and mobile viewports", async
   await page.route("**/api/publishing/capabilities", (route) =>
     route.fulfill({
       json: {
-        youtube_configured: true,
-        automatic_platforms: ["youtube"],
         configured_platforms: ["youtube"],
+        provider_setup: [],
       },
     }),
   );

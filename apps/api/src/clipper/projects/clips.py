@@ -77,12 +77,29 @@ class ClipService:
         translation: CaptionTranslationProvider | None = None,
         tracking: VisualTrackingProvider | None = None,
         max_secondary_media_bytes: int = 2 * 1024**3,
+        projects_root: Path | None = None,
     ) -> None:
         self._artifacts = artifacts
         self._renderer = renderer
         self._translation = translation
         self._tracking = tracking
         self._max_secondary_media_bytes = max_secondary_media_bytes
+        self._projects_root = projects_root.resolve() if projects_root else None
+
+    def delete(self, session: Session, clip_id: str) -> str:
+        clip = self._clip(session, clip_id)
+        project = session.get(Project, clip.project_id)
+        if not project:
+            raise ClipNotFoundError("project not found")
+        if project.status in ("processing", "cancel_requested"):
+            raise ClipStateError("clips from an active project cannot be deleted")
+        root = self._owned_clip_root(project, clip)
+        session.delete(clip)
+        session.flush()
+        if root.exists():
+            rmtree(root)
+        session.commit()
+        return project.id
 
     def set_approval(self, session: Session, clip_id: str, approved: bool) -> str:
         clip = self._clip(session, clip_id)
@@ -391,6 +408,31 @@ class ClipService:
     @staticmethod
     def _clip_root(project: Project, clip: Clip) -> Path:
         return Path(project.source_path).parent / "clips" / clip.id
+
+    def _owned_clip_root(self, project: Project, clip: Clip) -> Path:
+        if not clip.id or Path(clip.id).name != clip.id or clip.id in {".", ".."}:
+            raise ClipStateError("clip identifier is not an owned directory name")
+        try:
+            source = Path(project.source_path).resolve(strict=True)
+        except OSError as error:
+            raise ClipStateError("project source path is unavailable") from error
+        if not source.is_file():
+            raise ClipStateError("project source path is unavailable")
+        project_root = source.parent.parent
+        if self._projects_root is not None:
+            expected_project_root = self._projects_root / project.id
+            if (
+                expected_project_root.parent != self._projects_root
+                or project_root != expected_project_root
+            ):
+                raise ClipStateError("project source path is outside its owned directory")
+        clips_root = source.parent / "clips"
+        if clips_root.is_symlink():
+            raise ClipStateError("clip directory cannot be a symbolic link")
+        root = clips_root / clip.id
+        if root.is_symlink():
+            raise ClipStateError("clip directory cannot be a symbolic link")
+        return root
 
     @staticmethod
     def _clip(session: Session, clip_id: str) -> Clip:

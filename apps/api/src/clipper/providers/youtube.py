@@ -87,12 +87,36 @@ class YouTubeOAuthClient:
                     },
                 )
                 response.raise_for_status()
+                payload = response.json()
+                access_token = payload.get("access_token")
+                refresh_token = payload.get("refresh_token")
+                if not access_token or not refresh_token:
+                    raise YouTubeApiError(
+                        "Google did not return complete credentials; reconnect the account"
+                    )
+                channel_response = client.get(
+                    "https://www.googleapis.com/youtube/v3/channels",
+                    params={"part": "id,snippet", "mine": "true"},
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+                channel_response.raise_for_status()
         except httpx.HTTPError as error:
             raise YouTubeApiError(_http_error("YouTube authorization failed", error)) from error
-        refresh_token = response.json().get("refresh_token")
-        if not refresh_token:
-            raise YouTubeApiError("Google did not return a refresh token; reconnect the account")
-        return OAuthConnection(refresh_token=str(refresh_token))
+        channels = channel_response.json().get("items", [])
+        if not channels:
+            raise YouTubeApiError("Google did not return a YouTube channel for this account")
+        channel = channels[0]
+        snippet = channel.get("snippet", {})
+        channel_id = str(channel.get("id") or "")
+        custom_url = str(snippet.get("customUrl") or "").lstrip("@")
+        return OAuthConnection(
+            refresh_token=str(refresh_token),
+            access_token=str(access_token),
+            external_account_id=channel_id,
+            display_name=str(snippet.get("title") or "YouTube channel"),
+            username=custom_url,
+            profile_url=(f"https://www.youtube.com/channel/{channel_id}" if channel_id else ""),
+        )
 
     def access_token(self, connection: OAuthConnection) -> str:
         self._require_configured()

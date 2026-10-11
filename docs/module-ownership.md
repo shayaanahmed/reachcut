@@ -43,7 +43,7 @@ small composition root.
 | Publishing and metrics adapter contracts               | `clipper/publishing/`                                                           | `PublishingAdapter`, `MetricsAdapter`, `CredentialStore`, typed results |
 | Social OAuth, API uploads, and encrypted token storage | `clipper/providers/{social_oauth,youtube,tiktok,meta,x,credentials}.py`         | OAuth clients, publishing adapters, and `EncryptedCredentialStore`      |
 | Publishing account connection and readiness workflow   | `clipper/projects/publishing_connections.py`                                    | `PublishingConnectionService`, `AccountConnectionReadiness`             |
-| Social-account setup and publishing defaults           | `clipper/projects/social_accounts.py`                                           | `SocialAccountService`, `SocialAccountCreate`, `SocialAccountUpdate`    |
+| Social-account publishing defaults                     | `clipper/projects/social_accounts.py`                                           | `SocialAccountService`, `SocialAccountUpdate`                           |
 | Resumable project stages                               | `clipper/projects/stages.py`                                                    | `StageRunner.run`                                                       |
 | End-to-end analysis orchestration                      | `clipper/projects/pipeline.py`                                                  | `Pipeline.run`                                                          |
 | Database tables and sessions                           | `clipper/persistence/`                                                          | exported models, `get_session`, `SessionLocal`                          |

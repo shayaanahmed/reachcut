@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import type { Project } from "../../lib/contracts";
+import { formatBytes } from "../../lib/format";
 
 type ProjectFilter = "all" | "active" | "review" | "complete";
 type ProjectSort = "recent" | "attention" | "performance";
@@ -244,14 +245,8 @@ export function ProjectList({
                         exported
                       </span>
                       <span>
-                        <strong>
-                          {
-                            project.clips.filter(
-                              (clip) => clip.approval_status === "approved",
-                            ).length
-                          }
-                        </strong>{" "}
-                        approved
+                        <strong>{formatBytes(project.storage_bytes)}</strong>{" "}
+                        storage
                       </span>
                     </div>
                     <div className="project-next-action">

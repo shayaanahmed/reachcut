@@ -86,6 +86,15 @@ export async function deleteClipSecondaryMedia(
   return projectSchema.parse(await response.json());
 }
 
+export async function deleteClip(clipId: string): Promise<Project> {
+  const response = await fetch(`${API_URL}/clips/${clipId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok)
+    throw await responseError(response, "Could not delete clip");
+  return projectSchema.parse(await response.json());
+}
+
 export async function setApproval(
   clipId: string,
   approved: boolean,

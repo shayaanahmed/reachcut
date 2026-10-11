@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import cast
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from clipper.persistence import SocialAccount
@@ -38,15 +39,15 @@ class PublishingConnectionService:
     def configured_platforms(self) -> list[PublishingPlatform]:
         return [platform for platform, client in self._oauth_clients.items() if client.configured]
 
-    @property
-    def youtube_configured(self) -> bool:
-        client = self._oauth_clients.get("youtube")
-        return bool(client and client.configured)
-
     def authorization_url(self, session: Session, account_id: str) -> str:
         account = self._account(session, account_id)
         client = self._client(account.platform)
         state = self._credentials.seal_state(account.id)
+        return client.authorization_url(state)
+
+    def authorization_url_for_platform(self, platform: str) -> str:
+        client = self._client(platform)
+        state = self._credentials.seal_state(f"new:{platform}")
         return client.authorization_url(state)
 
     def complete_authorization(
@@ -56,38 +57,34 @@ class PublishingConnectionService:
         state: str,
         code: str,
     ) -> SocialAccount:
-        account_id = self._credentials.open_state(state)
-        account = self._account(session, account_id)
-        callback_platform = account.platform if platform == "meta" else platform
-        if account.platform != callback_platform:
+        target = self._credentials.open_state(state)
+        callback_platform = platform
+        if target.startswith("new:"):
+            requested_platform = target.removeprefix("new:")
+            if requested_platform != callback_platform:
+                raise PublishingConnectionError(
+                    "the authorization platform does not match the requested provider"
+                )
+            connection = self._client(callback_platform).exchange_code(code, state)
+            return self._save_discovered_account(session, callback_platform, connection)
+
+        account = self._account(session, target)
+        if account.platform != platform:
             raise PublishingConnectionError("the authorization platform does not match the account")
-        connection = self._client(callback_platform).exchange_code(code, state)
+        connection = self._client(platform).exchange_code(code, state)
         self._credentials.save(account.id, connection)
         account.connection_status = "connected"
+        if connection.username:
+            account.username = connection.username[:100]
+        if connection.profile_url:
+            account.profile_url = connection.profile_url[:2048]
         session.commit()
         return account
 
     def disconnect(self, session: Session, account_id: str) -> SocialAccount:
         account = self._account(session, account_id)
         self._credentials.delete(account.id)
-        account.connection_status = "manual"
-        session.commit()
-        return account
-
-    def save_api_connection(
-        self,
-        session: Session,
-        account_id: str,
-        connection: OAuthConnection,
-    ) -> SocialAccount:
-        """Compatibility path for existing clients; the web UI uses OAuth."""
-        account = self._account(session, account_id)
-        if not connection.access_token:
-            raise PublishingConnectionError("an access token is required")
-        if account.platform in {"instagram", "facebook"} and not connection.external_account_id:
-            raise PublishingConnectionError(f"a {account.platform} account or Page ID is required")
-        self._credentials.save(account.id, connection)
-        account.connection_status = "connected"
+        account.connection_status = "disconnected"
         session.commit()
         return account
 
@@ -128,6 +125,77 @@ class PublishingConnectionService:
         if platform not in self._oauth_clients:
             raise PublishingConnectionError(f"{platform} OAuth is not supported")
         return self._oauth_clients[cast(PublishingPlatform, platform)]
+
+    def _save_discovered_account(
+        self,
+        session: Session,
+        platform: str,
+        connection: OAuthConnection,
+    ) -> SocialAccount:
+        accounts = list(
+            session.scalars(
+                select(SocialAccount).where(
+                    SocialAccount.platform == platform,
+                    SocialAccount.is_active.is_(True),
+                )
+            )
+        )
+        account = self._matching_account(accounts, connection)
+        if account is None:
+            account = SocialAccount(
+                platform=platform,
+                label=(connection.display_name or self._default_label(platform))[:100],
+                username=connection.username.lstrip("@")[:100],
+                profile_url=connection.profile_url[:2048] or None,
+                connection_status="connected",
+                is_default=not any(candidate.is_default for candidate in accounts),
+            )
+            session.add(account)
+            session.flush()
+        else:
+            account.connection_status = "connected"
+            if connection.username:
+                account.username = connection.username.lstrip("@")[:100]
+            if connection.profile_url:
+                account.profile_url = connection.profile_url[:2048]
+
+        self._credentials.save(account.id, connection)
+        session.commit()
+        return account
+
+    def _matching_account(
+        self,
+        accounts: list[SocialAccount],
+        connection: OAuthConnection,
+    ) -> SocialAccount | None:
+        for account in accounts:
+            try:
+                stored = self._credentials.load(account.id)
+            except CredentialStoreError:
+                continue
+            if (
+                stored
+                and connection.external_account_id
+                and stored.external_account_id == connection.external_account_id
+            ):
+                return account
+        if connection.username:
+            normalized = connection.username.lstrip("@").casefold()
+            return next(
+                (account for account in accounts if account.username.casefold() == normalized),
+                None,
+            )
+        return None
+
+    @staticmethod
+    def _default_label(platform: str) -> str:
+        return {
+            "youtube": "YouTube channel",
+            "tiktok": "TikTok account",
+            "instagram": "Instagram account",
+            "facebook": "Facebook Page",
+            "x": "X account",
+        }.get(platform, "Social account")
 
     @staticmethod
     def _account(session: Session, account_id: str) -> SocialAccount:

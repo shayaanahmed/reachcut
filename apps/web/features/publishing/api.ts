@@ -21,24 +21,26 @@ export type PublicationCreate = {
 };
 
 export type PublishingCapabilities = {
-  youtube_configured: boolean;
-  automatic_platforms: SocialPlatform[];
   configured_platforms: SocialPlatform[];
+  provider_setup: ProviderSetup[];
 };
 
-export type SocialAccountCreate = {
+export type ProviderSetup = {
   platform: SocialPlatform;
+  configured: boolean;
+  redirect_uri: string;
+  credential_fields: string[];
+  developer_portal_url: string;
+};
+
+export type SocialAccountUpdate = {
   label: string;
-  username: string;
-  profile_url: string | null;
   default_hashtags: string[];
   default_cta: string;
   default_campaign_url: string | null;
   currency: string;
   is_default: boolean;
 };
-
-export type SocialAccountUpdate = Omit<SocialAccountCreate, "platform">;
 
 export type MetricCreate = {
   views: number;
@@ -139,19 +141,6 @@ export async function socialAccountReadiness(): Promise<
   return accountConnectionReadinessSchema.array().parse(await response.json());
 }
 
-export async function createSocialAccount(
-  data: SocialAccountCreate,
-): Promise<SocialAccount> {
-  const response = await fetch(`${API_URL}/social-accounts`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-  if (!response.ok)
-    throw await responseError(response, "Could not create social account");
-  return socialAccountSchema.parse(await response.json());
-}
-
 export async function updateSocialAccount(
   accountId: string,
   data: SocialAccountUpdate,
@@ -185,6 +174,10 @@ export async function publishingCapabilities(): Promise<PublishingCapabilities> 
 
 export function socialConnectUrl(accountId: string): string {
   return `${API_URL}/social-accounts/${accountId}/connect`;
+}
+
+export function socialPlatformConnectUrl(platform: SocialPlatform): string {
+  return `${API_URL}/social-accounts/connect/${platform}`;
 }
 
 export async function disconnectSocialAccount(

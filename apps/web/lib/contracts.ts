@@ -256,6 +256,7 @@ export const projectSchema = z.object({
   original_filename: z.string(),
   status: z.string(),
   duration_seconds: z.number().nullable(),
+  storage_bytes: z.number().nonnegative().default(0),
   authorization_confirmed_at: z.string(),
   created_at: z.string(),
   stages: z.array(

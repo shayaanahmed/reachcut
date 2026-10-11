@@ -53,6 +53,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         operationState={workbench.operationState}
         onProcess={workbench.process}
         onApprove={workbench.approve}
+        onDeleteClip={workbench.removeClip}
         onRender={workbench.render}
         onRename={workbench.rename}
         onDelete={async (id) => {

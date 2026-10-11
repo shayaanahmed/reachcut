@@ -101,6 +101,7 @@ clip_service = ClipService(
     caption_translation_provider,
     visual_tracking_provider,
     settings.max_secondary_media_bytes,
+    settings.data_dir / "projects",
 )
 media_downloader = YtDlpDownloader(
     settings.yt_dlp_repository,
@@ -128,18 +129,18 @@ social_oauth_clients: dict[PublishingPlatform, OAuthClient] = {
     ),
     "instagram": MetaOAuthClient(
         OAuthAppConfig(
-            settings.meta_app_id,
-            settings.meta_app_secret,
-            settings.meta_redirect_uri,
+            settings.instagram_app_id,
+            settings.instagram_app_secret,
+            settings.instagram_redirect_uri,
         ),
         settings.meta_graph_version,
         "instagram",
     ),
     "facebook": MetaOAuthClient(
         OAuthAppConfig(
-            settings.meta_app_id,
-            settings.meta_app_secret,
-            settings.meta_redirect_uri,
+            settings.facebook_app_id,
+            settings.facebook_app_secret,
+            settings.facebook_redirect_uri,
         ),
         settings.meta_graph_version,
         "facebook",

@@ -25,6 +25,40 @@ def test_youtube_oauth_requests_upload_and_metrics_access() -> None:
     assert query["prompt"] == ["consent"]
 
 
+def test_youtube_oauth_discovers_the_authorized_channel() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "oauth2.googleapis.com":
+            return httpx.Response(
+                200,
+                json={"access_token": "access", "refresh_token": "refresh"},
+            )
+        assert request.url.params["mine"] == "true"
+        assert request.headers["authorization"] == "Bearer access"
+        return httpx.Response(
+            200,
+            json={
+                "items": [
+                    {
+                        "id": "channel-1",
+                        "snippet": {"title": "Creator Studio", "customUrl": "@creator"},
+                    }
+                ]
+            },
+        )
+
+    oauth = YouTubeOAuthClient(
+        YouTubeOAuthConfig("client", "secret", "http://localhost/callback"),
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    connection = oauth.exchange_code("oauth-code")
+
+    assert connection.external_account_id == "channel-1"
+    assert connection.display_name == "Creator Studio"
+    assert connection.username == "creator"
+    assert connection.profile_url == "https://www.youtube.com/channel/channel-1"
+
+
 def test_encrypted_credentials_and_oauth_state_round_trip(tmp_path: Path) -> None:
     store = EncryptedCredentialStore(tmp_path)
     secret_value = "very-secret-refresh-token"  # noqa: S105 - synthetic test fixture

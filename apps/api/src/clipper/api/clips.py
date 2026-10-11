@@ -22,6 +22,17 @@ from clipper.projects.clips import ClipNotFoundError, ClipStateError, ClipStyleU
 router = APIRouter()
 
 
+@router.delete("/clips/{clip_id}", response_model=ProjectResponse)
+def delete_clip(clip_id: str, session: Session = Depends(get_session)) -> object:
+    try:
+        project_id = clip_service.delete(session, clip_id)
+    except ClipNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ClipStateError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    return project_or_404(session, project_id)
+
+
 @router.put("/clips/{clip_id}/approval", response_model=ProjectResponse)
 def approve_clip(
     clip_id: str, request: ApprovalRequest, session: Session = Depends(get_session)
