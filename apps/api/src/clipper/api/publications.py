@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from clipper.api.dependencies import (
@@ -6,9 +6,11 @@ from clipper.api.dependencies import (
     metrics_adapters,
     publication_service,
     publishing_adapters,
+    run_publication_batch,
 )
 from clipper.api.projects import project_or_404
 from clipper.api.schemas import (
+    AutomaticPublicationBatchRequest,
     AutomaticPublicationRequest,
     MetricCreateRequest,
     ProjectResponse,
@@ -27,6 +29,34 @@ from clipper.providers.publishing_http import ProviderApiError
 from clipper.providers.youtube import YouTubeApiError, YouTubeConfigurationError
 
 router = APIRouter()
+
+
+@router.post(
+    "/clips/{clip_id}/publish-batch",
+    response_model=ProjectResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def publish_clip_batch(
+    clip_id: str,
+    request: AutomaticPublicationBatchRequest,
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_session),
+) -> object:
+    try:
+        project_id, queued = publication_service.queue_many(
+            session,
+            clip_id,
+            [AutomaticPublicationCreate(**item.model_dump()) for item in request.publications],
+            credential_store,
+        )
+    except PublicationNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except PublicationStateError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except CredentialStoreError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+    background_tasks.add_task(run_publication_batch, queued)
+    return project_or_404(session, project_id)
 
 
 @router.post("/clips/{clip_id}/publish", response_model=ProjectResponse)

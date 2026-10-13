@@ -111,7 +111,9 @@ def test_instagram_local_resumable_upload_publishes_returned_permalink(media: Pa
         if request.url.host == "rupload.facebook.com":
             assert request.content == b"rendered-video"
             assert request.headers["authorization"] == "OAuth test-access-value"
-            assert request.headers["content-type"] == "application/octet-stream"
+            assert "content-type" not in request.headers
+            assert request.headers["content-length"] == "14"
+            assert "transfer-encoding" not in request.headers
             assert request.headers["file_size"] == "14"
             return httpx.Response(200)
         assert request.url.host == "graph.facebook.com"
@@ -163,10 +165,69 @@ def test_instagram_rejects_old_direct_login_credentials(media: Path) -> None:
         )
 
 
+def test_instagram_metrics_combines_media_counts_and_reel_views() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.params["access_token"] == "test-access-value"  # noqa: S105
+        if request.url.path.endswith("/media-1/insights"):
+            assert request.url.params["metric"] == "views"
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "name": "views",
+                            "period": "lifetime",
+                            "values": [{"value": 1250}],
+                        }
+                    ]
+                },
+            )
+        assert request.url.params["fields"] == "like_count,comments_count"
+        return httpx.Response(200, json={"id": "media-1", "like_count": 88, "comments_count": 9})
+
+    metrics = InstagramPublishingAdapter(
+        "v26.0",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    ).metrics(
+        "media-1",
+        "https://www.instagram.com/reel/example/",
+        OAuthConnection(access_token="test-access-value", external_account_id="ig-1"),  # noqa: S106
+    )
+
+    assert (metrics.external_id, metrics.views, metrics.likes, metrics.comments) == (
+        "media-1",
+        1250,
+        88,
+        9,
+    )
+
+
+def test_instagram_metrics_explains_missing_insights_permission() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/insights"):
+            return httpx.Response(400, json={"error": {"code": 10}})
+        return httpx.Response(200, json={"like_count": 0, "comments_count": 0})
+
+    adapter = InstagramPublishingAdapter(
+        "v26.0",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    with pytest.raises(ProviderApiError, match="instagram_manage_insights"):
+        adapter.metrics(
+            "media-1",
+            None,
+            OAuthConnection(access_token="test-access-value", external_account_id="ig-1"),  # noqa: S106
+        )
+
+
 def test_facebook_local_reel_upload_finishes_and_builds_url(media: Path) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.host == "rupload.facebook.com":
             assert request.content == b"rendered-video"
+            assert request.headers["content-type"] == "application/octet-stream"
+            assert request.headers["content-length"] == str(len(b"rendered-video"))
+            assert "transfer-encoding" not in request.headers
             assert request.headers["file_size"] == str(len(b"rendered-video"))
             return httpx.Response(200)
         if request.url.params.get("upload_phase") == "start":
@@ -186,6 +247,38 @@ def test_facebook_local_reel_upload_finishes_and_builds_url(media: Path) -> None
     )
 
     assert result.post_url == "https://www.facebook.com/reel/video-1"
+
+
+def test_facebook_metrics_reads_reel_counts_and_can_resolve_id_from_url() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/video-1")
+        assert request.url.params["access_token"] == "test-access-value"  # noqa: S105
+        assert "views" in request.url.params["fields"]
+        return httpx.Response(
+            200,
+            json={
+                "id": "video-1",
+                "views": 2400,
+                "likes": {"data": [], "summary": {"total_count": 120}},
+                "comments": {"data": [], "summary": {"total_count": 15}},
+            },
+        )
+
+    metrics = FacebookPublishingAdapter(
+        "v26.0",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    ).metrics(
+        None,
+        "https://www.facebook.com/reel/video-1/",
+        OAuthConnection(access_token="test-access-value", external_account_id="page-1"),  # noqa: S106
+    )
+
+    assert (metrics.external_id, metrics.views, metrics.likes, metrics.comments) == (
+        "video-1",
+        2400,
+        120,
+        15,
+    )
 
 
 def test_x_chunked_upload_creates_post_with_media(media: Path) -> None:

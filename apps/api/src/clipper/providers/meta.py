@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from urllib.parse import urlparse
 
 import httpx
 
@@ -10,7 +11,7 @@ from clipper.providers.publishing_http import (
     local_video_size,
     trusted_upload_url,
 )
-from clipper.publishing import OAuthConnection, PublishedPost, PublishRequest
+from clipper.publishing import OAuthConnection, ProviderMetrics, PublishedPost, PublishRequest
 
 
 class InstagramPublishingAdapter(PublishingHttpClient):
@@ -53,7 +54,7 @@ class InstagramPublishingAdapter(PublishingHttpClient):
                         upload_uri,
                         headers={
                             "Authorization": f"OAuth {token}",
-                            "Content-Type": "application/octet-stream",
+                            "Content-Length": str(size),
                             "offset": "0",
                             "file_size": str(size),
                         },
@@ -101,6 +102,48 @@ class InstagramPublishingAdapter(PublishingHttpClient):
             raise self.raise_error("Instagram status check failed", error) from error
         return PublishedPost(post_url=response.json().get("permalink"), external_id=external_id)
 
+    def metrics(
+        self,
+        external_id: str | None,
+        post_url: str | None,
+        connection: OAuthConnection,
+    ) -> ProviderMetrics:
+        del post_url
+        if not external_id:
+            raise ProviderApiError("Instagram publication has no media ID")
+        _, token = _meta_credentials(connection, "Instagram")
+        try:
+            with self.client_session() as client:
+                media = client.get(
+                    f"{self._base}/{external_id}",
+                    params={
+                        "fields": "like_count,comments_count",
+                        "access_token": token,
+                    },
+                )
+                media.raise_for_status()
+                insights = client.get(
+                    f"{self._base}/{external_id}/insights",
+                    params={"metric": "views", "access_token": token},
+                )
+                insights.raise_for_status()
+        except httpx.HTTPStatusError as error:
+            if _is_permission_error(error.response):
+                raise ProviderApiError(
+                    "Instagram metrics sync requires instagram_manage_insights. Add it to the "
+                    "Meta login configuration, then reconnect the Instagram account."
+                ) from error
+            raise self.raise_error("Instagram metrics sync failed", error) from error
+        except httpx.HTTPError as error:
+            raise self.raise_error("Instagram metrics sync failed", error) from error
+        payload = media.json()
+        return ProviderMetrics(
+            external_id=external_id,
+            views=_insight_count(insights.json(), "views"),
+            likes=_count(payload.get("like_count")),
+            comments=_count(payload.get("comments_count")),
+        )
+
 
 class FacebookPublishingAdapter(PublishingHttpClient):
     def __init__(self, graph_version: str, *, client: httpx.Client | None = None) -> None:
@@ -132,6 +175,8 @@ class FacebookPublishingAdapter(PublishingHttpClient):
                         upload_url,
                         headers={
                             "Authorization": f"OAuth {token}",
+                            "Content-Type": "application/octet-stream",
+                            "Content-Length": str(size),
                             "offset": "0",
                             "file_size": str(size),
                         },
@@ -175,11 +220,109 @@ class FacebookPublishingAdapter(PublishingHttpClient):
             external_id=external_id,
         )
 
+    def metrics(
+        self,
+        external_id: str | None,
+        post_url: str | None,
+        connection: OAuthConnection,
+    ) -> ProviderMetrics:
+        video_id = external_id or _facebook_reel_id(post_url)
+        if not video_id:
+            raise ProviderApiError("Facebook publication has no recognizable Reel ID")
+        _, token = _meta_credentials(connection, "Facebook")
+        try:
+            with self.client_session() as client:
+                response = client.get(
+                    f"{self._base}/{video_id}",
+                    params={
+                        "fields": (
+                            "views,likes.limit(0).summary(true),comments.limit(0).summary(true)"
+                        ),
+                        "access_token": token,
+                    },
+                )
+                response.raise_for_status()
+        except httpx.HTTPError as error:
+            raise self.raise_error("Facebook metrics sync failed", error) from error
+        payload = response.json()
+        resolved_id = str(payload.get("id") or video_id)
+        return ProviderMetrics(
+            external_id=resolved_id,
+            views=_count(payload.get("views")),
+            likes=_summary_count(payload, "likes"),
+            comments=_summary_count(payload, "comments"),
+        )
+
 
 def _meta_credentials(connection: OAuthConnection, platform: str) -> tuple[str, str]:
     if not connection.external_account_id or not connection.access_token:
         raise ProviderApiError(f"{platform} requires an account ID and access token")
     return connection.external_account_id, connection.access_token
+
+
+def _facebook_reel_id(post_url: str | None) -> str | None:
+    if not post_url:
+        return None
+    parts = [part for part in urlparse(post_url).path.split("/") if part]
+    if len(parts) >= 2 and parts[0] == "reel":
+        return parts[1]
+    return None
+
+
+def _count(value: object) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int | float):
+        return max(int(value), 0)
+    if isinstance(value, str):
+        try:
+            return max(int(value), 0)
+        except ValueError:
+            return 0
+    return 0
+
+
+def _summary_count(payload: object, field: str) -> int:
+    if not isinstance(payload, dict):
+        return 0
+    item = payload.get(field)
+    if not isinstance(item, dict):
+        return 0
+    summary = item.get("summary")
+    if not isinstance(summary, dict):
+        return 0
+    return _count(summary.get("total_count"))
+
+
+def _insight_count(payload: object, metric: str) -> int:
+    if not isinstance(payload, dict):
+        return 0
+    data = payload.get("data")
+    if not isinstance(data, list):
+        return 0
+    for item in data:
+        if not isinstance(item, dict) or item.get("name") != metric:
+            continue
+        total = item.get("total_value")
+        if isinstance(total, dict):
+            return _count(total.get("value"))
+        values = item.get("values")
+        if isinstance(values, list) and values and isinstance(values[-1], dict):
+            return _count(values[-1].get("value"))
+    return 0
+
+
+def _is_permission_error(response: httpx.Response) -> bool:
+    try:
+        payload = response.json()
+    except ValueError:
+        return False
+    if not isinstance(payload, dict):
+        return False
+    error = payload.get("error")
+    if not isinstance(error, dict):
+        return False
+    return error.get("code") in {10, 200}
 
 
 def _wait_for_instagram_container(

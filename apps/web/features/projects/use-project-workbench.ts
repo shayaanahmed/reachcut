@@ -6,12 +6,14 @@ import {
   analyzeClipTracking,
   deleteClip,
   deleteClipSecondaryMedia,
+  generateClipThumbnail,
   renderClip,
   setApproval,
   translateClip,
   updateClipStyle,
   uploadClipSecondaryMedia,
   type ClipStyleUpdate,
+  type ThumbnailCreate,
 } from "../clips/api";
 import type {
   ClipType,
@@ -21,7 +23,7 @@ import type {
 } from "../../lib/contracts";
 import {
   addMetricSnapshot,
-  createPublication,
+  createPublicationBatch,
   deletePublication,
   listSocialAccounts,
   refreshPublication,
@@ -208,6 +210,15 @@ export function useProjectWorkbench(
       ),
     )
     .join(",");
+  const queuedPublicationKey = projects
+    .flatMap((project) =>
+      project.clips.flatMap((clip) =>
+        clip.publications
+          .filter((publication) => publication.status === "queued")
+          .map((publication) => publication.id),
+      ),
+    )
+    .join(",");
   const metricsPublicationKey = projects
     .flatMap((project) =>
       project.clips.flatMap((clip) =>
@@ -215,7 +226,9 @@ export function useProjectWorkbench(
           .filter(
             (publication) =>
               publication.status === "published" &&
-              publication.platform === "youtube" &&
+              ["youtube", "instagram", "facebook"].includes(
+                publication.platform,
+              ) &&
               publication.social_account_id,
           )
           .map((publication) => publication.id),
@@ -305,6 +318,29 @@ export function useProjectWorkbench(
       window.clearInterval(timer);
     };
   }, [processingPublicationKey]);
+
+  useEffect(() => {
+    if (!queuedPublicationKey || !projectId) return;
+    let active = true;
+    const refresh = () => {
+      void getProject(projectId)
+        .then((updated) => {
+          if (active)
+            setProjects((items) =>
+              items.map((item) => (item.id === updated.id ? updated : item)),
+            );
+        })
+        .catch((caught: Error) => {
+          if (active) setError(caught.message);
+        });
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 1500);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [queuedPublicationKey, projectId]);
 
   useEffect(() => {
     if (!metricsPublicationKey) return;
@@ -467,6 +503,17 @@ export function useProjectWorkbench(
       "Visual tracking failed",
     );
 
+  const generateThumbnail = (clipId: string, data: ThumbnailCreate) =>
+    withOperation(
+      `clip:${clipId}:thumbnail`,
+      async () => {
+        const updated = await generateClipThumbnail(clipId, data);
+        replaceProject(updated);
+        return updated;
+      },
+      "Thumbnail generation failed",
+    );
+
   const uploadSecondaryMedia = (clipId: string, form: HTMLFormElement) =>
     withOperation(
       `clip:${clipId}:asset`,
@@ -549,11 +596,11 @@ export function useProjectWorkbench(
     return task;
   }
 
-  const publish = (clipId: string, data: PublicationCreate) =>
+  const publish = (clipId: string, data: PublicationCreate[]) =>
     withOperation(
-      `clip:${clipId}:publish`,
+      `clip:${clipId}:publish-batch`,
       async () => {
-        const updated = await createPublication(clipId, data);
+        const updated = await createPublicationBatch(clipId, data);
         replaceProject(updated);
         return updated;
       },
@@ -631,6 +678,7 @@ export function useProjectWorkbench(
     saveStyle,
     translate,
     analyzeTracking,
+    generateThumbnail,
     uploadSecondaryMedia,
     removeSecondaryMedia,
     setLanguages,

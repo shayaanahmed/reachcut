@@ -106,7 +106,7 @@ def test_instagram_oauth_resolves_professional_account_from_facebook_page() -> N
     assert "scope" not in authorization
     assert authorization["auth_type"] == ["rerequest"]
     assert authorization["return_scopes"] == ["true"]
-    assert connection.access_token == "page-token"  # noqa: S105 - synthetic test fixture
+    assert connection.access_token == "user-token"  # noqa: S105 - synthetic test fixture
     assert connection.refresh_token == ""
     assert connection.external_account_id == "instagram-1"
     assert connection.display_name == "Creator Studio"
@@ -160,6 +160,7 @@ def test_instagram_oauth_reports_exact_missing_permissions_when_no_page_is_avail
         client.exchange_code("code-1")
 
     assert "instagram_content_publish" in str(error.value)
+    assert "instagram_manage_insights" in str(error.value)
     assert "business_management" in str(error.value)
     assert "pages_read_engagement" in str(error.value)
     assert "User access token" in str(error.value)

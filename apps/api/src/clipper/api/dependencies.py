@@ -1,4 +1,6 @@
 import threading
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import structlog
 from sqlalchemy import select
@@ -14,16 +16,19 @@ from clipper.persistence import (
     SessionLocal,
 )
 from clipper.projects import (
+    AutomaticPublicationCreate,
     AutomationService,
     ClipService,
     Pipeline,
     PublicationService,
     PublishingConnectionService,
     RuntimeSettingsService,
+    ThumbnailService,
 )
 from clipper.providers.credentials import EncryptedCredentialStore
 from clipper.providers.meta import FacebookPublishingAdapter, InstagramPublishingAdapter
 from clipper.providers.ollama import EditorialGenerationConfig, OllamaEditorialProvider
+from clipper.providers.ollama_thumbnail import OllamaThumbnailProvider
 from clipper.providers.ollama_translation import OllamaCaptionTranslationProvider
 from clipper.providers.opencv_tracking import OpenCvVisualTrackingProvider
 from clipper.providers.social_oauth import (
@@ -48,6 +53,7 @@ from clipper.publishing import (
     PublishingAdapter,
     PublishingPlatform,
 )
+from clipper.rendering import ThumbnailRenderer
 
 
 def build_transcription_provider(language: str | None = None) -> FasterWhisperProvider:
@@ -80,6 +86,18 @@ def build_editorial_provider(
 
 
 editorial_provider = build_editorial_provider()
+
+
+def build_thumbnail_provider(
+    base_url: str | None = None, model: str | None = None
+) -> OllamaThumbnailProvider:
+    return OllamaThumbnailProvider(
+        base_url or settings.editorial_base_url,
+        model or settings.thumbnail_model,
+        timeout_seconds=settings.editorial_timeout_seconds,
+    )
+
+
 caption_translation_provider = OllamaCaptionTranslationProvider(
     settings.editorial_base_url,
     settings.editorial_model,
@@ -103,6 +121,12 @@ clip_service = ClipService(
     visual_tracking_provider,
     settings.max_secondary_media_bytes,
     settings.data_dir / "projects",
+)
+thumbnail_service = ThumbnailService(
+    pipeline.artifacts,
+    ThumbnailRenderer(),
+    settings.data_dir / "projects",
+    logo_path=Path(__file__).parents[1] / "rendering" / "assets" / "siratsoul-symbol.png",
 )
 media_downloader = YtDlpDownloader(
     settings.yt_dlp_repository,
@@ -155,18 +179,63 @@ social_oauth_clients: dict[PublishingPlatform, OAuthClient] = {
     ),
 }
 youtube_publisher = YouTubePublishingAdapter(youtube_oauth)
+instagram_publisher = InstagramPublishingAdapter(settings.graph_api_version)
+facebook_publisher = FacebookPublishingAdapter(settings.graph_api_version)
 publishing_adapters: dict[str, PublishingAdapter] = {
     "youtube": youtube_publisher,
     "tiktok": TikTokPublishingAdapter(settings.tiktok_client_key, settings.tiktok_client_secret),
-    "instagram": InstagramPublishingAdapter(settings.graph_api_version),
-    "facebook": FacebookPublishingAdapter(settings.graph_api_version),
+    "instagram": instagram_publisher,
+    "facebook": facebook_publisher,
     "x": XPublishingAdapter(settings.x_client_id, settings.x_client_secret),
 }
-metrics_adapters: dict[str, MetricsAdapter] = {"youtube": youtube_publisher}
+metrics_adapters: dict[str, MetricsAdapter] = {
+    "youtube": youtube_publisher,
+    "instagram": instagram_publisher,
+    "facebook": facebook_publisher,
+}
 publishing_connections = PublishingConnectionService(social_oauth_clients, credential_store)
 pipeline_lock = threading.Lock()
 automation_lock = threading.Lock()
 logger = structlog.get_logger()
+
+
+def run_publication_batch(
+    queued: list[tuple[str, AutomaticPublicationCreate]],
+) -> None:
+    """Publish queued destinations concurrently without holding the request open."""
+
+    def publish_one(publication_id: str, request: AutomaticPublicationCreate) -> None:
+        with SessionLocal() as session:
+            publication = session.get(Publication, publication_id)
+            adapter = publishing_adapters.get(publication.platform) if publication else None
+            if not publication or not adapter:
+                publication_service.mark_failed(session, publication_id)
+                return
+            try:
+                publication_service.publish_queued(
+                    session,
+                    publication_id,
+                    request,
+                    adapter,
+                    credential_store,
+                )
+            except Exception as error:
+                session.rollback()
+                publication_service.mark_failed(session, publication_id)
+                logger.exception(
+                    "background_publication_failed",
+                    publication_id=publication_id,
+                    platform=publication.platform,
+                    error_category=type(error).__name__,
+                )
+
+    with ThreadPoolExecutor(max_workers=min(len(queued), 4)) as executor:
+        futures = [
+            executor.submit(publish_one, publication_id, request)
+            for publication_id, request in queued
+        ]
+        for future in futures:
+            future.result()
 
 
 def run_pipeline(

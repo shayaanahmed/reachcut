@@ -35,6 +35,12 @@ from clipper.projects.social_accounts import (
 )
 from clipper.projects.stages import StageRunner
 from clipper.projects.storage import directory_size, project_storage_bytes
+from clipper.projects.thumbnails import (
+    ThumbnailCreate,
+    ThumbnailNotFoundError,
+    ThumbnailService,
+    ThumbnailStateError,
+)
 
 __all__ = [
     "AccountConnectionReadiness",
@@ -63,6 +69,10 @@ __all__ = [
     "SocialAccountService",
     "SocialAccountUpdate",
     "StageRunner",
+    "ThumbnailCreate",
+    "ThumbnailNotFoundError",
+    "ThumbnailService",
+    "ThumbnailStateError",
     "directory_size",
     "project_storage_bytes",
     "resolve_clip_artifact",

@@ -12,6 +12,7 @@ def test_model_runtime_settings_are_loaded_from_environment(
     monkeypatch.setenv("CLIPPER_WHISPER_COMPUTE_TYPE", "float16")
     monkeypatch.setenv("CLIPPER_EDITORIAL_PROVIDER", "ollama")
     monkeypatch.setenv("CLIPPER_EDITORIAL_MODEL", "example-model")
+    monkeypatch.setenv("CLIPPER_THUMBNAIL_MODEL", "example-vision-model")
     monkeypatch.setenv("CLIPPER_EDITORIAL_TIMEOUT_SECONDS", "30")
     monkeypatch.setenv("CLIPPER_EDITORIAL_NUM_CTX", "4096")
     monkeypatch.setenv("CLIPPER_EDITORIAL_NUM_PREDICT", "1024")
@@ -30,6 +31,7 @@ def test_model_runtime_settings_are_loaded_from_environment(
     assert settings.whisper_compute_type == "float16"
     assert settings.editorial_provider == "ollama"
     assert settings.editorial_model == "example-model"
+    assert settings.thumbnail_model == "example-vision-model"
     assert settings.editorial_timeout_seconds == 30
     assert settings.editorial_num_ctx == 4096
     assert settings.editorial_num_predict == 1024

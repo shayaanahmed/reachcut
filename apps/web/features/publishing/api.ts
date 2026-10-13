@@ -55,14 +55,14 @@ export type MetricCreate = {
   currency: string;
 };
 
-export async function createPublication(
+export async function createPublicationBatch(
   clipId: string,
-  data: PublicationCreate,
+  publications: PublicationCreate[],
 ): Promise<Project> {
-  const response = await fetch(`${API_URL}/clips/${clipId}/publish`, {
+  const response = await fetch(`${API_URL}/clips/${clipId}/publish-batch`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
+    body: JSON.stringify({ publications }),
   });
   if (!response.ok)
     throw await responseError(response, "Could not publish clip");

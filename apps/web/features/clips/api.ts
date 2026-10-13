@@ -22,6 +22,14 @@ export type ClipStyleUpdate = {
   audio_track_index: number;
 };
 
+export type ThumbnailTemplate =
+  "speaker" | "question" | "cinematic" | "minimal";
+
+export type ThumbnailCreate = {
+  template: ThumbnailTemplate;
+  headline?: string;
+};
+
 export async function updateClipStyle(
   clipId: string,
   data: ClipStyleUpdate,
@@ -57,6 +65,20 @@ export async function analyzeClipTracking(clipId: string): Promise<Project> {
   });
   if (!response.ok)
     throw await responseError(response, "Could not analyze visual tracking");
+  return projectSchema.parse(await response.json());
+}
+
+export async function generateClipThumbnail(
+  clipId: string,
+  data: ThumbnailCreate,
+): Promise<Project> {
+  const response = await fetch(`${API_URL}/clips/${clipId}/thumbnail`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok)
+    throw await responseError(response, "Could not generate thumbnail");
   return projectSchema.parse(await response.json());
 }
 
@@ -113,6 +135,9 @@ export const previewUrl = (clipId: string) =>
   `${API_URL}/clips/${clipId}/preview`;
 
 export const finalUrl = (clipId: string) => `${API_URL}/clips/${clipId}/final`;
+
+export const thumbnailUrl = (clipId: string) =>
+  `${API_URL}/clips/${clipId}/thumbnail`;
 
 export async function renderClip(clipId: string): Promise<void> {
   const response = await fetch(`${API_URL}/clips/${clipId}/render`, {

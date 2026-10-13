@@ -39,12 +39,21 @@ export function GeneralSettings() {
           setSettings((current) => {
             if (!current || current.ollama_base_url.trim() !== baseUrl)
               return current;
-            if (
-              available.length > 0 &&
-              !available.includes(current.editorial_model)
-            )
-              return { ...current, editorial_model: available[0] };
-            return current;
+            if (available.length === 0) return current;
+            const editorialModel = available.includes(current.editorial_model)
+              ? current.editorial_model
+              : available[0];
+            const visionModel = available.find((model) =>
+              /(?:vl|vision|gemma3|mistral-small3)/i.test(model),
+            );
+            const thumbnailModel = available.includes(current.thumbnail_model)
+              ? current.thumbnail_model
+              : (visionModel ?? available[0]);
+            return {
+              ...current,
+              editorial_model: editorialModel,
+              thumbnail_model: thumbnailModel,
+            };
           });
         })
         .catch((caught: Error) => {
@@ -75,7 +84,10 @@ export function GeneralSettings() {
         <div>
           <span className="eyebrow">LOCAL AI</span>
           <h1>ReachCut settings</h1>
-          <p>Choose the Ollama server and model used for clip selection.</p>
+          <p>
+            Choose the Ollama models used for clip selection and thumbnail
+            design.
+          </p>
         </div>
       </div>
       {error && (
@@ -153,6 +165,33 @@ export function GeneralSettings() {
               : modelError
                 ? modelError
                 : `${models.length} installed model${models.length === 1 ? "" : "s"} available.`}
+          </small>
+        </label>
+        <label>
+          Thumbnail vision model
+          <select
+            required
+            value={settings.thumbnail_model}
+            onChange={(event) =>
+              setSettings({ ...settings, thumbnail_model: event.target.value })
+            }
+            disabled={loadingModels || models.length === 0}
+          >
+            {loadingModels && <option value="">Loading models…</option>}
+            {!loadingModels && models.length === 0 && (
+              <option value={settings.thumbnail_model}>
+                {modelError ? "Ollama is unavailable" : "No models installed"}
+              </option>
+            )}
+            {models.map((model) => (
+              <option key={model} value={model}>
+                {model}
+              </option>
+            ))}
+          </select>
+          <small>
+            Use a vision model such as qwen3-vl. It reviews sampled frames;
+            ReachCut renders the final design locally.
           </small>
         </label>
         <div className="settings-actions">

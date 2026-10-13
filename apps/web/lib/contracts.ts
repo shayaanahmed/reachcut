@@ -68,6 +68,21 @@ const editingPlan = z.object({
   }),
   rationale: z.string(),
   suggested_title: z.string().nullable().default(null),
+  thumbnail: z
+    .object({
+      template: z
+        .enum(["speaker", "question", "cinematic", "minimal"])
+        .default("speaker"),
+      headline: z.string().nullable().default(null),
+      frame_time_seconds: z.number().nullable().default(null),
+      generated: z.boolean().default(false),
+    })
+    .default({
+      template: "speaker",
+      headline: null,
+      frame_time_seconds: null,
+      generated: false,
+    }),
   hashtags: z.array(z.string()).default([]),
   hook: timeRange
     .extend({ text: z.string(), render: z.boolean().default(false) })
@@ -211,7 +226,7 @@ const metricSnapshot = z.object({
 const publication = z.object({
   id: z.string(),
   platform: socialPlatformSchema,
-  status: z.enum(["ready", "processing", "published", "failed"]),
+  status: z.enum(["ready", "queued", "processing", "published", "failed"]),
   post_url: z.string().nullable(),
   title: z.string(),
   description: z.string(),
@@ -275,6 +290,7 @@ export const projectSchema = z.object({
       plan: editingPlan,
       preview_path: z.string().nullable(),
       final_path: z.string().nullable(),
+      thumbnail_ready: z.boolean().default(false),
       publish_recommendation: z
         .object({
           score: z.number(),
@@ -296,6 +312,7 @@ export const clipTypeSuggestionSchema = z.object({
 export const runtimeSettingsSchema = z.object({
   ollama_base_url: z.string(),
   editorial_model: z.string(),
+  thumbnail_model: z.string(),
 });
 
 export const automationPipelineSchema = z.object({

@@ -9,6 +9,7 @@ const clip = {
   approval_status: "approved",
   preview_path: null,
   final_path: "/clips/clip-1/final.mp4",
+  thumbnail_ready: false,
   publications: [],
   plan: {
     schema_version: "1.0",
@@ -56,6 +57,12 @@ const clip = {
     transition_duration_seconds: 0.2,
     secondary_media: [],
     audio_track_index: 0,
+    thumbnail: {
+      template: "speaker",
+      headline: null,
+      frame_time_seconds: null,
+      generated: false,
+    },
     emphasis: [],
     effects: [],
     cta: null,
@@ -85,6 +92,28 @@ const account = {
 } satisfies SocialAccount;
 
 describe("publication tracker", () => {
+  it("selects the default destination when accounts finish loading", () => {
+    const props = {
+      clip,
+      isPending: () => false,
+      onPublish: vi.fn(),
+      onRecordMetrics: vi.fn(),
+      onRefreshPublication: vi.fn(),
+      onSyncMetrics: vi.fn(),
+      onDeletePublication: vi.fn(),
+    };
+    const view = render(<PublicationTracker {...props} accounts={[]} />);
+
+    view.rerender(<PublicationTracker {...props} accounts={[account]} />);
+
+    expect(
+      view
+        .getByRole("button", { name: /Main YouTube/ })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    view.unmount();
+  });
+
   it("prefills publishing metadata from the configured default account", () => {
     const view = render(
       <PublicationTracker
@@ -156,44 +185,88 @@ describe("publication tracker", () => {
     ).toBeTruthy();
   });
 
-  it("offers an immediate metrics sync for a published YouTube clip", () => {
-    const syncMetrics = vi.fn().mockResolvedValue(undefined);
+  it("queues the same clip for multiple selected destinations", () => {
+    const publish = vi.fn().mockResolvedValue(undefined);
+    const instagram = {
+      ...account,
+      id: "instagram-1",
+      platform: "instagram" as const,
+      label: "Main Instagram",
+      username: "creator.ig",
+      is_default: false,
+    };
     const view = render(
       <PublicationTracker
-        clip={{
-          ...clip,
-          publications: [
-            {
-              id: "publication-1",
-              platform: "youtube",
-              status: "published",
-              post_url: "https://www.youtube.com/shorts/video-123",
-              title: "Published clip",
-              description: "",
-              published_at: "2026-10-02T10:00:00Z",
-              created_at: "2026-10-02T10:00:00Z",
-              social_account_id: "account-1",
-              account_label: "Main YouTube",
-              account_username: "creator",
-              provider_publication_id: null,
-              metric_snapshots: [],
-            },
-          ],
-        }}
-        accounts={[account]}
+        clip={clip}
+        accounts={[account, instagram]}
         isPending={() => false}
-        onPublish={vi.fn()}
+        onPublish={publish}
         onRecordMetrics={vi.fn()}
         onRefreshPublication={vi.fn()}
-        onSyncMetrics={syncMetrics}
+        onSyncMetrics={vi.fn()}
         onDeletePublication={vi.fn()}
       />,
     );
 
-    fireEvent.click(view.getByRole("button", { name: "Sync views" }));
+    fireEvent.click(
+      view.getByRole("button", { name: /Add Main Instagram to/ }),
+    );
+    fireEvent.click(
+      view.getByRole("button", { name: "Publish to 2 destinations" }),
+    );
 
-    expect(syncMetrics).toHaveBeenCalledWith("publication-1");
+    expect(publish).toHaveBeenCalledWith(
+      "clip-1",
+      expect.arrayContaining([
+        expect.objectContaining({ social_account_id: "account-1" }),
+        expect.objectContaining({ social_account_id: "instagram-1" }),
+      ]),
+    );
   });
+
+  it.each(["youtube", "instagram", "facebook"] as const)(
+    "offers an immediate metrics sync for a published %s clip",
+    (platform) => {
+      const syncMetrics = vi.fn().mockResolvedValue(undefined);
+      const view = render(
+        <PublicationTracker
+          clip={{
+            ...clip,
+            publications: [
+              {
+                id: "publication-1",
+                platform,
+                status: "published",
+                post_url: "https://www.youtube.com/shorts/video-123",
+                title: "Published clip",
+                description: "",
+                published_at: "2026-10-02T10:00:00Z",
+                created_at: "2026-10-02T10:00:00Z",
+                social_account_id: "account-1",
+                account_label: "Main YouTube",
+                account_username: "creator",
+                provider_publication_id: null,
+                metric_snapshots: [],
+              },
+            ],
+          }}
+          accounts={[account]}
+          isPending={() => false}
+          onPublish={vi.fn()}
+          onRecordMetrics={vi.fn()}
+          onRefreshPublication={vi.fn()}
+          onSyncMetrics={syncMetrics}
+          onDeletePublication={vi.fn()}
+        />,
+      );
+
+      fireEvent.click(
+        within(view.container).getByRole("button", { name: "Sync views" }),
+      );
+
+      expect(syncMetrics).toHaveBeenCalledWith("publication-1");
+    },
+  );
 
   it("does not present a YouTube upload as playable while it is processing", () => {
     const view = render(

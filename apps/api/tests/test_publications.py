@@ -254,6 +254,106 @@ def test_automatic_publication_uploads_and_records_returned_url(
         assert publisher.request.privacy_status == "unlisted"
 
 
+def test_batch_publications_are_visible_before_background_upload(
+    make_plan: Callable[..., EditingPlanV1],
+) -> None:
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    service = PublicationService()
+
+    with Session(engine) as session:
+        clip = add_project_with_clip(session, make_plan)
+        session.add_all(
+            [
+                SocialAccount(
+                    id="account-1",
+                    platform="youtube",
+                    label="Main channel",
+                    connection_status="connected",
+                ),
+                SocialAccount(
+                    id="account-2",
+                    platform="instagram",
+                    label="Main Instagram",
+                    connection_status="connected",
+                ),
+            ]
+        )
+        session.commit()
+        requests = [
+            AutomaticPublicationCreate(
+                social_account_id=account_id,
+                title="A useful clip",
+                description="#UsefulTips",
+            )
+            for account_id in ("account-1", "account-2")
+        ]
+
+        project_id, queued = service.queue_many(
+            session,
+            clip.id,
+            requests,
+            FakeCredentials(),
+        )
+
+        assert project_id == "project-1"
+        assert len(queued) == 2
+        assert [publication.status for publication in clip.publications] == [
+            "queued",
+            "queued",
+        ]
+        assert {publication.social_account_id for publication in clip.publications} == {
+            "account-1",
+            "account-2",
+        }
+
+
+def test_queued_publication_is_completed_in_place(
+    make_plan: Callable[..., EditingPlanV1],
+) -> None:
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    service = PublicationService()
+    publisher = FakePublisher()
+
+    with Session(engine) as session:
+        clip = add_project_with_clip(session, make_plan)
+        session.add(
+            SocialAccount(
+                id="account-1",
+                platform="youtube",
+                label="Main channel",
+                connection_status="connected",
+            )
+        )
+        session.commit()
+        request = AutomaticPublicationCreate(
+            social_account_id="account-1",
+            title="A useful clip",
+            description="#UsefulTips",
+        )
+        _, queued = service.queue_many(
+            session,
+            clip.id,
+            [request],
+            FakeCredentials(),
+        )
+        publication_id = queued[0][0]
+
+        service.publish_queued(
+            session,
+            publication_id,
+            request,
+            publisher,
+            FakeCredentials(),
+        )
+
+        assert len(clip.publications) == 1
+        assert clip.publications[0].id == publication_id
+        assert clip.publications[0].status == "published"
+        assert clip.publications[0].post_url == "https://www.youtube.com/shorts/video-123"
+
+
 def test_processing_publication_preserves_provider_id_until_url_is_ready(
     make_plan: Callable[..., EditingPlanV1],
 ) -> None:

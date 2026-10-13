@@ -4,19 +4,31 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from clipper.api.dependencies import clip_service
+from clipper.api.dependencies import (
+    build_thumbnail_provider,
+    clip_service,
+    runtime_settings_service,
+    thumbnail_service,
+)
 from clipper.api.projects import project_or_404
 from clipper.api.schemas import (
     ApprovalRequest,
     CaptionTranslationRequest,
     ClipStyleRequest,
     ProjectResponse,
+    ThumbnailCreateRequest,
 )
 from clipper.config import settings
 from clipper.domain.editing_plan import SecondaryMediaKind
 from clipper.media import MediaError
 from clipper.persistence import Clip, Project, get_session
-from clipper.projects import ArtifactPathError, resolve_clip_artifact
+from clipper.projects import (
+    ArtifactPathError,
+    ThumbnailCreate,
+    ThumbnailNotFoundError,
+    ThumbnailStateError,
+    resolve_clip_artifact,
+)
 from clipper.projects.clips import ClipNotFoundError, ClipStateError, ClipStyleUpdate
 
 router = APIRouter()
@@ -114,6 +126,36 @@ def analyze_clip_tracking(
     except (ClipStateError, MediaError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     return project_or_404(session, project_id)
+
+
+@router.post("/clips/{clip_id}/thumbnail", response_model=ProjectResponse)
+def generate_clip_thumbnail(
+    clip_id: str,
+    request: ThumbnailCreateRequest,
+    session: Session = Depends(get_session),
+) -> object:
+    runtime = runtime_settings_service.get(session)
+    try:
+        project_id = thumbnail_service.generate(
+            session,
+            clip_id,
+            ThumbnailCreate(request.template, request.headline),
+            build_thumbnail_provider(runtime.ollama_base_url, runtime.thumbnail_model),
+        )
+    except ThumbnailNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except (ThumbnailStateError, MediaError, ValueError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return project_or_404(session, project_id)
+
+
+@router.get("/clips/{clip_id}/thumbnail", response_class=FileResponse)
+def clip_thumbnail(clip_id: str, session: Session = Depends(get_session)) -> FileResponse:
+    try:
+        thumbnail = thumbnail_service.resolve(session, clip_id)
+    except (ThumbnailNotFoundError, ThumbnailStateError) as error:
+        raise HTTPException(status_code=404, detail="thumbnail not found") from error
+    return FileResponse(thumbnail, media_type="image/png", filename=f"{clip_id}-thumbnail.png")
 
 
 @router.post("/clips/{clip_id}/secondary-media", response_model=ProjectResponse)

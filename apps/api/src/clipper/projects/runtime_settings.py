@@ -13,6 +13,7 @@ from clipper.persistence import RuntimeSetting
 class RuntimeConfiguration:
     ollama_base_url: str
     editorial_model: str
+    thumbnail_model: str
 
 
 class RuntimeSettingsError(ValueError):
@@ -22,6 +23,7 @@ class RuntimeSettingsError(ValueError):
 class RuntimeSettingsService:
     OLLAMA_URL = "ollama_base_url"
     EDITORIAL_MODEL = "editorial_model"
+    THUMBNAIL_MODEL = "thumbnail_model"
 
     def __init__(self, defaults: Settings) -> None:
         self._defaults = defaults
@@ -30,7 +32,9 @@ class RuntimeSettingsService:
         values = {
             item.key: item.value
             for item in session.query(RuntimeSetting).filter(
-                RuntimeSetting.key.in_([self.OLLAMA_URL, self.EDITORIAL_MODEL])
+                RuntimeSetting.key.in_(
+                    [self.OLLAMA_URL, self.EDITORIAL_MODEL, self.THUMBNAIL_MODEL]
+                )
             )
         }
         return RuntimeConfiguration(
@@ -40,6 +44,9 @@ class RuntimeSettingsService:
             editorial_model=values.get(
                 self.EDITORIAL_MODEL, self._defaults.editorial_model
             ).strip(),
+            thumbnail_model=values.get(
+                self.THUMBNAIL_MODEL, self._defaults.thumbnail_model
+            ).strip(),
         )
 
     def update(
@@ -48,21 +55,29 @@ class RuntimeSettingsService:
         *,
         ollama_base_url: str,
         editorial_model: str,
+        thumbnail_model: str,
     ) -> RuntimeConfiguration:
         url = ollama_base_url.strip().rstrip("/")
         model = editorial_model.strip()
+        vision_model = thumbnail_model.strip()
         if not url.startswith(("http://", "https://")):
             raise RuntimeSettingsError("Ollama URL must begin with http:// or https://")
         if not model:
             raise RuntimeSettingsError("An Ollama model is required")
-        for key, value in ((self.OLLAMA_URL, url), (self.EDITORIAL_MODEL, model)):
+        if not vision_model:
+            raise RuntimeSettingsError("A thumbnail vision model is required")
+        for key, value in (
+            (self.OLLAMA_URL, url),
+            (self.EDITORIAL_MODEL, model),
+            (self.THUMBNAIL_MODEL, vision_model),
+        ):
             setting = session.get(RuntimeSetting, key)
             if setting:
                 setting.value = value
             else:
                 session.add(RuntimeSetting(key=key, value=value))
         session.commit()
-        return RuntimeConfiguration(url, model)
+        return RuntimeConfiguration(url, model, vision_model)
 
     @staticmethod
     def ollama_models(base_url: str) -> list[str]:

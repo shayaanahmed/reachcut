@@ -2,6 +2,7 @@
 
 from clipper.rendering.ffmpeg import FfmpegCommand, build_ffmpeg_command
 from clipper.rendering.service import RenderRequest, VideoRenderer
+from clipper.rendering.thumbnails import ThumbnailRenderer
 from clipper.rendering.tracking import (
     CropPoint,
     VisualAnalysis,
@@ -15,6 +16,7 @@ __all__ = [
     "CropPoint",
     "FfmpegCommand",
     "RenderRequest",
+    "ThumbnailRenderer",
     "VideoRenderer",
     "VisualAnalysis",
     "VisualTrackingProvider",

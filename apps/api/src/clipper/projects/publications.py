@@ -178,6 +178,113 @@ class PublicationService:
         session.commit()
         return clip.project_id
 
+    def queue_many(
+        self,
+        session: Session,
+        clip_id: str,
+        requests: list[AutomaticPublicationCreate],
+        credentials: CredentialStore,
+    ) -> tuple[str, list[tuple[str, AutomaticPublicationCreate]]]:
+        clip = session.get(Clip, clip_id)
+        if not clip:
+            raise PublicationNotFoundError("clip not found")
+        if clip.approval_status != "approved" or not clip.final_path:
+            raise PublicationStateError("clip must be approved and rendered before publishing")
+        if not requests:
+            raise PublicationStateError("select at least one publishing destination")
+        account_ids = [request.social_account_id for request in requests]
+        if len(set(account_ids)) != len(account_ids):
+            raise PublicationStateError("each publishing destination can only be selected once")
+        queued: list[tuple[str, AutomaticPublicationCreate]] = []
+        for request in requests:
+            account = session.get(SocialAccount, request.social_account_id)
+            if not account or not account.is_active:
+                raise PublicationNotFoundError("social account not found")
+            if account.connection_status != "connected" or not credentials.load(account.id):
+                raise PublicationStateError(
+                    f"connect this {account.platform} account before publishing"
+                )
+            publication = Publication(
+                clip_id=clip.id,
+                platform=account.platform,
+                status="queued",
+                post_url=None,
+                title=request.title.strip(),
+                description=request.description.strip(),
+                published_at=None,
+            )
+            session.add(publication)
+            session.flush()
+            session.add(
+                PublicationAccountLink(
+                    publication_id=publication.id,
+                    social_account_id=account.id,
+                    account_label_snapshot=account.label,
+                    account_username_snapshot=account.username,
+                )
+            )
+            queued.append((publication.id, request))
+        session.commit()
+        return clip.project_id, queued
+
+    def publish_queued(
+        self,
+        session: Session,
+        publication_id: str,
+        request: AutomaticPublicationCreate,
+        adapter: PublishingAdapter,
+        credentials: CredentialStore,
+    ) -> str:
+        publication = session.get(Publication, publication_id)
+        if not publication or not publication.account_link:
+            raise PublicationNotFoundError("queued publication not found")
+        if publication.status != "queued":
+            raise PublicationStateError("publication is no longer queued")
+        account = session.get(SocialAccount, publication.account_link.social_account_id)
+        if not account or not account.is_active:
+            raise PublicationNotFoundError("social account not found")
+        connection = credentials.load(account.id)
+        if account.connection_status != "connected" or not connection:
+            raise PublicationStateError(
+                f"connect this {account.platform} account before publishing"
+            )
+        clip = publication.clip
+        if clip.approval_status != "approved" or not clip.final_path:
+            raise PublicationStateError("clip must be approved and rendered before publishing")
+        result = adapter.publish(
+            PublishRequest(
+                media_path=Path(clip.final_path),
+                title=request.title.strip(),
+                description=request.description.strip(),
+                privacy_status=request.privacy_status,
+                account_username=account.username,
+                duration_seconds=self._clip_duration(clip),
+            ),
+            connection,
+        )
+        if result.status == "published" and not result.post_url:
+            raise PublicationStateError("publishing provider did not return a post URL")
+        if result.updated_connection:
+            credentials.save(account.id, result.updated_connection)
+        publication.status = result.status
+        publication.post_url = result.post_url
+        publication.published_at = now_utc() if result.status == "published" else None
+        if result.external_id:
+            session.add(
+                PublicationProviderReference(
+                    publication_id=publication.id,
+                    external_id=result.external_id,
+                )
+            )
+        session.commit()
+        return clip.project_id
+
+    def mark_failed(self, session: Session, publication_id: str) -> None:
+        publication = session.get(Publication, publication_id)
+        if publication and publication.status == "queued":
+            publication.status = "failed"
+            session.commit()
+
     def refresh_publication(
         self,
         session: Session,

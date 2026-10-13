@@ -2,7 +2,7 @@
 
 Models are not downloaded during application startup.
 
-For the balanced profile, install Ollama and run `ollama pull qwen3:8b-q4_K_M`, then set `CLIPPER_EDITORIAL_MODEL`. The multilingual transcription default is `large-v3-turbo` with INT8 on CPU. Set `CLIPPER_WHISPER_MODEL=small` on low-memory systems. Prepare the configured Docker model explicitly with `pnpm docker:whisper-model`; the weights are stored in the persistent `whisper-models` volume.
+For the balanced profile, install Ollama and run `ollama pull qwen3:8b-q4_K_M`, then set `CLIPPER_EDITORIAL_MODEL`. Thumbnail planning uses a vision model separately; run `ollama pull qwen3-vl:8b-instruct-q4_K_M` and set `CLIPPER_THUMBNAIL_MODEL`. The multilingual transcription default is `large-v3-turbo` with INT8 on CPU. Set `CLIPPER_WHISPER_MODEL=small` on low-memory systems. Prepare the configured Docker models explicitly with `pnpm docker:model`, `pnpm docker:thumbnail-model`, and `pnpm docker:whisper-model`; weights are stored in persistent volumes.
 
 If transcription reports that it cannot locate files on the Hub or find a local snapshot, Docker DNS was unavailable while the selected model was missing from the cache. Confirm connectivity and rerun `pnpm docker:whisper-model` before retrying analysis.
 

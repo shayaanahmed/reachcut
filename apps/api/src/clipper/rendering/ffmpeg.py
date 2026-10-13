@@ -159,9 +159,11 @@ def build_ffmpeg_command(
         "-c:a",
         "aac",
         "-b:a",
-        "160k",
+        "128k",
         "-movflags",
         "+faststart",
+        "-use_editlist",
+        "0",
         str(output),
     )
     return FfmpegCommand(arguments, width, height, duration)

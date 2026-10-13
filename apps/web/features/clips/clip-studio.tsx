@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { useProjectWorkbench } from "../projects/use-project-workbench";
-import { previewUrl } from "./api";
+import { previewUrl, thumbnailUrl, type ThumbnailTemplate } from "./api";
 import {
   ClipStyleEditor,
   studioPreviewFromClip,
@@ -57,6 +57,7 @@ export function ClipStudio({
   const saving = workbench.isPending(`clip:${clip.id}:style`);
   const translating = workbench.isPending(`clip:${clip.id}:translate`);
   const tracking = workbench.isPending(`clip:${clip.id}:tracking`);
+  const thumbnailGenerating = workbench.isPending(`clip:${clip.id}:thumbnail`);
   const assetBusy = Object.keys(workbench.operations).some((key) =>
     key.startsWith(`clip:${clip.id}:asset`),
   );
@@ -209,6 +210,14 @@ export function ClipStudio({
               preview” applies the exact FFmpeg result.
             </p>
           </div>
+          <ThumbnailDesigner
+            clipId={clip.id}
+            ready={clip.thumbnail_ready}
+            version={planFingerprint}
+            thumbnail={clip.plan.thumbnail}
+            generating={thumbnailGenerating}
+            onGenerate={workbench.generateThumbnail}
+          />
         </aside>
 
         <ClipStyleEditor
@@ -239,6 +248,129 @@ export function ClipStudio({
         onRender={workbench.render}
       />
     </main>
+  );
+}
+
+const thumbnailTemplates: Array<{
+  value: ThumbnailTemplate;
+  label: string;
+  description: string;
+}> = [
+  { value: "speaker", label: "Speaker", description: "Face + bold hook" },
+  { value: "question", label: "Question", description: "Centered curiosity" },
+  { value: "cinematic", label: "Cinematic", description: "Story-led frame" },
+  { value: "minimal", label: "Minimal", description: "Clean brand card" },
+];
+
+function ThumbnailDesigner({
+  clipId,
+  ready,
+  version,
+  thumbnail,
+  generating,
+  onGenerate,
+}: {
+  clipId: string;
+  ready: boolean;
+  version: string;
+  thumbnail: {
+    template: ThumbnailTemplate;
+    headline: string | null;
+    frame_time_seconds: number | null;
+  };
+  generating: boolean;
+  onGenerate: (
+    clipId: string,
+    data: { template: ThumbnailTemplate; headline?: string },
+  ) => Promise<unknown>;
+}) {
+  const [template, setTemplate] = useState<ThumbnailTemplate>(
+    thumbnail.template,
+  );
+  const [headline, setHeadline] = useState(thumbnail.headline ?? "");
+
+  return (
+    <section className="thumbnail-designer" aria-labelledby="thumbnail-title">
+      <div className="thumbnail-designer-heading">
+        <div>
+          <span className="eyebrow">LOCAL AI COVER</span>
+          <h2 id="thumbnail-title">Clip thumbnail</h2>
+        </div>
+        {ready && <span className="thumbnail-ready">Ready</span>}
+      </div>
+      <div
+        className={`thumbnail-preview ${ready ? "ready" : "empty"}`}
+        role="img"
+        aria-label={ready ? "Generated clip thumbnail" : "Thumbnail preview"}
+        style={
+          ready
+            ? {
+                backgroundImage: `url(${thumbnailUrl(clipId)}?v=${encodeURIComponent(version)})`,
+              }
+            : undefined
+        }
+      >
+        {!ready && (
+          <div>
+            <strong>Choose a look</strong>
+            <small>
+              The local vision model will select the strongest frame.
+            </small>
+          </div>
+        )}
+        {generating && (
+          <div className="thumbnail-generating" role="status">
+            <span /> Analyzing frames locally…
+          </div>
+        )}
+      </div>
+      <div className="thumbnail-template-grid" aria-label="Thumbnail template">
+        {thumbnailTemplates.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={template === option.value ? "selected" : ""}
+            aria-pressed={template === option.value}
+            onClick={() => setTemplate(option.value)}
+          >
+            <strong>{option.label}</strong>
+            <small>{option.description}</small>
+          </button>
+        ))}
+      </div>
+      <label>
+        Thumbnail headline <small>Optional · AI suggests one if blank</small>
+        <input
+          value={headline}
+          maxLength={80}
+          placeholder="Leave blank for a local AI suggestion"
+          onChange={(event) => setHeadline(event.target.value)}
+        />
+      </label>
+      <button
+        type="button"
+        className="thumbnail-generate-action"
+        disabled={generating}
+        onClick={() =>
+          void onGenerate(clipId, {
+            template,
+            headline: headline.trim() || undefined,
+          })
+        }
+      >
+        {generating
+          ? "Generating without blocking your edit…"
+          : ready
+            ? "Regenerate thumbnail"
+            : "Generate thumbnail"}
+      </button>
+      {ready && thumbnail.frame_time_seconds !== null && (
+        <small className="thumbnail-frame-note">
+          Selected near {thumbnail.frame_time_seconds.toFixed(1)}s · PNG
+          1280×720
+        </small>
+      )}
+    </section>
   );
 }
 

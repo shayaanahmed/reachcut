@@ -11,6 +11,7 @@ from clipper.domain.editing_plan import (
     EditingPlanV1,
     Effect,
     EnhancementLevel,
+    ThumbnailTemplate,
     TimeRange,
     TrackingStrategy,
     TransitionStyle,
@@ -73,6 +74,11 @@ class ClipResponse(BaseModel):
     preview_path: str | None
     final_path: str | None
     publications: list[PublicationResponse]
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def thumbnail_ready(self) -> bool:
+        return self.plan.thumbnail.generated
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -155,6 +161,11 @@ class CaptionTranslationRequest(BaseModel):
     mode: TranslationMode = TranslationMode.TRANSLATED
 
 
+class ThumbnailCreateRequest(BaseModel):
+    template: ThumbnailTemplate = ThumbnailTemplate.SPEAKER
+    headline: str | None = Field(default=None, min_length=1, max_length=80)
+
+
 class PublicationCreateRequest(BaseModel):
     platform: SocialPlatform
     social_account_id: str | None = Field(default=None, max_length=36)
@@ -170,6 +181,10 @@ class AutomaticPublicationRequest(BaseModel):
     title: str = Field(min_length=1, max_length=100)
     description: str = Field(default="", max_length=5_000)
     privacy_status: Literal["public", "unlisted", "friends", "private"] = "public"
+
+
+class AutomaticPublicationBatchRequest(BaseModel):
+    publications: list[AutomaticPublicationRequest] = Field(min_length=1, max_length=5)
 
 
 class MetricCreateRequest(BaseModel):
@@ -246,11 +261,13 @@ class HealthResponse(BaseModel):
 class RuntimeSettingsResponse(BaseModel):
     ollama_base_url: str
     editorial_model: str
+    thumbnail_model: str
 
 
 class RuntimeSettingsUpdateRequest(BaseModel):
     ollama_base_url: str = Field(min_length=8, max_length=2_048)
     editorial_model: str = Field(min_length=1, max_length=200)
+    thumbnail_model: str = Field(min_length=1, max_length=200)
 
 
 class OllamaModelsResponse(BaseModel):

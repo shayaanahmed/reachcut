@@ -16,6 +16,7 @@ describe("general settings", () => {
     api.getRuntimeSettings.mockResolvedValue({
       ollama_base_url: "http://mini-pc.local:11434",
       editorial_model: "qwen3:8b",
+      thumbnail_model: "gemma3:12b",
     });
     api.listOllamaModels.mockResolvedValue([
       "qwen3:8b",

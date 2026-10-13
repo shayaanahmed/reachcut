@@ -1,5 +1,4 @@
 from collections.abc import Mapping
-from itertools import pairwise
 from pathlib import Path
 
 from clipper.domain.editing_plan import EditingPlanV1, EffectType, SecondaryMediaKind
@@ -207,22 +206,45 @@ def _focus_expression(plan: EditingPlanV1, axis: str) -> str:
     if not plan.tracking.enabled or not plan.tracking.keyframes:
         return f"{fallback:.4f}"
     points = plan.tracking.keyframes
-    value = points[-1].center_x if axis == "x" else points[-1].center_y
-    expression = f"{value:.4f}"
-    for start, end in reversed(list(pairwise(points))):
-        start_value = start.center_x if axis == "x" else start.center_y
-        end_value = end.center_x if axis == "x" else end.center_y
+
+    def value_at(index: int) -> float:
+        point = points[index]
+        return point.center_x if axis == "x" else point.center_y
+
+    def interpolate(index: int) -> str:
+        start = points[index]
+        end = points[index + 1]
+        start_value = value_at(index)
+        end_value = value_at(index + 1)
         duration = max(end.time_seconds - start.time_seconds, 0.001)
-        interpolated = (
+        return (
             f"{start_value:.4f}+({end_value - start_value:.4f})*"
             f"(t-{start.time_seconds:.3f})/{duration:.3f}"
         )
-        expression = (
-            f"if(between(t\\,{start.time_seconds:.3f}\\,{end.time_seconds:.3f})\\,"
-            f"{interpolated}\\,{expression})"
-        )
-    first_value = points[0].center_x if axis == "x" else points[0].center_y
-    return f"if(lt(t\\,{points[0].time_seconds:.3f})\\,{first_value:.4f}\\,{expression})"
+
+    def interval_tree(start_index: int, end_index: int) -> str:
+        """Build a balanced selector for interpolation intervals."""
+
+        if end_index - start_index == 1:
+            return interpolate(start_index)
+        midpoint = (start_index + end_index) // 2
+        boundary = points[midpoint].time_seconds
+        left = interval_tree(start_index, midpoint)
+        right = interval_tree(midpoint, end_index)
+        return f"if(lt(t\\,{boundary:.3f})\\,{left}\\,{right})"
+
+    first_value = value_at(0)
+    if len(points) == 1:
+        return f"{first_value:.4f}"
+
+    last_value = value_at(len(points) - 1)
+    expression = interval_tree(0, len(points) - 1)
+    first_time = points[0].time_seconds
+    last_time = points[-1].time_seconds
+    return (
+        f"if(lt(t\\,{first_time:.3f})\\,{first_value:.4f}\\,"
+        f"if(lt(t\\,{last_time:.3f})\\,{expression}\\,{last_value:.4f}))"
+    )
 
 
 def _enable(start: float | None, end: float | None) -> str:

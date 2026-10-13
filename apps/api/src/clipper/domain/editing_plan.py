@@ -65,6 +65,13 @@ class EnhancementLevel(StrEnum):
     AGGRESSIVE = "aggressive"
 
 
+class ThumbnailTemplate(StrEnum):
+    SPEAKER = "speaker"
+    QUESTION = "question"
+    CINEMATIC = "cinematic"
+    MINIMAL = "minimal"
+
+
 class CaptionPreset(StrEnum):
     CUSTOM = "custom"
     CLEAN = "clean"
@@ -170,6 +177,13 @@ class TrackingConfig(StrictModel):
         return self
 
 
+class ThumbnailConfig(StrictModel):
+    template: ThumbnailTemplate = ThumbnailTemplate.SPEAKER
+    headline: Annotated[str, Field(min_length=1, max_length=80)] | None = None
+    frame_time_seconds: Seconds | None = None
+    generated: bool = False
+
+
 class SecondaryMedia(StrictModel):
     asset_id: Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,80}$")]
     filename: Annotated[str, Field(pattern=r"^[A-Za-z0-9._-]{1,180}$")]
@@ -234,6 +248,7 @@ class EditingPlanV1(StrictModel):
     scores: Scores
     rationale: Annotated[str, Field(min_length=1, max_length=600)]
     suggested_title: Annotated[str, Field(min_length=1, max_length=100)] | None = None
+    thumbnail: ThumbnailConfig = Field(default_factory=ThumbnailConfig)
     hashtags: list[Hashtag] = Field(default_factory=list, max_length=8)
     hook: Hook | None = None
     caption_style: Literal["clean", "kinetic_highlight", "karaoke"] = "clean"

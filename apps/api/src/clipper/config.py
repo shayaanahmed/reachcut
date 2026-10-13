@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     editorial_provider: Literal["ollama"] = "ollama"
     editorial_base_url: str = "http://127.0.0.1:11434"
     editorial_model: str = "qwen3:8b-q4_K_M"
+    thumbnail_model: str = "qwen3-vl:8b-instruct-q4_K_M"
     editorial_timeout_seconds: float = Field(default=600, gt=0)
     editorial_num_ctx: int = Field(default=8_192, ge=1)
     editorial_num_predict: int = Field(default=2_048, ge=1)

@@ -3,6 +3,20 @@ from pathlib import Path
 from clipper.domain.editing_plan import EditingPlanV1
 from clipper.rendering import RenderRequest, VideoRenderer
 from clipper.rendering.ffmpeg import build_ffmpeg_command
+from clipper.rendering.framing import _focus_expression
+
+
+def _maximum_parenthesis_depth(value: str) -> int:
+    depth = 0
+    maximum = 0
+    for character in value:
+        if character == "(":
+            depth += 1
+            maximum = max(maximum, depth)
+        elif character == ")":
+            depth -= 1
+    assert depth == 0
+    return maximum
 
 
 def test_preview_command_is_built_without_execution(make_plan) -> None:  # type: ignore[no-untyped-def]
@@ -19,6 +33,8 @@ def test_preview_command_is_built_without_execution(make_plan) -> None:  # type:
     assert command.arguments[0] == "/usr/bin/ffmpeg"
     assert command.arguments[command.arguments.index("-pix_fmt") + 1] == "yuv420p"
     assert command.arguments[command.arguments.index("-tag:v") + 1] == "avc1"
+    assert command.arguments[command.arguments.index("-b:a") + 1] == "128k"
+    assert command.arguments[command.arguments.index("-use_editlist") + 1] == "0"
     assert "-filter_complex" in command.arguments
     assert "gblur=sigma=28" in command.arguments[command.arguments.index("-filter_complex") + 1]
 
@@ -176,6 +192,34 @@ def test_tracking_zoom_and_progress_filters_are_generated(make_plan) -> None:  #
     )
     video_filter = command.arguments[command.arguments.index("-filter_complex") + 1]
 
-    assert "between(t\\,0.000\\,5.000)" in video_filter
+    assert "if(lt(t\\,5.000)" in video_filter
     assert "zoompan=" in video_filter
     assert "drawbox=" in video_filter
+
+
+def test_large_tracking_plan_uses_balanced_ffmpeg_expression(make_plan) -> None:  # type: ignore[no-untyped-def]
+    payload = make_plan(start=0, end=100).model_dump(mode="json")
+    payload.update(
+        {
+            "frame_style": "center_crop",
+            "tracking": {
+                "enabled": True,
+                "strategy": "face",
+                "keyframes": [
+                    {
+                        "time_seconds": index,
+                        "center_x": 0.2 if index % 2 == 0 else 0.8,
+                        "center_y": 0.4 if index % 2 == 0 else 0.6,
+                    }
+                    for index in range(100)
+                ],
+            },
+        }
+    )
+    plan = EditingPlanV1.model_validate(payload)
+
+    expression = _focus_expression(plan, "x")
+
+    assert expression.count("*(t-") == 99
+    assert "(t-98.000)/1.000" in expression
+    assert _maximum_parenthesis_depth(expression) < 20

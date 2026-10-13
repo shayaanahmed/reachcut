@@ -73,7 +73,7 @@ export function PublicationTracker({
   clip: Clip;
   accounts: SocialAccount[];
   isPending: IsPending;
-  onPublish: (clipId: string, data: PublicationCreate) => Promise<unknown>;
+  onPublish: (clipId: string, data: PublicationCreate[]) => Promise<unknown>;
   onRecordMetrics: (
     publicationId: string,
     data: MetricCreate,
@@ -90,11 +90,21 @@ export function PublicationTracker({
         platformOrder.indexOf(second.platform),
     );
   const defaultAccount =
-    orderedAccounts.find((account) => account.is_default) ?? orderedAccounts[0];
-  const [accountId, setAccountId] = useState("");
-  const selectedAccount =
-    orderedAccounts.find((account) => account.id === accountId) ??
-    defaultAccount;
+    orderedAccounts.find(
+      (account) =>
+        account.is_default && account.connection_status === "connected",
+    ) ??
+    orderedAccounts.find(
+      (account) => account.connection_status === "connected",
+    );
+  const [selectedAccountIds, setSelectedAccountIds] = useState<string[] | null>(
+    null,
+  );
+  const effectiveAccountIds =
+    selectedAccountIds ?? (defaultAccount ? [defaultAccount.id] : []);
+  const selectedAccounts = orderedAccounts.filter((account) =>
+    effectiveAccountIds.includes(account.id),
+  );
   const publishedCount = clip.publications.filter(
     (publication) => publication.status === "published",
   ).length;
@@ -144,8 +154,8 @@ export function PublicationTracker({
           <span className="eyebrow">DISTRIBUTION</span>
           <h2 id="publishing-title">Publish and measure</h2>
           <p>
-            Send the final clip to a connected account, then monitor views and
-            revenue from the same workspace.
+            Send the final clip to several platforms in one click. Uploads run
+            in the background while you keep working.
           </p>
         </div>
         <div className="publishing-overview">
@@ -178,7 +188,7 @@ export function PublicationTracker({
               <span>1</span>
               <div>
                 <strong>Choose destination</strong>
-                <small>Where should this version go?</small>
+                <small>Select one or several connected accounts</small>
               </div>
             </div>
             <Link href="/settings/accounts">Manage accounts →</Link>
@@ -188,7 +198,7 @@ export function PublicationTracker({
             <div className="destination-picker" aria-label="Publishing account">
               {orderedAccounts.map((account) => {
                 const details = platformDetails[account.platform];
-                const selected = account.id === selectedAccount?.id;
+                const selected = effectiveAccountIds.includes(account.id);
                 const connected = account.connection_status === "connected";
                 return (
                   <button
@@ -196,7 +206,17 @@ export function PublicationTracker({
                     type="button"
                     className={`${selected ? "selected" : ""} ${account.platform}`}
                     aria-pressed={selected}
-                    onClick={() => setAccountId(account.id)}
+                    aria-label={`${selected ? "Remove" : "Add"} ${account.label} ${selected ? "from" : "to"} publishing destinations`}
+                    onClick={() => {
+                      if (!connected) return;
+                      setSelectedAccountIds((current) =>
+                        (current ?? effectiveAccountIds).includes(account.id)
+                          ? (current ?? effectiveAccountIds).filter(
+                              (id) => id !== account.id,
+                            )
+                          : [...(current ?? effectiveAccountIds), account.id],
+                      );
+                    }}
                   >
                     <span className="destination-glyph">{details.glyph}</span>
                     <span>
@@ -229,15 +249,19 @@ export function PublicationTracker({
             </div>
           )}
 
-          {selectedAccount && (
-            <PublishComposer
-              key={selectedAccount.id}
+          {selectedAccounts.length > 0 ? (
+            <BatchPublishComposer
+              key={effectiveAccountIds.join(",")}
               clip={clip}
-              account={selectedAccount}
-              pending={isPending(`clip:${clip.id}:publish`)}
+              accounts={selectedAccounts}
+              pending={isPending(`clip:${clip.id}:publish-batch`)}
               onPublish={onPublish}
             />
-          )}
+          ) : orderedAccounts.length > 0 ? (
+            <div className="publication-selection-empty" role="status">
+              Select at least one connected destination to prepare this post.
+            </div>
+          ) : null}
         </div>
 
         <div className="publication-list">
@@ -284,24 +308,25 @@ export function PublicationTracker({
   );
 }
 
-function PublishComposer({
+function BatchPublishComposer({
   clip,
-  account,
+  accounts,
   pending,
   onPublish,
 }: {
   clip: Clip;
-  account: SocialAccount;
+  accounts: SocialAccount[];
   pending: boolean;
-  onPublish: (clipId: string, data: PublicationCreate) => Promise<unknown>;
+  onPublish: (clipId: string, data: PublicationCreate[]) => Promise<unknown>;
 }) {
-  const metadata = suggestedMetadata(clip, account);
+  const primaryAccount = accounts[0];
+  const metadata = suggestedMetadata(clip, primaryAccount);
   const [title, setTitle] = useState(metadata.title);
   const [description, setDescription] = useState(metadata.description);
   const [copied, setCopied] = useState(false);
-  const connected = account.connection_status === "connected";
-  const details = platformDetails[account.platform];
-  const descriptionLimit = account.platform === "x" ? 280 : 5000;
+  const details = platformDetails[primaryAccount.platform];
+  const singlePlatform = accounts.length === 1 ? primaryAccount.platform : null;
+  const descriptionLimit = singlePlatform === "x" ? 280 : 5000;
 
   return (
     <form
@@ -309,14 +334,21 @@ function PublishComposer({
       onSubmit={(event) => {
         event.preventDefault();
         const data = new FormData(event.currentTarget);
-        void onPublish(clip.id, {
-          social_account_id: account.id,
-          title,
-          description,
-          privacy_status: data.get(
-            "privacy_status",
-          ) as PublicationCreate["privacy_status"],
-        });
+        const privacyStatus = data.get(
+          "privacy_status",
+        ) as PublicationCreate["privacy_status"];
+        void onPublish(
+          clip.id,
+          accounts.map((account) => ({
+            social_account_id: account.id,
+            title: account.platform === "youtube" ? title.slice(0, 100) : title,
+            description:
+              account.platform === "x"
+                ? description.slice(0, 280)
+                : description,
+            privacy_status: privacyStatus,
+          })),
+        );
       }}
     >
       <div className="destination-heading composer-heading">
@@ -324,12 +356,30 @@ function PublishComposer({
           <span>2</span>
           <div>
             <strong>Prepare post</strong>
-            <small>Optimized for {details.label}</small>
+            <small>
+              {accounts.length === 1
+                ? `Optimized for ${details.label}`
+                : `Shared copy for ${accounts.length} destinations`}
+            </small>
           </div>
         </div>
-        <span className={`platform-badge ${account.platform}`}>
-          {details.label}
+        <span className="destination-count-badge">
+          {accounts.length} selected
         </span>
+      </div>
+
+      <div
+        className="selected-destinations wide"
+        aria-label="Selected destinations"
+      >
+        {accounts.map((account) => (
+          <span key={account.id} className={account.platform}>
+            <i className={`destination-glyph ${account.platform}`}>
+              {platformDetails[account.platform].glyph}
+            </i>
+            {account.label}
+          </span>
+        ))}
       </div>
 
       <label className="wide">
@@ -361,20 +411,22 @@ function PublishComposer({
           Visibility
           <select name="privacy_status" defaultValue="public">
             <option value="public">
-              {account.platform === "facebook" ||
-              account.platform === "instagram"
+              {singlePlatform === "facebook" ||
+              singlePlatform === "instagram" ||
+              !singlePlatform
                 ? "Platform default"
                 : "Public"}
             </option>
-            {account.platform === "youtube" && (
+            {singlePlatform === "youtube" && (
               <option value="unlisted">Unlisted</option>
             )}
-            {account.platform === "tiktok" && (
+            {singlePlatform === "tiktok" && (
               <option value="friends">Friends</option>
             )}
-            {["youtube", "tiktok"].includes(account.platform) && (
-              <option value="private">Private</option>
-            )}
+            {singlePlatform &&
+              ["youtube", "tiktok"].includes(singlePlatform) && (
+                <option value="private">Private</option>
+              )}
           </select>
         </label>
         <button
@@ -389,31 +441,27 @@ function PublishComposer({
           {copied ? "Copied ✓" : "Copy post text"}
         </button>
       </div>
-      {!connected && (
-        <div className="publication-connection-warning wide">
-          <span>!</span>
-          <p>
-            <strong>{account.label} is not connected.</strong>
-            Complete account setup before publishing.
-          </p>
-          <Link href="/settings/accounts">Open settings</Link>
-        </div>
-      )}
-      <button
-        className="publish-primary-action wide"
-        disabled={pending || !connected}
-      >
-        <span className={`destination-glyph ${account.platform}`}>
-          {details.glyph}
+      <button className="publish-primary-action wide" disabled={pending}>
+        <span className="publish-stack" aria-hidden="true">
+          {accounts.slice(0, 3).map((account) => (
+            <i
+              key={account.id}
+              className={`destination-glyph ${account.platform}`}
+            >
+              {platformDetails[account.platform].glyph}
+            </i>
+          ))}
         </span>
         {pending
-          ? `Publishing to ${details.shortLabel}…`
-          : `Publish to ${details.label}`}
+          ? "Adding uploads to the queue…"
+          : accounts.length === 1
+            ? `Publish to ${details.label}`
+            : `Publish to ${accounts.length} destinations`}
         <i aria-hidden="true">→</i>
       </button>
       <small className="publish-assurance wide">
-        ReachCut uploads the rendered MP4, applies this copy, and saves the post
-        URL for performance tracking.
+        Uploads continue in the background. You can edit another clip while each
+        destination reports progress here.
       </small>
     </form>
   );
@@ -445,6 +493,11 @@ function PublicationRow({
   const deletePending = isPending(`publication:${publication.id}:delete`);
   const metricsPending = isPending(`publication:${publication.id}:metrics`);
   const details = platformDetails[publication.platform];
+  const supportsAutomaticMetrics = [
+    "youtube",
+    "instagram",
+    "facebook",
+  ].includes(publication.platform);
 
   return (
     <article className={`publication-row ${publication.status}`}>
@@ -454,7 +507,8 @@ function PublicationRow({
         </div>
         <div className="publication-row-identity">
           <span className={`publication-status ${publication.status}`}>
-            <i /> {publication.status}
+            <i />{" "}
+            {publication.status === "queued" ? "uploading" : publication.status}
           </span>
           <strong>{publication.title || "Published clip"}</strong>
           <small>
@@ -489,6 +543,18 @@ function PublicationRow({
         </div>
       </div>
 
+      {publication.status === "queued" && (
+        <div className="publication-progress queued" role="status">
+          <span>
+            <i />
+          </span>
+          <p>
+            <strong>Uploading in the background</strong>
+            You can keep editing. This card updates automatically when the
+            platform receives the clip.
+          </p>
+        </div>
+      )}
       {publication.status === "processing" && (
         <div className="publication-progress" role="status">
           <span>
@@ -544,22 +610,22 @@ function PublicationRow({
       {publication.status === "published" && (
         <div className="publication-row-actions">
           {publication.platform === "youtube" && (
-            <>
-              <button
-                type="button"
-                disabled={refreshPending}
-                onClick={() => void onRefresh(publication.id)}
-              >
-                {refreshPending ? "Checking…" : "Check status"}
-              </button>
-              <button
-                type="button"
-                disabled={syncPending}
-                onClick={() => void onSyncMetrics(publication.id)}
-              >
-                {syncPending ? "Syncing…" : "Sync views"}
-              </button>
-            </>
+            <button
+              type="button"
+              disabled={refreshPending}
+              onClick={() => void onRefresh(publication.id)}
+            >
+              {refreshPending ? "Checking…" : "Check status"}
+            </button>
+          )}
+          {supportsAutomaticMetrics && (
+            <button
+              type="button"
+              disabled={syncPending}
+              onClick={() => void onSyncMetrics(publication.id)}
+            >
+              {syncPending ? "Syncing…" : "Sync views"}
+            </button>
           )}
           <details className="metrics-entry">
             <summary>{latest ? "Update metrics" : "Add metrics"}</summary>

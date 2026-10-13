@@ -9,6 +9,7 @@ const clip = {
   approval_status: "pending",
   preview_path: null,
   final_path: null,
+  thumbnail_ready: false,
   publications: [],
   plan: {
     schema_version: "1.0",
@@ -56,6 +57,12 @@ const clip = {
     transition_duration_seconds: 0.2,
     secondary_media: [],
     audio_track_index: 0,
+    thumbnail: {
+      template: "speaker",
+      headline: null,
+      frame_time_seconds: null,
+      generated: false,
+    },
     emphasis: [],
     effects: [],
     cta: null,

@@ -223,13 +223,16 @@ class InstagramOAuthClient(_OAuthHttpClient):
                     )
         except httpx.HTTPError as error:
             raise self.provider_error("Meta", error) from error
-        connection = self._connection_from_pages(pages)
+        connection = self._connection_from_pages(pages, str(user_token))
         if connection is None:
             raise self._missing_connection_error(pages, permission_statuses)
         return connection
 
     @staticmethod
-    def _connection_from_pages(pages: object) -> OAuthConnection | None:
+    def _connection_from_pages(
+        pages: object,
+        user_token: str,
+    ) -> OAuthConnection | None:
         if not isinstance(pages, list):
             return None
         for page in pages:
@@ -240,7 +243,9 @@ class InstagramOAuthClient(_OAuthHttpClient):
                 continue
             username = str(instagram.get("username") or "").lstrip("@")
             return OAuthConnection(
-                access_token=str(page["access_token"]),
+                # Meta's maintained local-file publishing sample uses the Facebook
+                # user token for the resumable upload and subsequent Graph calls.
+                access_token=user_token,
                 external_account_id=str(instagram["id"]),
                 display_name=str(instagram.get("name") or username or "Instagram account"),
                 username=username,
@@ -260,6 +265,7 @@ class InstagramOAuthClient(_OAuthHttpClient):
                 "business_management",
                 "instagram_basic",
                 "instagram_content_publish",
+                "instagram_manage_insights",
                 "pages_read_engagement",
                 "pages_show_list",
             }

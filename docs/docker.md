@@ -16,7 +16,7 @@ docker compose -f compose.yaml -f compose.ollama.yaml up --build -d
 docker compose -f compose.yaml -f compose.ollama.yaml ps
 ```
 
-The setup jobs are deliberately separate: model weights are large, and starting the UI must never silently trigger a network download. Change `CLIPPER_EDITORIAL_MODEL` or `CLIPPER_WHISPER_MODEL` in `.env`, rerun the corresponding setup command, and recreate the API to switch models. The shorter Whisper command is `pnpm docker:whisper-model`.
+The setup jobs are deliberately separate: model weights are large, and starting the UI must never silently trigger a network download. Change `CLIPPER_EDITORIAL_MODEL`, `CLIPPER_THUMBNAIL_MODEL`, or `CLIPPER_WHISPER_MODEL` in `.env`, rerun the corresponding setup command, and recreate the API to switch models. Use `pnpm docker:model` for editorial analysis, `pnpm docker:thumbnail-model` for thumbnail vision, and `pnpm docker:whisper-model` for transcription.
 
 To use NVIDIA for Ollama:
 

@@ -18,8 +18,10 @@ def test_runtime_settings_are_persisted() -> None:
             session,
             ollama_base_url="http://mini-pc.local:11434/",
             editorial_model="qwen3:14b",
+            thumbnail_model="qwen3-vl:8b",
         )
         loaded = service.get(session)
 
     assert updated.ollama_base_url == "http://mini-pc.local:11434"
+    assert updated.thumbnail_model == "qwen3-vl:8b"
     assert loaded == updated
