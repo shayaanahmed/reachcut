@@ -46,7 +46,13 @@ def test_legacy_plan_defaults_to_views_and_one_contiguous_source(
     make_plan: Callable[..., EditingPlanV1],
 ) -> None:
     payload = make_plan(start=10, end=40).model_dump(mode="json")
-    for field in ("source_slices", "optimization_goal", "crop_focus_x", "crop_focus_y"):
+    for field in (
+        "source_slices",
+        "optimization_goal",
+        "crop_focus_x",
+        "crop_focus_y",
+        "video_template",
+    ):
         payload.pop(field)
 
     plan = EditingPlanV1.model_validate(payload)
@@ -55,6 +61,7 @@ def test_legacy_plan_defaults_to_views_and_one_contiguous_source(
     assert plan.source_slices == []
     assert plan.timeline_duration == 30
     assert (plan.crop_focus_x, plan.crop_focus_y) == (0.5, 0.5)
+    assert plan.video_template == "custom"
 
 
 def test_multi_slice_plan_uses_the_joined_timeline_duration(

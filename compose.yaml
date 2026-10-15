@@ -23,6 +23,8 @@ services:
       CLIPPER_EDITORIAL_NUM_PREDICT: ${CLIPPER_EDITORIAL_NUM_PREDICT:-2048}
       CLIPPER_EDITORIAL_RETRY_NUM_CTX: ${CLIPPER_EDITORIAL_RETRY_NUM_CTX:-16384}
       CLIPPER_EDITORIAL_RETRY_NUM_PREDICT: ${CLIPPER_EDITORIAL_RETRY_NUM_PREDICT:-4096}
+      CLIPPER_LOCAL_VIDEO_ENGINE_URL: ${CLIPPER_DOCKER_LOCAL_VIDEO_ENGINE_URL:-http://host.docker.internal:41954}
+      CLIPPER_LOCAL_VIDEO_ENGINE_DATA_DIR: /local-video-data
       CLIPPER_MAX_UPLOAD_BYTES: ${CLIPPER_MAX_UPLOAD_BYTES:-8589934592}
       CLIPPER_MAX_DURATION_SECONDS: ${CLIPPER_MAX_DURATION_SECONDS:-21600}
       CLIPPER_YT_DLP_TIMEOUT_SECONDS: ${CLIPPER_YT_DLP_TIMEOUT_SECONDS:-3600}
@@ -55,6 +57,7 @@ services:
     volumes:
       - clipper-data:/data
       - whisper-models:/models/huggingface
+      - ./apps/api/data/local-video/ltx-data:/local-video-data
     tmpfs:
       - /tmp:size=2g,mode=1777
     security_opt:

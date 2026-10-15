@@ -53,7 +53,13 @@ class StageRunner:
             session.commit()
 
         try:
+            session.refresh(project, attribute_names=["status"])
+            if project.status == "cancel_requested":
+                raise InterruptedError("Project stopped")
             result = operation(report_progress)
+            session.refresh(project, attribute_names=["status"])
+            if project.status == "cancel_requested":
+                raise InterruptedError("Project stopped")
             artifact = self.artifact_path(project, name)
             artifact.parent.mkdir(parents=True, exist_ok=True)
             artifact.write_text(json.dumps(result, indent=2) + "\n")

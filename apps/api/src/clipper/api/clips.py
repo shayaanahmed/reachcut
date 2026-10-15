@@ -15,6 +15,7 @@ from clipper.api.schemas import (
     ApprovalRequest,
     CaptionTranslationRequest,
     ClipStyleRequest,
+    ClipTemplateRequest,
     ProjectResponse,
     ThumbnailCreateRequest,
 )
@@ -90,6 +91,21 @@ def update_clip_style(
     except ClipStateError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     except (MediaError, ValueError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return project_or_404(session, project_id)
+
+
+@router.put("/clips/{clip_id}/template", response_model=ProjectResponse)
+def apply_clip_template(
+    clip_id: str,
+    request: ClipTemplateRequest,
+    session: Session = Depends(get_session),
+) -> object:
+    try:
+        project_id = clip_service.apply_template(session, clip_id, request.template)
+    except ClipNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except (ClipStateError, MediaError, ValueError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     return project_or_404(session, project_id)
 

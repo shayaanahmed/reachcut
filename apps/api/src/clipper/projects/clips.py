@@ -23,8 +23,10 @@ from clipper.domain.editing_plan import (
     TrackingStrategy,
     TransitionStyle,
     TranslationMode,
+    VideoTemplate,
 )
 from clipper.domain.transcript import Transcript
+from clipper.editorial import apply_video_template
 from clipper.media import safe_filename, store_upload
 from clipper.persistence import Clip, Project
 from clipper.projects.artifacts import ClipArtifactService, timeline_words
@@ -179,6 +181,7 @@ class ClipService:
                 "crop_focus_y": update.crop_focus_y,
                 "content_mode": update.content_mode,
                 "enhancement_level": update.enhancement_level,
+                "video_template": VideoTemplate.CUSTOM,
                 "tracking": tracking.model_dump(mode="json"),
                 "transition_style": update.transition_style,
                 "transition_duration_seconds": update.transition_duration_seconds,
@@ -198,6 +201,12 @@ class ClipService:
             }
         )
         plan = EditingPlanV1.model_validate(payload)
+        return self._replace_plan(session, project, clip, transcript, previous_plan, plan)
+
+    def apply_template(self, session: Session, clip_id: str, template: VideoTemplate) -> str:
+        clip, project, transcript = self._editable_clip(session, clip_id)
+        previous_plan = EditingPlanV1.model_validate(clip.plan)
+        plan = apply_video_template(previous_plan, template)
         return self._replace_plan(session, project, clip, transcript, previous_plan, plan)
 
     def translate_captions(

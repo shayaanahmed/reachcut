@@ -14,6 +14,7 @@ from clipper.persistence import (
     Publication,
     PublicationAccountLink,
     SessionLocal,
+    StoryVideo,
 )
 from clipper.projects import (
     AutomaticPublicationCreate,
@@ -23,9 +24,13 @@ from clipper.projects import (
     PublicationService,
     PublishingConnectionService,
     RuntimeSettingsService,
+    StoryReferenceService,
+    StoryVideoService,
     ThumbnailService,
 )
 from clipper.providers.credentials import EncryptedCredentialStore
+from clipper.providers.local_video_runtime import LocalVideoEngineSupervisor
+from clipper.providers.ltx_desktop import LtxDesktopVideoProvider
 from clipper.providers.meta import FacebookPublishingAdapter, InstagramPublishingAdapter
 from clipper.providers.ollama import EditorialGenerationConfig, OllamaEditorialProvider
 from clipper.providers.ollama_thumbnail import OllamaThumbnailProvider
@@ -54,6 +59,7 @@ from clipper.publishing import (
     PublishingPlatform,
 )
 from clipper.rendering import ThumbnailRenderer
+from clipper.rendering.story_video import StoryVideoFinisher
 
 
 def build_transcription_provider(language: str | None = None) -> FasterWhisperProvider:
@@ -128,6 +134,24 @@ thumbnail_service = ThumbnailService(
     settings.data_dir / "projects",
     logo_path=Path(__file__).parents[1] / "rendering" / "assets" / "siratsoul-symbol.png",
 )
+local_video_provider = LtxDesktopVideoProvider(
+    settings.local_video_engine_url,
+    settings.local_video_engine_token,
+    settings.local_video_timeout_seconds,
+    settings.local_video_engine_data_dir,
+)
+local_video_supervisor = LocalVideoEngineSupervisor(
+    settings.local_video_engine_root,
+    settings.local_video_engine_data_dir,
+    settings.local_video_engine_url,
+    settings.local_video_engine_token,
+)
+story_video_service = StoryVideoService(
+    settings.data_dir / "story-videos",
+    local_video_provider,
+    StoryVideoFinisher(),
+)
+story_reference_service = StoryReferenceService(settings.data_dir / "story-video-references")
 media_downloader = YtDlpDownloader(
     settings.yt_dlp_repository,
     timeout_seconds=settings.yt_dlp_timeout_seconds,
@@ -196,6 +220,7 @@ metrics_adapters: dict[str, MetricsAdapter] = {
 publishing_connections = PublishingConnectionService(social_oauth_clients, credential_store)
 pipeline_lock = threading.Lock()
 automation_lock = threading.Lock()
+local_video_lock = threading.Lock()
 logger = structlog.get_logger()
 
 
@@ -262,6 +287,75 @@ def run_pipeline(
                 project_id=project_id,
                 error_category=type(error).__name__,
             )
+
+
+def run_story_video(video_id: str) -> None:
+    """Render one local story at a time; model weights are intentionally reused."""
+
+    with local_video_lock, SessionLocal() as session:
+        try:
+            story_video_service.render(session, video_id)
+        except Exception as error:
+            logger.exception(
+                "story_video_failed",
+                video_id=video_id,
+                error_category=type(error).__name__,
+            )
+
+
+def run_story_video_cycle() -> str | None:
+    """Render the oldest durable story job when the local engine is ready."""
+
+    if not local_video_lock.acquire(blocking=False):
+        return None
+    try:
+        with SessionLocal() as session:
+            video_id = session.scalar(
+                select(StoryVideo.id)
+                .where(
+                    StoryVideo.status.in_(("queued", "rendering", "finishing", "cancel_requested"))
+                )
+                .order_by(StoryVideo.created_at.asc())
+                .limit(1)
+            )
+            if not video_id:
+                return None
+            video = story_video_service.get(session, video_id)
+            if video.status == "cancel_requested":
+                story_video_service.render(session, video_id)
+                return video_id
+            try:
+                local_video_provider.health()
+                progress = local_video_provider.generation_progress()
+                if progress.get("status") == "running":
+                    video = story_video_service.get(session, video_id)
+                    if video.status in {"cancel_requested", "cancelled"}:
+                        story_video_service.render(session, video_id)
+                        return None
+                    video.status = "queued"
+                    video.phase = (
+                        f"Waiting for LTX ({progress.get('progress', 0)}%). "
+                        "This short will resume automatically; saved scenes kept."
+                    )
+                    video.error = None
+                    session.commit()
+                    return None
+                recommendation = local_video_provider.model_recommendation()
+                if recommendation.get("status") == "download":
+                    return None
+            except Exception:
+                return None
+            try:
+                story_video_service.render(session, video_id)
+            except Exception as error:
+                logger.exception(
+                    "story_video_failed",
+                    video_id=video_id,
+                    error_category=type(error).__name__,
+                )
+            return video_id
+    finally:
+        local_video_lock.release()
 
 
 def run_automation_cycle(pipeline_id: str | None = None) -> list[str]:

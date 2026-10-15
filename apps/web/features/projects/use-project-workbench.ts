@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import {
   analyzeClipTracking,
+  applyClipTemplate,
   deleteClip,
   deleteClipSecondaryMedia,
   generateClipThumbnail,
@@ -14,6 +15,7 @@ import {
   uploadClipSecondaryMedia,
   type ClipStyleUpdate,
   type ThumbnailCreate,
+  type VideoTemplate,
 } from "../clips/api";
 import type {
   ClipType,
@@ -32,6 +34,7 @@ import {
   type PublicationCreate,
 } from "../publishing/api";
 import {
+  stopProject,
   deleteProject,
   getClipTypeSuggestions,
   getProject,
@@ -198,8 +201,8 @@ export function useProjectWorkbench(
   >({});
   const renderQueue = useRef<Promise<void>>(Promise.resolve());
   const busy = Object.keys(operations).length > 0;
-  const hasProcessingProjects = projects.some(
-    (project) => project.status === "processing",
+  const hasProcessingProjects = projects.some((project) =>
+    ["processing", "cancel_requested"].includes(project.status),
   );
   const processingPublicationKey = projects
     .flatMap((project) =>
@@ -450,6 +453,16 @@ export function useProjectWorkbench(
       "Project deletion failed",
     );
 
+  const stop = (id: string) =>
+    withOperation(
+      `project:${id}:stop`,
+      async () => {
+        await stopProject(id);
+        replaceProject(await getProject(id));
+      },
+      "Could not stop project",
+    );
+
   const process = (id: string) =>
     withOperation(
       `project:${id}:process`,
@@ -477,6 +490,17 @@ export function useProjectWorkbench(
         return updated;
       },
       "Style update failed",
+    );
+
+  const applyTemplate = (clipId: string, template: VideoTemplate) =>
+    withOperation(
+      `clip:${clipId}:template`,
+      async () => {
+        const updated = await applyClipTemplate(clipId, template);
+        replaceProject(updated);
+        return updated;
+      },
+      "Video template update failed",
     );
 
   const translate = (
@@ -665,6 +689,7 @@ export function useProjectWorkbench(
     isPending: (key: string) => Boolean(operations[key]),
     importUrl,
     process,
+    stop,
     projects,
     publish,
     recordMetrics,
@@ -676,6 +701,7 @@ export function useProjectWorkbench(
     rename,
     render,
     saveStyle,
+    applyTemplate,
     translate,
     analyzeTracking,
     generateThumbnail,

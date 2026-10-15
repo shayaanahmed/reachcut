@@ -25,7 +25,7 @@ function latestProjectViews(project: Project) {
 
 function projectProgress(project: Project) {
   if (project.status === "created") return 8;
-  if (project.status === "processing") {
+  if (["processing", "cancel_requested"].includes(project.status)) {
     if (project.stages.length === 0) return 24;
     return Math.max(
       12,
@@ -52,7 +52,8 @@ function matchesFilter(project: Project, filter: ProjectFilter) {
 
 function nextAction(project: Project) {
   if (project.status === "created") return "Run analysis";
-  if (project.status === "processing") return "Processing locally";
+  if (["processing", "cancel_requested"].includes(project.status))
+    return "Processing locally";
   if (project.status === "failed") return "Resolve failed stage";
   const pending = project.clips.filter(
     (clip) => clip.approval_status === "pending",
@@ -263,7 +264,7 @@ export function ProjectList({
                   type="button"
                   disabled={
                     isPending(`project:${project.id}:delete`) ||
-                    project.status === "processing"
+                    ["processing", "cancel_requested"].includes(project.status)
                   }
                   aria-label={`Delete ${project.title}`}
                   onClick={() => {

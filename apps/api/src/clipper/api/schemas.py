@@ -16,8 +16,15 @@ from clipper.domain.editing_plan import (
     TrackingStrategy,
     TransitionStyle,
     TranslationMode,
+    VideoTemplate,
 )
 from clipper.editorial import PublishRecommendation, recommend_for_publishing
+from clipper.generation import (
+    AspectRatio,
+    GenerationQuality,
+    StoryPlan,
+    VideoTemplateId,
+)
 from clipper.projects.storage import project_storage_bytes
 from clipper.publishing import PublishingPlatform
 
@@ -113,6 +120,155 @@ class ApprovalRequest(BaseModel):
     approved: bool
 
 
+class ViralStoryIdeaRequest(BaseModel):
+    visual_style_override: bool = False
+    idea: str = Field(min_length=4, max_length=1_500)
+    reference_template_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
+    template: VideoTemplateId = "cinematic_story"
+
+
+class ViralStoryIdeaResponse(BaseModel):
+    story: str
+    hook: str
+
+
+class StoryPlanRequest(BaseModel):
+    visual_style_override: bool = False
+    story: str = Field(min_length=20, max_length=8_000)
+    reference_template_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
+    template: VideoTemplateId = "cinematic_story"
+    aspect_ratio: AspectRatio = "9:16"
+    target_duration_seconds: Literal[10, 15, 20, 30, 45, 60] = 20
+
+    shot_mode: Literal["auto", "continuous", "story"] = "auto"
+    narration_enabled: bool = False
+
+
+class StoryDraftRequest(BaseModel):
+    story: str = Field(min_length=20, max_length=8_000)
+    template: VideoTemplateId | None = None
+    reference_template_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
+    aspect_ratio: AspectRatio = "9:16"
+    quality: GenerationQuality = "draft"
+    target_duration_seconds: Literal[10, 15, 20, 30, 45, 60] = 10
+    shot_mode: Literal["auto", "continuous", "story"] = "auto"
+    narration_enabled: bool = False
+    reference_id: str | None = Field(default=None, max_length=50)
+
+
+class StoryDraftResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    story: str
+    settings: StoryDraftRequest
+    created_at: datetime
+
+
+class StoryVideoUpdateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=100)
+
+
+class StoryFormatMatchRequest(BaseModel):
+    story: str = Field(min_length=3, max_length=8_000)
+
+
+class StoryFormatMatchResponse(BaseModel):
+    template: VideoTemplateId
+    reference_template_id: str | None = None
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class StoryVideoCreateRequest(BaseModel):
+    draft_id: str | None = Field(default=None, max_length=36)
+    story: str = Field(min_length=20, max_length=8_000)
+    template: VideoTemplateId = "cinematic_story"
+    aspect_ratio: AspectRatio = "9:16"
+    quality: GenerationQuality = "draft"
+    plan: StoryPlan
+    reference_id: str | None = Field(default=None, max_length=50)
+
+
+class StoryVideoSceneResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    scene_index: int
+    title: str
+    prompt: str
+    narration: str
+    duration_seconds: int
+    seed: int
+    status: str
+    progress: float
+    error: str | None
+
+
+class StoryVideoResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    story: str
+    template: VideoTemplateId
+    aspect_ratio: AspectRatio
+    quality: GenerationQuality
+    target_duration_seconds: int
+    status: str
+    phase: str
+    progress: float
+    plan: StoryPlan
+    provider: str
+    error: str | None
+    created_at: datetime
+    updated_at: datetime
+    scenes: list[StoryVideoSceneResponse]
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def video_url(self) -> str | None:
+        if self.status != "complete":
+            return None
+        return f"/api/video-generation/{self.id}/file"
+
+
+class VideoGenerationTemplateResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: VideoTemplateId
+    name: str
+    description: str
+    category: str
+    prompt_hint: str
+    style_prompt: str
+    palette: tuple[str, str, str]
+    badge: str
+
+
+class LocalVideoReadinessResponse(BaseModel):
+    ready: bool
+    ollama_connected: bool
+    ollama_model_ready: bool
+    engine_installed: bool
+    engine_running: bool
+    models_ready: bool
+    hf_authenticated: bool
+    download_status: str
+    download_progress: float = Field(ge=0, le=1)
+    engine_name: str
+    detail: str
+
+
+class LocalVideoAuthResponse(BaseModel):
+    authorization_url: str
+
+
+class LocalVideoDownloadResponse(BaseModel):
+    session_id: str
+
+
+class StoryReferenceResponse(BaseModel):
+    id: str
+
+
 class ProcessRequest(BaseModel):
     language: str | None = Field(default=None, pattern=r"^[a-z]{2}$")
     clip_types: list[ClipType] = Field(default_factory=list, max_length=9)
@@ -154,6 +310,10 @@ class ClipStyleRequest(BaseModel):
     cta_style: Literal["follow", "comment", "part_two", "profile", "product", "campaign"] = "follow"
     effects: list[Effect] | None = Field(default=None, max_length=40)
     audio_track_index: int = Field(default=0, ge=0, le=32)
+
+
+class ClipTemplateRequest(BaseModel):
+    template: VideoTemplate
 
 
 class CaptionTranslationRequest(BaseModel):

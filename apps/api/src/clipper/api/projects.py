@@ -169,7 +169,7 @@ def process_project(
     session: Session = Depends(get_session),
 ) -> dict[str, str]:
     selected = project_or_404(session, project_id)
-    if selected.status == "processing":
+    if selected.status in {"processing", "cancel_requested"}:
         raise HTTPException(status_code=409, detail="project is already processing")
     selected.status = "processing"
     session.commit()
@@ -185,6 +185,8 @@ def process_project(
 @router.post("/projects/{project_id}/cancel", status_code=status.HTTP_202_ACCEPTED)
 def cancel_project(project_id: str, session: Session = Depends(get_session)) -> dict[str, str]:
     selected = project_or_404(session, project_id)
+    if selected.status not in {"processing", "cancel_requested"}:
+        return {"status": selected.status}
     selected.status = "cancel_requested"
     session.commit()
     return {"status": "cancel_requested"}

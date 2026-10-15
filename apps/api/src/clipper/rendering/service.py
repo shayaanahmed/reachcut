@@ -70,6 +70,7 @@ class VideoRenderer:
             "duration_seconds": request.plan.timeline_duration,
             "dimensions": {"width": width, "height": height},
             "frame_style": request.plan.frame_style,
+            "video_template": request.plan.video_template,
             "content_mode": request.plan.content_mode,
             "tracking_strategy": request.plan.tracking.strategy,
             "secondary_media": [

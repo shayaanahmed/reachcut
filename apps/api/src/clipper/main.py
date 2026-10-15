@@ -6,7 +6,7 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from clipper.api.dependencies import run_automation_cycle
+from clipper.api.dependencies import run_automation_cycle, run_story_video_cycle
 from clipper.api.routes import router
 from clipper.config import settings
 from clipper.persistence import create_schema
@@ -23,16 +23,30 @@ async def automation_scheduler() -> None:
         await asyncio.sleep(15)
 
 
+async def story_video_scheduler() -> None:
+    while True:
+        try:
+            await asyncio.to_thread(run_story_video_cycle)
+        except Exception as error:
+            logger.exception("story_video_scheduler_failed", error_category=type(error).__name__)
+        # Also back off after an engine reservation conflict instead of spinning on 409.
+        await asyncio.sleep(2)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     create_schema()
     scheduler = asyncio.create_task(automation_scheduler())
+    video_scheduler = asyncio.create_task(story_video_scheduler())
     try:
         yield
     finally:
         scheduler.cancel()
+        video_scheduler.cancel()
         with suppress(asyncio.CancelledError):
             await scheduler
+        with suppress(asyncio.CancelledError):
+            await video_scheduler
 
 
 app = FastAPI(

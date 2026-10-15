@@ -55,11 +55,13 @@ describe("clip style editor", () => {
       <ClipStyleEditor
         clip={clip}
         saving={false}
+        templateBusy={false}
         translating={false}
         tracking={false}
         assetBusy={false}
         mutationBusy={false}
         onSave={vi.fn()}
+        onApplyTemplate={vi.fn()}
         onTranslate={vi.fn()}
         onTrack={vi.fn()}
         onUploadAsset={vi.fn()}
@@ -92,11 +94,13 @@ describe("clip style editor", () => {
       <ClipStyleEditor
         clip={clip}
         saving={false}
+        templateBusy={false}
         translating={false}
         tracking={false}
         assetBusy={false}
         mutationBusy={false}
         onSave={vi.fn()}
+        onApplyTemplate={vi.fn()}
         onTranslate={vi.fn()}
         onTrack={vi.fn()}
         onUploadAsset={vi.fn()}
@@ -117,5 +121,32 @@ describe("clip style editor", () => {
     expect(
       screen.getByRole("heading", { name: "Secondary media" }),
     ).toBeTruthy();
+  });
+
+  it("offers one-click social video templates", () => {
+    const onApplyTemplate = vi.fn();
+    render(
+      <ClipStyleEditor
+        clip={clip}
+        saving={false}
+        templateBusy={false}
+        translating={false}
+        tracking={false}
+        assetBusy={false}
+        mutationBusy={false}
+        onSave={vi.fn()}
+        onApplyTemplate={onApplyTemplate}
+        onTranslate={vi.fn()}
+        onTrack={vi.fn()}
+        onUploadAsset={vi.fn()}
+        onRemoveAsset={vi.fn()}
+        onPreviewChange={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Bold viral/ }));
+
+    expect(onApplyTemplate).toHaveBeenCalledWith("clip-1", "bold_viral");
   });
 });

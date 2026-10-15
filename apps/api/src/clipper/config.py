@@ -4,6 +4,8 @@ from typing import Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+API_ROOT = Path(__file__).resolve().parents[2]
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="CLIPPER_", env_file=".env", extra="ignore")
@@ -23,6 +25,11 @@ class Settings(BaseSettings):
     editorial_num_predict: int = Field(default=2_048, ge=1)
     editorial_retry_num_ctx: int = Field(default=16_384, ge=1)
     editorial_retry_num_predict: int = Field(default=4_096, ge=1)
+    local_video_engine_url: str = "http://127.0.0.1:41954"
+    local_video_engine_token: str = "reachcut-local-video"  # noqa: S105
+    local_video_engine_root: Path = API_ROOT / "data" / "local-video" / "LTX-Desktop"
+    local_video_engine_data_dir: Path = API_ROOT / "data" / "local-video" / "ltx-data"
+    local_video_timeout_seconds: float = Field(default=7_200, gt=0)
     tracking_provider: Literal["opencv", "disabled"] = "opencv"
     tracking_sample_interval_seconds: float = Field(default=0.5, ge=0.1, le=5)
     max_upload_bytes: int = Field(default=8 * 1024**3, ge=1)

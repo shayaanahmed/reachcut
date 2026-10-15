@@ -65,6 +65,14 @@ class EnhancementLevel(StrEnum):
     AGGRESSIVE = "aggressive"
 
 
+class VideoTemplate(StrEnum):
+    CUSTOM = "custom"
+    CLEAN_FOCUS = "clean_focus"
+    BOLD_VIRAL = "bold_viral"
+    PODCAST = "podcast"
+    STORY = "story"
+
+
 class ThumbnailTemplate(StrEnum):
     SPEAKER = "speaker"
     QUESTION = "question"
@@ -245,6 +253,7 @@ class EditingPlanV1(StrictModel):
     content_mode: ContentMode = ContentMode.AUTO
     clip_type: ClipType = ClipType.HIGHLIGHT
     enhancement_level: EnhancementLevel = EnhancementLevel.CLEAN
+    video_template: VideoTemplate = VideoTemplate.CUSTOM
     scores: Scores
     rationale: Annotated[str, Field(min_length=1, max_length=600)]
     suggested_title: Annotated[str, Field(min_length=1, max_length=100)] | None = None

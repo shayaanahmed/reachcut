@@ -21,6 +21,7 @@ export function ProjectCard({
   isPending,
   operationState,
   onProcess,
+  onStop,
   onApprove,
   onDeleteClip,
   onRender,
@@ -36,6 +37,7 @@ export function ProjectCard({
   isPending: (key: string) => boolean;
   operationState: (key: string) => OperationState | undefined;
   onProcess: (id: string) => Promise<unknown>;
+  onStop?: (id: string) => Promise<unknown>;
   onApprove: (clipId: string, approved: boolean) => Promise<unknown>;
   onDeleteClip: (clipId: string) => Promise<unknown>;
   onRender: (clipId: string) => Promise<unknown>;
@@ -72,6 +74,21 @@ export function ProjectCard({
           </p>
         </div>
         <div className="project-admin-actions">
+          {["processing", "cancel_requested"].includes(project.status) &&
+            onStop && (
+              <button
+                type="button"
+                disabled={
+                  isPending(`project:${project.id}:stop`) ||
+                  project.status === "cancel_requested"
+                }
+                onClick={() => void onStop(project.id)}
+              >
+                {project.status === "cancel_requested"
+                  ? "Stopping…"
+                  : "Stop project"}
+              </button>
+            )}
           <details>
             <summary>Rename</summary>
             <form
@@ -94,7 +111,10 @@ export function ProjectCard({
           <button
             className="danger-button"
             type="button"
-            disabled={deleting || project.status === "processing"}
+            disabled={
+              deleting ||
+              ["processing", "cancel_requested"].includes(project.status)
+            }
             onClick={() => {
               if (
                 window.confirm(

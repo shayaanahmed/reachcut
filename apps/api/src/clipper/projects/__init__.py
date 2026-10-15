@@ -35,6 +35,12 @@ from clipper.projects.social_accounts import (
 )
 from clipper.projects.stages import StageRunner
 from clipper.projects.storage import directory_size, project_storage_bytes
+from clipper.projects.story_references import StoryReferenceService
+from clipper.projects.story_videos import (
+    StoryVideoCreate,
+    StoryVideoNotFoundError,
+    StoryVideoService,
+)
 from clipper.projects.thumbnails import (
     ThumbnailCreate,
     ThumbnailNotFoundError,
@@ -69,6 +75,10 @@ __all__ = [
     "SocialAccountService",
     "SocialAccountUpdate",
     "StageRunner",
+    "StoryReferenceService",
+    "StoryVideoCreate",
+    "StoryVideoNotFoundError",
+    "StoryVideoService",
     "ThumbnailCreate",
     "ThumbnailNotFoundError",
     "ThumbnailService",

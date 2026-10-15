@@ -121,6 +121,67 @@ class Clip(Base):
     )
 
 
+class StoryDraft(Base):
+    __tablename__ = "story_drafts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    story: Mapped[str] = mapped_column(Text)
+    settings: Mapped[dict[str, object]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class StoryVideo(Base):
+    __tablename__ = "story_videos"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    story: Mapped[str] = mapped_column(Text)
+    template: Mapped[str] = mapped_column(String(64))
+    aspect_ratio: Mapped[str] = mapped_column(String(8))
+    quality: Mapped[str] = mapped_column(String(16))
+    target_duration_seconds: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(24), default="queued", index=True)
+    phase: Mapped[str] = mapped_column(String(120), default="Queued")
+    progress: Mapped[float] = mapped_column(Float, default=0)
+    plan: Mapped[dict[str, object]] = mapped_column(JSON)
+    provider: Mapped[str] = mapped_column(String(100), default="ltx-2.5-fast-local")
+    output_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, onupdate=now_utc
+    )
+    scenes: Mapped[list[StoryVideoScene]] = relationship(
+        back_populates="story_video",
+        cascade="all, delete-orphan",
+        order_by="StoryVideoScene.scene_index",
+    )
+
+
+class StoryVideoScene(Base):
+    __tablename__ = "story_video_scenes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    story_video_id: Mapped[str] = mapped_column(
+        ForeignKey("story_videos.id", ondelete="CASCADE"), index=True
+    )
+    scene_index: Mapped[int] = mapped_column(Integer)
+    title: Mapped[str] = mapped_column(String(100))
+    prompt: Mapped[str] = mapped_column(Text)
+    narration: Mapped[str] = mapped_column(Text, default="")
+    duration_seconds: Mapped[int] = mapped_column(Integer)
+    seed: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(24), default="queued")
+    progress: Mapped[float] = mapped_column(Float, default=0)
+    reference_image_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    output_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, onupdate=now_utc
+    )
+    story_video: Mapped[StoryVideo] = relationship(back_populates="scenes")
+
+
 class Publication(Base):
     __tablename__ = "publications"
 

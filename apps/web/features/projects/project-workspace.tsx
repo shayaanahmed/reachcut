@@ -51,6 +51,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         setClipTypes={workbench.setClipTypes}
         isPending={workbench.isPending}
         operationState={workbench.operationState}
+        onStop={workbench.stop}
         onProcess={workbench.process}
         onApprove={workbench.approve}
         onDeleteClip={workbench.removeClip}

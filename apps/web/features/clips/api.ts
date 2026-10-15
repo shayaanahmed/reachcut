@@ -25,6 +25,8 @@ export type ClipStyleUpdate = {
 export type ThumbnailTemplate =
   "speaker" | "question" | "cinematic" | "minimal";
 
+export type VideoTemplate = Project["clips"][number]["plan"]["video_template"];
+
 export type ThumbnailCreate = {
   template: ThumbnailTemplate;
   headline?: string;
@@ -41,6 +43,20 @@ export async function updateClipStyle(
   });
   if (!response.ok)
     throw await responseError(response, "Could not update clip style");
+  return projectSchema.parse(await response.json());
+}
+
+export async function applyClipTemplate(
+  clipId: string,
+  template: VideoTemplate,
+): Promise<Project> {
+  const response = await fetch(`${API_URL}/clips/${clipId}/template`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ template }),
+  });
+  if (!response.ok)
+    throw await responseError(response, "Could not apply video template");
   return projectSchema.parse(await response.json());
 }
 

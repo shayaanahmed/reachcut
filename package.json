@@ -3,7 +3,7 @@
   "private": true,
   "packageManager": "pnpm@11.19.0",
   "scripts": {
-    "dev": "pnpm --parallel --stream dev:api dev:web",
+    "dev": "node scripts/dev.mjs",
     "dev:api": "uv run --project apps/api uvicorn clipper.main:app --reload --host 127.0.0.1 --port 8000",
     "dev:web": "pnpm --dir apps/web dev",
     "docker:model": "docker compose -f compose.yaml -f compose.ollama.yaml --profile setup run --rm model-init",
@@ -13,10 +13,13 @@
     "docker:down": "docker compose -f compose.yaml -f compose.ollama.yaml down",
     "doctor": "node scripts/doctor.mjs",
     "fixture": "node scripts/generate-fixture.mjs",
+    "video:setup": "node scripts/setup-local-video.mjs",
+    "video:engine": "node scripts/start-local-video.mjs",
     "check": "pnpm check:api && pnpm --dir apps/web check",
     "check:api": "uv run --project apps/api ruff check apps/api && uv run --project apps/api ruff format --check apps/api && uv run --project apps/api mypy apps/api/src",
     "test": "pnpm test:api && pnpm --dir apps/web test",
-    "test:api": "uv run --project apps/api pytest apps/api/tests"
+    "test:api": "uv run --project apps/api pytest apps/api/tests",
+    "templates:import": "uv run --project apps/api python scripts/import_reference_templates.py"
   },
   "devDependencies": {
     "ffmpeg-static": "5.3.0",

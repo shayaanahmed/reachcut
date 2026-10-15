@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import type { Project } from "../../lib/contracts";
+import type { VideoTemplate } from "./api";
 
 type Clip = Project["clips"][number];
 type CaptionConfig = Clip["plan"]["caption_config"];
@@ -94,6 +95,38 @@ const presetValues: Record<
   },
 };
 
+const videoTemplates: Array<{
+  value: Exclude<VideoTemplate, "custom">;
+  label: string;
+  description: string;
+  accent: string;
+}> = [
+  {
+    value: "bold_viral",
+    label: "Bold viral",
+    description: "Punch zoom, hook, CTA and high-impact captions",
+    accent: "VIRAL",
+  },
+  {
+    value: "podcast",
+    label: "Podcast focus",
+    description: "Readable dialogue captions with gentle movement",
+    accent: "TALK",
+  },
+  {
+    value: "story",
+    label: "Story mode",
+    description: "Karaoke captions, soft cuts and retention progress",
+    accent: "STORY",
+  },
+  {
+    value: "clean_focus",
+    label: "Clean focus",
+    description: "Minimal captions with no extra overlays or motion",
+    accent: "CLEAN",
+  },
+];
+
 export function studioPreviewFromClip(clip: Clip): StudioPreviewState {
   const zoom = clip.plan.effects.find((effect) =>
     ["punch_zoom", "slow_zoom"].includes(effect.type),
@@ -176,11 +209,13 @@ function applyPreset(
 export function ClipStyleEditor({
   clip,
   saving,
+  templateBusy,
   translating,
   tracking,
   assetBusy,
   mutationBusy,
   onSave,
+  onApplyTemplate,
   onTranslate,
   onTrack,
   onUploadAsset,
@@ -190,11 +225,16 @@ export function ClipStyleEditor({
 }: {
   clip: Clip;
   saving: boolean;
+  templateBusy: boolean;
   translating: boolean;
   tracking: boolean;
   assetBusy: boolean;
   mutationBusy: boolean;
   onSave: (clipId: string, form: HTMLFormElement) => Promise<unknown>;
+  onApplyTemplate: (
+    clipId: string,
+    template: Exclude<VideoTemplate, "custom">,
+  ) => Promise<unknown>;
   onTranslate: (
     clipId: string,
     targetLanguage: string,
@@ -307,6 +347,51 @@ export function ClipStyleEditor({
             title="Story & pacing"
             description="Control the clip structure, opening promise and final action."
           />
+          <div className="video-template-picker">
+            <div className="video-template-heading">
+              <div>
+                <strong>Start with a video template</strong>
+                <small>
+                  Applies captions, framing, motion, hook and CTA as one look.
+                </small>
+              </div>
+              <span>
+                {clip.plan.video_template === "custom"
+                  ? "Custom"
+                  : clip.plan.video_template.replaceAll("_", " ")}
+              </span>
+            </div>
+            <div className="video-template-grid">
+              {videoTemplates.map((template) => (
+                <button
+                  key={template.value}
+                  type="button"
+                  className={
+                    clip.plan.video_template === template.value
+                      ? "selected"
+                      : ""
+                  }
+                  aria-pressed={clip.plan.video_template === template.value}
+                  disabled={mutationBusy || dirty}
+                  onClick={() => void onApplyTemplate(clip.id, template.value)}
+                >
+                  <span>{template.accent}</span>
+                  <strong>{template.label}</strong>
+                  <small>{template.description}</small>
+                </button>
+              ))}
+            </div>
+            {dirty && (
+              <small className="video-template-note">
+                Save or reset the current edits before switching templates.
+              </small>
+            )}
+            {templateBusy && (
+              <small className="video-template-note" role="status">
+                Applying template and rendering the preview…
+              </small>
+            )}
+          </div>
           <div className="studio-field-grid">
             <label>
               Content mode

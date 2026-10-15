@@ -55,6 +55,7 @@ export function ClipStudio({
   const approvalPending = workbench.isPending(`clip:${clip.id}:approval`);
   const renderState = workbench.operationState(`clip:${clip.id}:render`);
   const saving = workbench.isPending(`clip:${clip.id}:style`);
+  const templateBusy = workbench.isPending(`clip:${clip.id}:template`);
   const translating = workbench.isPending(`clip:${clip.id}:translate`);
   const tracking = workbench.isPending(`clip:${clip.id}:tracking`);
   const thumbnailGenerating = workbench.isPending(`clip:${clip.id}:thumbnail`);
@@ -63,7 +64,7 @@ export function ClipStudio({
   );
   const deleting = workbench.isPending(`clip:${clip.id}:delete`);
   const mutationBusy =
-    saving || translating || tracking || assetBusy || deleting;
+    saving || templateBusy || translating || tracking || assetBusy || deleting;
   const title =
     clip.plan.suggested_title ?? clip.plan.hook?.text ?? "Untitled clip";
 
@@ -224,11 +225,13 @@ export function ClipStudio({
           key={planFingerprint}
           clip={clip}
           saving={saving}
+          templateBusy={templateBusy}
           translating={translating}
           tracking={tracking}
           assetBusy={assetBusy}
           mutationBusy={mutationBusy}
           onSave={workbench.saveStyle}
+          onApplyTemplate={workbench.applyTemplate}
           onTranslate={workbench.translate}
           onTrack={workbench.analyzeTracking}
           onUploadAsset={workbench.uploadSecondaryMedia}

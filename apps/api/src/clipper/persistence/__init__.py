@@ -14,6 +14,8 @@ from clipper.persistence.models import (
     SocialAccount,
     StageRun,
     StageStatus,
+    StoryVideo,
+    StoryVideoScene,
     now_utc,
 )
 from clipper.persistence.session import SessionLocal, create_schema, engine, get_session
@@ -33,6 +35,8 @@ __all__ = [
     "SocialAccount",
     "StageRun",
     "StageStatus",
+    "StoryVideo",
+    "StoryVideoScene",
     "create_schema",
     "engine",
     "get_session",

@@ -95,3 +95,11 @@ export async function getClipTypeSuggestions(
     throw await responseError(response, "Could not load clip directions");
   return clipTypeSuggestionSchema.array().parse(await response.json());
 }
+
+export async function stopProject(projectId: string): Promise<void> {
+  const response = await fetch(`${API_URL}/projects/${projectId}/cancel`, {
+    method: "POST",
+  });
+  if (!response.ok)
+    throw await responseError(response, "Could not stop project");
+}

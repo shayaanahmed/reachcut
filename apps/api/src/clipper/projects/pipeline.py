@@ -69,6 +69,10 @@ class Pipeline:
         project = session.get(Project, project_id)
         if not project:
             raise LookupError("project not found")
+        if project.status == "cancel_requested":
+            project.status = ProjectStatus.CREATED
+            session.commit()
+            return
         project.status = ProjectStatus.PROCESSING
         session.commit()
         try:
@@ -171,6 +175,8 @@ class Pipeline:
                 self._key(*(clip.id for clip in clips), project.media_sha256),
                 lambda progress: self._render_previews(session, project, clips, progress),
             )
+            if self._cancelled(session, project_id):
+                raise InterruptedError("Project stopped")
             project.status = ProjectStatus.REVIEW
             session.commit()
         except InterruptedError:
@@ -192,6 +198,8 @@ class Pipeline:
         outputs: list[str] = []
         project_root = Path(project.source_path).parent
         for index, clip in enumerate(clips):
+            if self._cancelled(session, project.id):
+                raise InterruptedError("Project stopped")
             root = project_root / "clips" / clip.id
             output = root / "preview.mp4"
             self.renderer.render(

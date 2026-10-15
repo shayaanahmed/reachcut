@@ -19,6 +19,7 @@ const clip = {
     content_mode: "auto",
     clip_type: "highlight",
     enhancement_level: "clean",
+    video_template: "custom",
     scores: {
       overall: 88,
       hook: 88,
