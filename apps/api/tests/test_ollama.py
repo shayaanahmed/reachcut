@@ -132,12 +132,12 @@ def test_retries_truncated_json_with_larger_generation_budget(
 
     assert provider.generate_structured("test prompt") == [candidate()]
     assert requests[0]["options"] == {
-        "temperature": 0.1,
+        "temperature": 0,
         "num_ctx": 8_192,
         "num_predict": 2_048,
     }
     assert requests[1]["options"] == {
-        "temperature": 0.1,
+        "temperature": 0,
         "num_ctx": 16_384,
         "num_predict": 4_096,
     }
@@ -258,7 +258,7 @@ def test_short_video_returns_available_highlights_instead_of_requiring_five(
     plans = provider.select_candidates(transcript, 5, lambda: False, lambda progress: None)
 
     assert len(plans) == 1
-    assert requested_minimums == [1, 1]
+    assert requested_minimums == [1]
 
 
 def test_repeated_length_failures_use_deterministic_highlight_fallback(
@@ -601,3 +601,124 @@ def test_repaired_hashtags_still_require_valid_tags_and_count(tags: list[object]
 def test_editorial_json_schema_constrains_hashtag_items() -> None:
     hashtags = EditorialCandidate.model_json_schema()["properties"]["hashtags"]
     assert hashtags["items"]["pattern"] == r"^#[^ #]{1,39}$"
+
+
+def test_rerank_selects_five_ids_and_preserves_metadata_and_cache(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    items = [candidate(f"c{index:04d}") for index in range(15)]
+    items[0]["suggested_title"] = "اردو زبان"
+    enriched = [{**item, "optimization_goal": "views", "content_mode": "podcast"} for item in items]
+    selected = ["c0009", "c0003", "c0000", "c0014", "c0005"]
+    requests: list[dict[str, Any]] = []
+
+    def post(*args: object, **kwargs: Any) -> httpx.Response:
+        requests.append(kwargs["json"])
+        return httpx.Response(
+            200,
+            request=httpx.Request("POST", "http://localhost/api/generate"),
+            json={"response": json.dumps({"candidate_ids": selected}), "done_reason": "stop"},
+        )
+
+    monkeypatch.setattr("httpx.post", post)
+    provider = OllamaEditorialProvider("http://localhost", "qwen", cache_dir=tmp_path)
+    ranked = provider.rerank_candidates(enriched, 5)
+    assert ranked == [items[int(candidate_id[1:])] for candidate_id in selected]
+    assert provider.rerank_candidates(enriched, 5) == ranked
+    assert len(requests) == 1
+    request = requests[0]
+    ids_schema = request["format"]["properties"]["candidate_ids"]
+    assert ids_schema["minItems"] == ids_schema["maxItems"] == 5
+    assert ids_schema["items"]["enum"] == [item["candidate_id"] for item in items]
+    assert "Required JSON schema" in request["prompt"]
+    assert "اردو زبان" in request["prompt"]
+    assert "hashtags" not in request["prompt"]
+    assert "hook_text" not in request["prompt"]
+
+
+@pytest.mark.parametrize(
+    "bad_response",
+    [
+        "",
+        '{"candidate_ids":[',
+        '{"candidate_ids":["c0000"]}',
+        '{"candidate_ids":["c0000","c0000"]}',
+        '{"candidate_ids":["c0000","c9999"]}',
+        '{"candidate_ids":["c0000",{}]}',
+        '{"candidate_ids":["c0000","c0001"],"extra":true}',
+        '{"candidates":[]}',
+        "[]",
+    ],
+)
+def test_rerank_retries_invalid_id_selection(
+    monkeypatch: pytest.MonkeyPatch, bad_response: str
+) -> None:
+    items = [candidate(f"c{index:04d}") for index in range(3)]
+    contents = iter([bad_response, '{"candidate_ids":["c0002","c0000"]}'])
+    requests: list[dict[str, Any]] = []
+
+    def post(*args: object, **kwargs: Any) -> httpx.Response:
+        requests.append(kwargs["json"])
+        return httpx.Response(
+            200,
+            request=httpx.Request("POST", "http://localhost/api/generate"),
+            json={"response": next(contents), "done_reason": "stop"},
+        )
+
+    monkeypatch.setattr("httpx.post", post)
+    provider = OllamaEditorialProvider("http://localhost", "qwen")
+    assert provider.rerank_candidates(items, 2) == [items[2], items[0]]
+    assert len(requests) == 2
+    assert "Previous output was rejected" in requests[1]["prompt"]
+
+
+def test_rerank_repeated_invalid_json_raises_without_inventing_highlights(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "httpx.post",
+        lambda *args, **kwargs: httpx.Response(
+            200,
+            request=httpx.Request("POST", "http://localhost/api/generate"),
+            json={"response": "", "done_reason": "stop"},
+        ),
+    )
+    provider = OllamaEditorialProvider("http://localhost", "qwen")
+    with pytest.raises(EditorialOutputError, match="ID selection failed") as error:
+        provider.rerank_candidates([candidate("c0000"), candidate("c0001")], 1)
+    assert error.value.reason == "stop"
+
+
+def test_batch_schema_requires_requested_count_and_supplied_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    items = [candidate(f"c{index:04d}") for index in range(3)]
+    requests: list[dict[str, Any]] = []
+
+    def post(*args: object, **kwargs: Any) -> httpx.Response:
+        requests.append(kwargs["json"])
+        return httpx.Response(
+            200,
+            request=httpx.Request("POST", "http://localhost/api/generate"),
+            json={"response": json.dumps({"candidates": items}), "done_reason": "stop"},
+        )
+
+    monkeypatch.setattr("httpx.post", post)
+    provider = OllamaEditorialProvider("http://localhost", "qwen")
+    allowed = {item["candidate_id"] for item in items}
+    assert provider.generate_structured("rank", 3, allowed) == items
+    schema = requests[0]["format"]
+    assert schema["properties"]["candidates"]["minItems"] == 3
+    assert schema["properties"]["candidates"]["maxItems"] == 3
+    assert schema["$defs"]["EditorialCandidate"]["properties"]["candidate_id"]["enum"] == sorted(
+        allowed
+    )
+    assert json.dumps(schema, ensure_ascii=False, separators=(",", ":")) in requests[0]["prompt"]
+
+
+def test_reuses_validated_previous_batch_cache(tmp_path: Path) -> None:
+    provider = OllamaEditorialProvider("http://localhost", "qwen", cache_dir=tmp_path)
+    path = provider._cache_path("batch", "editorial-ranking-12")
+    assert path is not None
+    path.write_text(json.dumps([candidate()]))
+    assert provider.generate_structured("batch", 1, {"c0000"}) == [candidate()]
