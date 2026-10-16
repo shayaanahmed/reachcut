@@ -351,7 +351,7 @@ def test_rejects_duplicate_candidate_id() -> None:
     assert "duplicated" in errors[0]
 
 
-def test_rejects_duplicate_hashtags() -> None:
+def test_repairs_duplicate_hashtags() -> None:
     duplicate_hashtags = candidate()
     duplicate_hashtags["hashtags"] = ["#UsefulTips", "#usefultips", "#VideoClip"]
 
@@ -359,8 +359,8 @@ def test_rejects_duplicate_hashtags() -> None:
         {"candidates": [duplicate_hashtags]}
     )
 
-    assert valid == []
-    assert "hashtags must be distinct" in errors[0]
+    assert not errors
+    assert valid[0]["hashtags"] == ["#UsefulTips", "#VideoClip", "#Highlights"]
 
 
 def test_builds_render_plan_with_deterministic_relative_timestamps() -> None:
@@ -489,3 +489,115 @@ def test_reuses_valid_cached_chunk(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     assert provider.generate_structured("same prompt") == [candidate()]
     assert provider.generate_structured("same prompt") == [candidate()]
     assert calls == 1
+
+
+def test_repairs_urdu_hashtags_without_retrying_valid_candidates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    items = [candidate(f"c{index:04d}") for index in range(3)]
+    items[1]["hashtags"] = ["#زناکا معاملہ", "#UsefulTips", "#VideoClip"]
+    items[2]["hashtags"] = ["#عورتکا معنی", "#LearnSomething", "#VideoClip"]
+    calls: list[object] = []
+
+    class Response:
+        def raise_for_status(self) -> None:
+            pass
+
+        def json(self) -> dict[str, object]:
+            return {"response": json.dumps({"candidates": items}), "done_reason": "stop"}
+
+    def post(*args: object, **kwargs: object) -> Response:
+        calls.append(kwargs["json"])
+        return Response()
+
+    monkeypatch.setattr("httpx.post", post)
+    provider = OllamaEditorialProvider("http://127.0.0.1:11434", "qwen")
+    valid = provider.generate_structured("test prompt", minimum_candidates=3)
+
+    assert len(calls) == 1
+    assert len(valid) == 3
+    assert valid[1]["hashtags"][0] == "#زناکا_معاملہ"
+    assert valid[2]["hashtags"][0] == "#عورتکا_معنی"
+    # The normalized output must also satisfy the downstream rendering contract.
+    for item in valid:
+        plan = provider.create_editing_plan(
+            EditorialCandidate.model_validate(item),
+            CandidateOption(
+                item["candidate_id"], TimeRange(start_seconds=0, end_seconds=30), "text"
+            ),
+        )
+        assert plan.hashtags == item["hashtags"]
+
+
+def test_normalizes_unicode_whitespace_in_hashtags() -> None:
+    item = candidate()
+    item["hashtags"] = ["  #Useful\tTips  ", "#اردو\u00a0زبان", "#Video\nClip"]  # noqa: RUF001
+    valid, errors = OllamaEditorialProvider.validate_candidates({"candidates": [item]})
+    assert not errors
+    assert valid[0]["hashtags"] == ["#Useful_Tips", "#اردو_زبان", "#Video_Clip"]
+
+
+def test_repairs_duplicate_tags_for_all_required_candidates_without_retry(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    items = [candidate(f"c{index:04d}") for index in range(3)]
+    items[0]["hashtags"] = ["#Useful Tips", "#useful_tips", "#VideoClip"]
+    items[1]["hashtags"] = ["#اردو زبان", "#اردو_زبان", "#اردو زبان"]
+    items[2]["hashtags"] = ["#videoclip", "#VideoClip", "#VIDEOCLIP"]
+    calls = 0
+
+    def post(*args: object, **kwargs: object) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(
+            200,
+            request=httpx.Request("POST", "http://127.0.0.1:11434/api/generate"),
+            json={"response": json.dumps({"candidates": items}), "done_reason": "stop"},
+        )
+
+    monkeypatch.setattr("httpx.post", post)
+    provider = OllamaEditorialProvider("http://127.0.0.1:11434", "qwen", cache_dir=tmp_path)
+    valid = provider.generate_structured("duplicate tags", minimum_candidates=3)
+
+    assert calls == 1
+    assert [item["hashtags"] for item in valid] == [
+        ["#Useful_Tips", "#VideoClip", "#Highlights"],
+        ["#اردو_زبان", "#VideoClip", "#Highlights"],
+        ["#videoclip", "#Highlights", "#MustWatch"],
+    ]
+    for item, original in zip(valid, items, strict=True):
+        assert item["scores"] == original["scores"]
+        plan = provider.create_editing_plan(
+            EditorialCandidate.model_validate(item),
+            CandidateOption(
+                item["candidate_id"], TimeRange(start_seconds=0, end_seconds=30), "text"
+            ),
+        )
+        assert plan.hashtags == item["hashtags"]
+    assert provider.generate_structured("duplicate tags", minimum_candidates=3) == valid
+    assert calls == 1
+
+
+@pytest.mark.parametrize(
+    "tags",
+    [
+        ["MissingHash", "#UsefulTips", "#VideoClip"],
+        ["#", "#UsefulTips", "#VideoClip"],
+        ["#Bad#Tag", "#UsefulTips", "#VideoClip"],
+        ["#" + "a" * 40, "#UsefulTips", "#VideoClip"],
+        [123, "#UsefulTips", "#VideoClip"],
+        ["#UsefulTips", "#VideoClip"],
+        ["#VideoClip"] * 7,
+    ],
+)
+def test_repaired_hashtags_still_require_valid_tags_and_count(tags: list[object]) -> None:
+    item = candidate()
+    item["hashtags"] = tags
+    valid, errors = OllamaEditorialProvider.validate_candidates({"candidates": [item]})
+    assert not valid
+    assert errors
+
+
+def test_editorial_json_schema_constrains_hashtag_items() -> None:
+    hashtags = EditorialCandidate.model_json_schema()["properties"]["hashtags"]
+    assert hashtags["items"]["pattern"] == r"^#[^ #]{1,39}$"

@@ -1,3 +1,5 @@
+import { projectPhase } from "./project-queue";
+
 import type { Project } from "../../lib/contracts";
 
 const STAGE_ORDER = [
@@ -27,20 +29,21 @@ function projectProgress(project: Project): number {
 }
 
 export function ProjectProgress({ project }: { project: Project }) {
-  const progress = projectProgress(project);
+  const progress = ["queued", "downloading"].includes(project.status)
+    ? 0
+    : projectProgress(project);
   return (
     <div className="pipeline" aria-label="Analysis progress">
       <div className="pipeline-summary">
-        <strong>
-          {project.status === "failed"
-            ? "Analysis needs attention"
-            : project.status === "review"
-              ? "Analysis complete"
-              : "Analyzing locally"}
-        </strong>
+        <strong>{projectPhase(project)}</strong>
         <span>{Math.round(progress * 100)}%</span>
       </div>
-      <progress max={1} value={progress} />
+      {project.job?.error && (
+        <p className="error" role="alert">
+          {project.job.error}
+        </p>
+      )}
+      <progress max={1} value={project.status === "queued" ? 0 : progress} />
       <div className="stage-list">
         {STAGE_ORDER.map((name) => {
           const stage = project.stages.find((item) => item.name === name);
@@ -54,13 +57,17 @@ export function ProjectProgress({ project }: { project: Project }) {
               <div>
                 <strong>{STAGE_LABELS[name]}</strong>
                 <small>
-                  {stage?.status === "running"
-                    ? `${Math.round(stage.progress * 100)}% · attempt ${stage.attempts}`
-                    : stage?.status === "failed"
-                      ? `Failed · attempt ${stage.attempts}`
-                      : stage?.status === "succeeded"
-                        ? "Complete"
-                        : "Waiting"}
+                  {stage?.status === "cancelled" ||
+                  (stage?.status === "running" &&
+                    project.status === "cancelled")
+                    ? "Paused · resumes on restart"
+                    : stage?.status === "running"
+                      ? `${Math.round(stage.progress * 100)}% · attempt ${stage.attempts}`
+                      : stage?.status === "failed"
+                        ? `Failed · attempt ${stage.attempts}`
+                        : stage?.status === "succeeded"
+                          ? "Complete"
+                          : "Waiting"}
                 </small>
                 {message && <p role="alert">{message}</p>}
               </div>

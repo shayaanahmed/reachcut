@@ -1,3 +1,4 @@
+import fcntl
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -8,6 +9,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from clipper.config import settings
 from clipper.domain.editing_plan import ClipType
+from clipper.media import StoredUpload, validate_public_media_url
 from clipper.persistence import (
     Clip,
     Project,
@@ -28,6 +30,7 @@ from clipper.projects import (
     StoryVideoService,
     ThumbnailService,
 )
+from clipper.projects.queue import ProjectQueue
 from clipper.providers.credentials import EncryptedCredentialStore
 from clipper.providers.local_video_runtime import LocalVideoEngineSupervisor
 from clipper.providers.ltx_desktop import LtxDesktopVideoProvider
@@ -224,17 +227,26 @@ local_video_lock = threading.Lock()
 logger = structlog.get_logger()
 
 
+publication_upload_slots = threading.BoundedSemaphore(4)
+
+
 def run_publication_batch(
     queued: list[tuple[str, AutomaticPublicationCreate]],
 ) -> None:
     """Publish queued destinations concurrently without holding the request open."""
+    if not queued:
+        return
 
     def publish_one(publication_id: str, request: AutomaticPublicationCreate) -> None:
-        with SessionLocal() as session:
+        with publication_upload_slots, SessionLocal() as session:
             publication = session.get(Publication, publication_id)
             adapter = publishing_adapters.get(publication.platform) if publication else None
             if not publication or not adapter:
-                publication_service.mark_failed(session, publication_id)
+                publication_service.mark_failed(
+                    session,
+                    publication_id,
+                    "No publishing adapter is configured for this platform.",
+                )
                 return
             try:
                 publication_service.publish_queued(
@@ -246,7 +258,7 @@ def run_publication_batch(
                 )
             except Exception as error:
                 session.rollback()
-                publication_service.mark_failed(session, publication_id)
+                publication_service.mark_failed(session, publication_id, str(error))
                 logger.exception(
                     "background_publication_failed",
                     publication_id=publication_id,
@@ -263,30 +275,61 @@ def run_publication_batch(
             future.result()
 
 
-def run_pipeline(
-    project_id: str,
-    language: str | None = None,
-    clip_types: tuple[ClipType, ...] = (),
-) -> None:
-    """Background-task entry point with a fresh database session."""
+project_queue = ProjectQueue()
 
-    with pipeline_lock, SessionLocal() as session:
-        try:
-            runtime = runtime_settings_service.get(session)
-            selected_transcription = build_transcription_provider(language)
-            selected_pipeline = Pipeline(
-                settings,
-                selected_transcription,
-                build_editorial_provider(runtime.ollama_base_url, runtime.editorial_model),
-                visual_tracking_provider,
-            )
-            selected_pipeline.run(session, project_id, clip_types=clip_types)
-        except Exception as error:
-            logger.exception(
-                "pipeline_failed",
-                project_id=project_id,
-                error_category=type(error).__name__,
-            )
+
+def analyze_project(
+    session: Session,
+    project_id: str,
+    language: str | None,
+    clip_types: tuple[ClipType, ...],
+) -> None:
+    runtime = runtime_settings_service.get(session)
+    selected_pipeline = Pipeline(
+        settings,
+        build_transcription_provider(language),
+        build_editorial_provider(runtime.ollama_base_url, runtime.editorial_model),
+        visual_tracking_provider,
+    )
+    selected_pipeline.run(session, project_id, clip_types=clip_types)
+
+
+def download_project_media(url: str, target: Path) -> StoredUpload:
+    validated = validate_public_media_url(url, settings.media_import_hosts)
+    return media_downloader.download(validated, target, settings.max_upload_bytes)
+
+
+def run_project_cycle(*, recover: bool = False) -> str | None:
+    """One worker across threads and API processes, with durable FIFO ordering."""
+    if not pipeline_lock.acquire(blocking=False):
+        return None
+    try:
+        with (settings.data_dir / "project-worker.lock").open("a") as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return None
+            with SessionLocal() as session:
+                # Owning the process lock proves any running row is interrupted work.
+                # This also recovers a crashed worker when another API process stays up.
+                project_queue.recover(session)
+                if recover:
+                    return None
+                return project_queue.run_next(
+                    session,
+                    download_project_media,
+                    analyze_project,
+                )
+    finally:
+        pipeline_lock.release()
+
+
+def queue_project(project_id: str, clip_types: tuple[ClipType, ...]) -> None:
+    with SessionLocal() as session:
+        project = session.get(Project, project_id)
+        if not project:
+            raise LookupError("project not found")
+        project_queue.enqueue(session, project, clip_types=clip_types)
 
 
 def run_story_video(video_id: str) -> None:
@@ -369,9 +412,7 @@ def run_automation_cycle(pipeline_id: str | None = None) -> list[str]:
             publishing_adapters,
             credential_store,
             pipeline_id=pipeline_id,
-            analyze_project=lambda project_id, clip_types: run_pipeline(
-                project_id, None, clip_types
-            ),
+            analyze_project=queue_project,
         )
 
 
@@ -380,6 +421,10 @@ def find_project(session: Session, project_id: str) -> Project | None:
         select(Project)
         .where(Project.id == project_id)
         .options(
+            selectinload(Project.clips)
+            .selectinload(Clip.publications)
+            .selectinload(Publication.failure),
+            selectinload(Project.job),
             selectinload(Project.stages),
             selectinload(Project.clips)
             .selectinload(Clip.publications)

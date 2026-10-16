@@ -1,19 +1,46 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from datetime import timedelta
 from typing import cast
+from urllib.parse import urlparse
+from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from clipper.persistence import SocialAccount
+from clipper.persistence import SocialAccount, now_utc
+from clipper.persistence.models import OAuthAccountSelection, SocialAccountIdentity
 from clipper.providers.credentials import CredentialStoreError, EncryptedCredentialStore
 from clipper.publishing import OAuthClient, OAuthConnection, PublishingPlatform
+from clipper.publishing.contracts import MultiAccountOAuthClient
 
 
 class PublishingConnectionError(RuntimeError):
     pass
+
+
+class AccountSelectionRequired(PublishingConnectionError):
+    def __init__(self, selection_token: str) -> None:
+        super().__init__("Choose the destination to connect")
+        self.selection_token = selection_token
+
+
+@dataclass(frozen=True)
+class AccountChoice:
+    external_account_id: str
+    display_name: str
+    username: str
+    parent_page_name: str
+    already_connected: bool
+
+
+@dataclass(frozen=True)
+class PendingAccountSelection:
+    platform: str
+    candidates: tuple[AccountChoice, ...]
 
 
 @dataclass(frozen=True)
@@ -58,31 +85,229 @@ class PublishingConnectionService:
         code: str,
     ) -> SocialAccount:
         target = self._credentials.open_state(state)
-        callback_platform = platform
+        account: SocialAccount | None = None
         if target.startswith("new:"):
-            requested_platform = target.removeprefix("new:")
-            if requested_platform != callback_platform:
+            if target.removeprefix("new:") != platform:
                 raise PublishingConnectionError(
-                    "the authorization platform does not match the requested provider"
+                    "the authorization platform does not match the request"
                 )
-            connection = self._client(callback_platform).exchange_code(code, state)
-            return self._save_discovered_account(session, callback_platform, connection)
+        else:
+            account = self._account(session, target)
+            if account.platform != platform:
+                raise PublishingConnectionError(
+                    "the authorization platform does not match the account"
+                )
+        client = self._client(platform)
+        connections = (
+            client.exchange_code_candidates(code, state)
+            if isinstance(client, MultiAccountOAuthClient)
+            else [client.exchange_code(code, state)]
+        )
+        if not connections:
+            raise PublishingConnectionError("No publishing destinations were returned")
+        if account:
+            expected = self._expected_identity(account)
+            matches = (
+                [item for item in connections if item.external_account_id == expected]
+                if expected
+                else [
+                    item
+                    for item in connections
+                    if account.username
+                    and item.username
+                    and self._username(account.username) == self._username(item.username)
+                ]
+            )
+            if len(matches) != 1:
+                raise PublishingConnectionError(
+                    f"Destination {account.username or account.label} was not returned. "
+                    "Reconnect and grant access to that Page/account. "
+                    "Its saved connection was not changed."
+                )
+            return self._save_connection(session, account, matches[0])
+        existing = None
+        if len(connections) == 1 and isinstance(client, MultiAccountOAuthClient):
+            existing = self._matching_account(
+                list(
+                    session.scalars(select(SocialAccount).where(SocialAccount.platform == platform))
+                ),
+                connections[0],
+            )
+        if len(connections) == 1 and not (existing and existing.is_active):
+            return self._save_discovered_account(session, platform, connections[0])
+        session.execute(
+            delete(OAuthAccountSelection).where(
+                OAuthAccountSelection.created_at < now_utc() - timedelta(minutes=10)
+            )
+        )
+        selection = OAuthAccountSelection(
+            id=str(uuid4()),
+            encrypted_payload=self._credentials.seal_state(
+                json.dumps(
+                    {
+                        "platform": platform,
+                        "connections": [asdict(item) for item in connections],
+                    }
+                )
+            ),
+        )
+        session.add(selection)
+        session.commit()
+        raise AccountSelectionRequired(self._credentials.seal_state("selection:" + selection.id))
 
-        account = self._account(session, target)
-        if account.platform != platform:
-            raise PublishingConnectionError("the authorization platform does not match the account")
-        connection = self._client(platform).exchange_code(code, state)
+    def _pending(
+        self, session: Session, token: str
+    ) -> tuple[OAuthAccountSelection, str, list[OAuthConnection]]:
+        reference = self._credentials.open_state(token)
+        if not reference.startswith("selection:"):
+            raise PublishingConnectionError("Invalid account selection")
+        pending = session.get(OAuthAccountSelection, reference.removeprefix("selection:"))
+        if not pending:
+            raise PublishingConnectionError(
+                "Account selection expired or was already used. Connect again."
+            )
+        payload = json.loads(self._credentials.open_state(pending.encrypted_payload))
+        return (
+            pending,
+            str(payload["platform"]),
+            [OAuthConnection(**item) for item in payload["connections"]],
+        )
+
+    def pending_selection(self, session: Session, token: str) -> PendingAccountSelection:
+        _, platform, connections = self._pending(session, token)
+        accounts = list(
+            session.scalars(select(SocialAccount).where(SocialAccount.platform == platform))
+        )
+        return PendingAccountSelection(
+            platform,
+            tuple(
+                AccountChoice(
+                    item.external_account_id,
+                    item.display_name,
+                    item.username,
+                    item.parent_page_name,
+                    any(
+                        account.is_active
+                        and self._expected_identity(account) == item.external_account_id
+                        for account in accounts
+                    ),
+                )
+                for item in connections
+            ),
+        )
+
+    def select_account(self, session: Session, token: str, external_id: str) -> SocialAccount:
+        pending, platform, connections = self._pending(session, token)
+        selected = next(
+            (item for item in connections if item.external_account_id == external_id), None
+        )
+        if not selected:
+            raise PublishingConnectionError("Choose an account returned by this authorization")
+        # Claim once in the same transaction as the account update. SQLite's write lock
+        # also serializes two tabs attempting to consume the same selection.
+        consumed = session.execute(
+            delete(OAuthAccountSelection).where(OAuthAccountSelection.id == pending.id)
+        )
+        if not consumed.rowcount:  # type: ignore[attr-defined]
+            session.rollback()
+            raise PublishingConnectionError("This account selection was already used")
+        return self._save_discovered_account(session, platform, selected)
+
+    @staticmethod
+    def _username(value: str) -> str:
+        return value.strip().lstrip("@").casefold()
+
+    def _expected_identity(self, account: SocialAccount) -> str:
+        if account.identity:
+            return account.identity.external_account_id
+        try:
+            stored = self._credentials.load(account.id)
+        except CredentialStoreError:
+            stored = None
+        if stored and stored.external_account_id:
+            return stored.external_account_id
+        # Legacy Facebook records retain the numeric Page ID in their public URL.
+        if account.platform == "facebook" and account.profile_url:
+            path = urlparse(account.profile_url).path.strip("/")
+            if path.isdigit():
+                return path
+        return ""
+
+    def _bind_identity(self, account: SocialAccount, connection: OAuthConnection) -> None:
+        if not connection.external_account_id:
+            raise PublishingConnectionError("Provider did not return an account identity")
+        if (
+            account.identity
+            and account.identity.external_account_id != connection.external_account_id
+        ):
+            raise PublishingConnectionError(
+                "Cannot replace an account with a different destination"
+            )
+        if not account.identity:
+            account.identity = SocialAccountIdentity(
+                platform=account.platform, external_account_id=connection.external_account_id
+            )
+        account.identity.parent_page_id = connection.parent_page_id
+        account.identity.parent_page_name = connection.parent_page_name
+
+    def _save_connection(
+        self, session: Session, account: SocialAccount, connection: OAuthConnection
+    ) -> SocialAccount:
+        expected = self._expected_identity(account)
+        if expected and expected != connection.external_account_id:
+            raise PublishingConnectionError(
+                "Cannot replace an account with a different destination"
+            )
+        self._bind_identity(account, connection)
+        session.flush()
         self._credentials.save(account.id, connection)
         account.connection_status = "connected"
+        account.is_active = True
         if connection.username:
-            account.username = connection.username[:100]
+            account.username = connection.username.lstrip("@")[:100]
         if connection.profile_url:
             account.profile_url = connection.profile_url[:2048]
         session.commit()
         return account
 
+    def backfill_identities(self, session: Session) -> None:
+        """Persist existing provider IDs before tokens can be disconnected or replaced."""
+        for account in session.scalars(
+            select(SocialAccount).where(SocialAccount.is_active.is_(True))
+        ):
+            if account.identity:
+                continue
+            try:
+                connection = self._credentials.load(account.id)
+            except CredentialStoreError:
+                continue
+            if not connection or not connection.external_account_id:
+                continue
+            existing = session.scalar(
+                select(SocialAccountIdentity).where(
+                    SocialAccountIdentity.platform == account.platform,
+                    SocialAccountIdentity.external_account_id == connection.external_account_id,
+                )
+            )
+            if existing:
+                continue
+            if (
+                account.platform == "instagram"
+                and account.username
+                and connection.username
+                and self._username(account.username) != self._username(connection.username)
+            ):
+                continue
+            self._bind_identity(account, connection)
+            session.flush()
+        session.commit()
+
     def disconnect(self, session: Session, account_id: str) -> SocialAccount:
         account = self._account(session, account_id)
+        stored = self._credentials.load(account.id)
+        if stored and stored.external_account_id:
+            self._bind_identity(account, stored)
+            session.flush()
         self._credentials.delete(account.id)
         account.connection_status = "disconnected"
         session.commit()
@@ -121,6 +346,12 @@ class PublishingConnectionService:
             and connection.refresh_token == connection.access_token
         ):
             issues.append("account_reconnect_required")
+        if (
+            account.identity
+            and connection
+            and account.identity.external_account_id != connection.external_account_id
+        ):
+            issues.append("account_identity_mismatch")
         return AccountConnectionReadiness(
             account_id=account.id,
             platform=account.platform,
@@ -143,10 +374,9 @@ class PublishingConnectionService:
     ) -> SocialAccount:
         accounts = list(
             session.scalars(
-                select(SocialAccount).where(
-                    SocialAccount.platform == platform,
-                    SocialAccount.is_active.is_(True),
-                )
+                select(SocialAccount)
+                .where(SocialAccount.platform == platform)
+                .order_by(SocialAccount.is_active.desc(), SocialAccount.created_at)
             )
         )
         account = self._matching_account(accounts, connection)
@@ -155,45 +385,32 @@ class PublishingConnectionService:
                 platform=platform,
                 label=(connection.display_name or self._default_label(platform))[:100],
                 username=connection.username.lstrip("@")[:100],
-                profile_url=connection.profile_url[:2048] or None,
-                connection_status="connected",
-                is_default=not any(candidate.is_default for candidate in accounts),
+                is_default=not any(item.is_active and item.is_default for item in accounts),
             )
             session.add(account)
             session.flush()
-        else:
-            account.connection_status = "connected"
-            if connection.username:
-                account.username = connection.username.lstrip("@")[:100]
-            if connection.profile_url:
-                account.profile_url = connection.profile_url[:2048]
-
-        self._credentials.save(account.id, connection)
-        session.commit()
-        return account
+        elif not account.is_active:
+            account.is_default = not any(item.is_active and item.is_default for item in accounts)
+        return self._save_connection(session, account, connection)
 
     def _matching_account(
-        self,
-        accounts: list[SocialAccount],
-        connection: OAuthConnection,
+        self, accounts: list[SocialAccount], connection: OAuthConnection
     ) -> SocialAccount | None:
         for account in accounts:
-            try:
-                stored = self._credentials.load(account.id)
-            except CredentialStoreError:
-                continue
-            if (
-                stored
-                and connection.external_account_id
-                and stored.external_account_id == connection.external_account_id
-            ):
+            if self._expected_identity(account) == connection.external_account_id:
                 return account
         if connection.username:
-            normalized = connection.username.lstrip("@").casefold()
-            return next(
-                (account for account in accounts if account.username.casefold() == normalized),
-                None,
-            )
+            matches = [
+                account
+                for account in accounts
+                if not self._expected_identity(account)
+                and self._username(account.username) == self._username(connection.username)
+            ]
+            active = [account for account in matches if account.is_active]
+            if len(active) == 1:
+                return active[0]
+            if len(matches) == 1:
+                return matches[0]
         return None
 
     @staticmethod

@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
+from dataclasses import replace
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from urllib.parse import urlparse
 
 import httpx
 
+from clipper.media.errors import MediaError
+from clipper.media.instagram import encode_instagram_video
 from clipper.providers.publishing_http import (
     ProviderApiError,
     PublishingHttpClient,
@@ -14,12 +20,46 @@ from clipper.providers.publishing_http import (
 from clipper.publishing import OAuthConnection, ProviderMetrics, PublishedPost, PublishRequest
 
 
+class _InstagramUploadRejected(ProviderApiError):
+    def __init__(self, message: str, *, compatibility_retry: bool) -> None:
+        super().__init__(message)
+        self.compatibility_retry = compatibility_retry
+
+
 class InstagramPublishingAdapter(PublishingHttpClient):
-    def __init__(self, graph_version: str, *, client: httpx.Client | None = None) -> None:
+    def __init__(
+        self,
+        graph_version: str,
+        *,
+        client: httpx.Client | None = None,
+        compatibility_encoder: Callable[[Path, Path], None] | None = encode_instagram_video,
+    ) -> None:
         super().__init__(client)
         self._base = f"https://graph.facebook.com/{graph_version}"
+        self._compatibility_encoder = compatibility_encoder
 
     def publish(self, request: PublishRequest, connection: OAuthConnection) -> PublishedPost:
+        try:
+            return self._publish(request, connection)
+        except _InstagramUploadRejected as error:
+            if not error.compatibility_retry or self._compatibility_encoder is None:
+                raise
+        # A rejected container cannot be reused. Only retry before media_publish,
+        # with a new container and a temporary encoding; never retry publishing.
+        with TemporaryDirectory(prefix="reachcut-instagram-") as directory:
+            compatible = Path(directory) / "compatible.mp4"
+            try:
+                self._compatibility_encoder(request.media_path, compatible)
+            except MediaError as error:
+                raise ProviderApiError(str(error)) from error
+            try:
+                return self._publish(replace(request, media_path=compatible), connection)
+            except ProviderApiError as error:
+                raise ProviderApiError(
+                    f"Instagram compatibility upload also failed: {error}"
+                ) from error
+
+    def _publish(self, request: PublishRequest, connection: OAuthConnection) -> PublishedPost:
         if connection.refresh_token and connection.refresh_token == connection.access_token:
             raise ProviderApiError(
                 "Instagram is connected with the old direct-login credentials. Reconnect the "
@@ -61,7 +101,12 @@ class InstagramPublishingAdapter(PublishingHttpClient):
                         content=media,
                         timeout=None,
                     )
-                    uploaded.raise_for_status()
+                    try:
+                        uploaded.raise_for_status()
+                    except httpx.HTTPStatusError as error:
+                        raise _instagram_upload_error(
+                            client, self._base, str(container_id), token, error
+                        ) from error
                 _wait_for_instagram_container(client, self._base, str(container_id), token)
                 published = client.post(
                     f"{self._base}/{account_id}/media_publish",
@@ -323,6 +368,57 @@ def _is_permission_error(response: httpx.Response) -> bool:
     if not isinstance(error, dict):
         return False
     return error.get("code") in {10, 200}
+
+
+def _instagram_upload_error(
+    client: httpx.Client,
+    base_url: str,
+    container_id: str,
+    token: str,
+    error: httpx.HTTPStatusError,
+) -> _InstagramUploadRejected:
+    """Enrich rupload's generic failure with its unpublished container diagnostics."""
+    message = str(
+        PublishingHttpClient.raise_error(
+            f"Instagram video upload failed (container {container_id})", error
+        )
+    )
+    trace = error.response.headers.get("x-fb-trace-id") or error.response.headers.get(
+        "x-fb-request-id"
+    )
+    if trace:
+        message += f"; Meta trace: {trace}"
+    compatibility_retry = False
+    try:
+        status = client.get(
+            f"{base_url}/{container_id}",
+            params={"fields": "status_code,status,video_status", "access_token": token},
+        )
+        status.raise_for_status()
+        payload = status.json()
+        video_status = payload.get("video_status")
+        if isinstance(video_status, dict):
+            uploading = video_status.get("uploading_phase")
+            if isinstance(uploading, dict):
+                if "bytes_transferred" in uploading:
+                    message += f"; bytes transferred: {uploading['bytes_transferred']}"
+                issues = uploading.get("errors")
+                if isinstance(issues, list):
+                    for issue in issues[:3]:
+                        if isinstance(issue, dict):
+                            if (
+                                issue.get("code") == 1363008
+                                and uploading.get("bytes_transferred") == 0
+                                and "FILE_NOT_FOUND" in str(issue.get("message", ""))
+                            ):
+                                compatibility_retry = True
+                            message += (
+                                f"; Meta {issue.get('code', 'error')}: {issue.get('message', '')}"
+                            )
+    except (httpx.HTTPError, ValueError, AttributeError):
+        # A secondary diagnostic request must never hide the upload failure.
+        pass
+    return _InstagramUploadRejected(message, compatibility_retry=compatibility_retry)
 
 
 def _wait_for_instagram_container(

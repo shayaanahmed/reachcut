@@ -232,3 +232,55 @@ def test_x_oauth_uses_pkce_and_requests_persistent_publish_access() -> None:
     assert connection.refresh_token == "refresh"  # noqa: S105 - synthetic test fixture
     assert connection.external_account_id == "x-1"
     assert connection.username == "creator"
+
+
+@pytest.mark.parametrize("platform", ["facebook", "instagram"])
+def test_meta_discovery_keeps_all_paginated_destinations_and_never_follows_paging_url(
+    platform: str,
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        assert request.url.host == "graph.facebook.com"
+        if request.url.path.endswith("/oauth/access_token"):
+            return httpx.Response(200, json={"access_token": "user-token"})
+        page_number = "2" if request.url.params.get("after") else "1"
+        payload: dict[str, object] = {
+            "data": [
+                {
+                    "id": "page-" + page_number,
+                    "name": "Page " + page_number,
+                    "access_token": "page-token-" + page_number,
+                    "instagram_business_account": {
+                        "id": "ig-" + page_number,
+                        "username": "creator" + page_number,
+                    },
+                }
+            ]
+        }
+        if page_number == "1":
+            payload["paging"] = {
+                "next": "https://untrusted.example/steal",
+                "cursors": {"after": "next-page"},
+            }
+        return httpx.Response(200, json=payload)
+
+    provider = FacebookOAuthClient if platform == "facebook" else InstagramOAuthClient
+    client = provider(
+        OAuthAppConfig("client", "secret", "https://example.test/callback", "config"),
+        "v26.0",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    candidates = client.exchange_code_candidates("code")
+    assert len(candidates) == 2
+    assert [item.external_account_id for item in candidates] == (
+        ["page-1", "page-2"] if platform == "facebook" else ["ig-1", "ig-2"]
+    )
+    assert candidates[1].access_token == (
+        "page-token-2" if platform == "facebook" else "user-token"
+    )
+    if platform == "instagram":
+        assert candidates[1].parent_page_id == "page-2"
+    with pytest.raises(OAuthProviderError, match="Multiple"):
+        client.exchange_code("code")

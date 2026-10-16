@@ -9,6 +9,7 @@ import type {
 } from "../../lib/contracts";
 import { formatBytes } from "../../lib/format";
 import { ProjectProgress } from "./project-progress";
+import { projectPhase } from "./project-queue";
 import type { OperationState } from "./use-project-workbench";
 
 export function ProjectCard({
@@ -22,6 +23,7 @@ export function ProjectCard({
   operationState,
   onProcess,
   onStop,
+  onRetry,
   onApprove,
   onDeleteClip,
   onRender,
@@ -38,6 +40,7 @@ export function ProjectCard({
   operationState: (key: string) => OperationState | undefined;
   onProcess: (id: string) => Promise<unknown>;
   onStop?: (id: string) => Promise<unknown>;
+  onRetry?: (id: string) => Promise<unknown>;
   onApprove: (clipId: string, approved: boolean) => Promise<unknown>;
   onDeleteClip: (clipId: string) => Promise<unknown>;
   onRender: (clipId: string) => Promise<unknown>;
@@ -45,6 +48,18 @@ export function ProjectCard({
   onDelete: (id: string) => Promise<unknown>;
 }) {
   const processing = isPending(`project:${project.id}:process`);
+  const retrying = isPending(`project:${project.id}:retry`);
+  const pausing = isPending(`project:${project.id}:stop`);
+  const active = [
+    "queued",
+    "downloading",
+    "processing",
+    "cancel_requested",
+  ].includes(project.status);
+  const paused = project.status === "cancelled";
+  const retryable = paused || project.status === "failed";
+  const starting = processing || retrying;
+  const pausingRequested = project.status === "cancel_requested";
   const renaming = isPending(`project:${project.id}:rename`);
   const deleting = isPending(`project:${project.id}:delete`);
   const bestClipId = project.clips.reduce<string | null>((bestId, clip) => {
@@ -63,7 +78,9 @@ export function ProjectCard({
     <article className="project-workspace">
       <div className="project-workspace-header">
         <div>
-          <span className={`status ${project.status}`}>{project.status}</span>
+          <span className={`status ${project.status}`}>
+            {paused ? "Paused" : pausingRequested ? "Pausing" : project.status}
+          </span>
           <h1>{project.title}</h1>
           <p>
             {project.original_filename}
@@ -74,21 +91,6 @@ export function ProjectCard({
           </p>
         </div>
         <div className="project-admin-actions">
-          {["processing", "cancel_requested"].includes(project.status) &&
-            onStop && (
-              <button
-                type="button"
-                disabled={
-                  isPending(`project:${project.id}:stop`) ||
-                  project.status === "cancel_requested"
-                }
-                onClick={() => void onStop(project.id)}
-              >
-                {project.status === "cancel_requested"
-                  ? "Stopping…"
-                  : "Stop project"}
-              </button>
-            )}
           <details>
             <summary>Rename</summary>
             <form
@@ -113,7 +115,12 @@ export function ProjectCard({
             type="button"
             disabled={
               deleting ||
-              ["processing", "cancel_requested"].includes(project.status)
+              [
+                "queued",
+                "downloading",
+                "processing",
+                "cancel_requested",
+              ].includes(project.status)
             }
             onClick={() => {
               if (
@@ -128,16 +135,56 @@ export function ProjectCard({
           </button>
         </div>
       </div>
-      {["created", "failed", "review"].includes(project.status) && (
-        <div className="analysis-bar">
+      <section className="analysis-bar" aria-label="Project pipeline">
+        <div className="pipeline-control-heading">
           <div>
-            <strong>
-              {project.status === "created"
-                ? "Ready to analyze"
-                : "Run analysis again"}
-            </strong>
-            <small>Transcription and highlight selection run locally.</small>
+            <span className="eyebrow">PROJECT PIPELINE</span>
+            <h2>{paused ? "Pipeline paused" : projectPhase(project)}</h2>
+            <p aria-live="polite">
+              {pausingRequested
+                ? "Waiting for the current operation to stop safely. Completed stages are saved."
+                : active
+                  ? "Processing in the background. You can pause and return later."
+                  : retryable
+                    ? "Resume with your saved settings. Completed stages are reused; interrupted work runs again."
+                    : project.status === "review"
+                      ? "Your clips are ready below. Run the pipeline again to regenerate clips."
+                      : "Choose your settings, then start transcription and highlight selection."}
+            </p>
           </div>
+          {active ? (
+            <button
+              type="button"
+              className="pipeline-pause"
+              disabled={pausing || pausingRequested || !onStop}
+              onClick={() => void onStop?.(project.id)}
+            >
+              {pausing || pausingRequested ? "Pausing…" : "Pause pipeline"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="pipeline-start"
+              disabled={starting}
+              onClick={() =>
+                void (retryable && onRetry
+                  ? onRetry(project.id)
+                  : onProcess(project.id))
+              }
+            >
+              {starting
+                ? "Starting…"
+                : paused
+                  ? "Resume pipeline"
+                  : project.status === "failed"
+                    ? "Retry pipeline"
+                    : project.status === "review"
+                      ? "Run pipeline again"
+                      : "Start pipeline"}
+            </button>
+          )}
+        </div>
+        {!active && !retryable && (
           <div className="analysis-controls">
             <label>
               Spoken language
@@ -188,21 +235,12 @@ export function ProjectCard({
               </div>
               <small>Leave all unchecked for automatic discovery.</small>
             </fieldset>
-            <button
-              className="secondary"
-              disabled={processing}
-              onClick={() => void onProcess(project.id)}
-            >
-              {processing
-                ? "Starting…"
-                : project.status === "created"
-                  ? "Analyze"
-                  : "Re-analyze"}
-            </button>
           </div>
-        </div>
+        )}
+      </section>
+      {(project.stages.length > 0 || project.job) && (
+        <ProjectProgress project={project} />
       )}
-      {project.stages.length > 0 && <ProjectProgress project={project} />}
       {clipTypeSuggestions.length > 0 && (
         <section
           className="clip-direction-panel"

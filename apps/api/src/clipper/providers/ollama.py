@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from itertools import pairwise
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 import httpx
 import structlog
@@ -21,6 +21,7 @@ from clipper.domain.editing_plan import (
     Effect,
     EffectType,
     EnhancementLevel,
+    Hashtag,
     Hook,
     Scores,
     TimeRange,
@@ -31,6 +32,10 @@ from clipper.editorial.contracts import EditorialContext
 from clipper.transcription import CancellationProbe, ProgressReporter
 
 logger = structlog.get_logger()
+
+# Ollama's schema-to-grammar conversion cannot consume the domain regex's \s.
+# Keep strict domain validation while sending a grammar-compatible space exclusion.
+EditorialHashtag = Annotated[Hashtag, Field(json_schema_extra={"pattern": r"^#[^ #]{1,39}$"})]
 
 
 class EditorialCandidate(BaseModel):
@@ -44,19 +49,38 @@ class EditorialCandidate(BaseModel):
     rationale: str = Field(min_length=1, max_length=240)
     hook_text: str = Field(min_length=1, max_length=100)
     suggested_title: str = Field(min_length=1, max_length=100)
-    hashtags: list[str] = Field(min_length=3, max_length=6)
+    hashtags: list[EditorialHashtag] = Field(min_length=3, max_length=6)
     caption_style: Literal["clean", "kinetic_highlight", "karaoke"] = "clean"
     cta_text: str = Field(default="Follow for more", min_length=1, max_length=100)
     clip_type: ClipType = ClipType.HIGHLIGHT
 
+    @field_validator("hashtags", mode="before")
+    @classmethod
+    def normalize_hashtag_whitespace(cls, value: object) -> object:
+        # Model-generated multiword tags are recoverable formatting errors.
+        # Preserve Unicode letters and validate the repaired tags against Hashtag.
+        if not isinstance(value, list):
+            return value
+        return [re.sub(r"\s+", "_", tag.strip()) if isinstance(tag, str) else tag for tag in value]
+
     @field_validator("hashtags")
     @classmethod
     def hashtags_are_distinct(cls, hashtags: list[str]) -> list[str]:
-        if invalid := [tag for tag in hashtags if not re.fullmatch(r"#[^\s#]{1,39}", tag)]:
-            raise ValueError(f"hashtags must start with # and contain no spaces: {invalid[0]}")
-        if len({hashtag.casefold() for hashtag in hashtags}) != len(hashtags):
-            raise ValueError("hashtags must be distinct")
-        return hashtags
+        # Repeated model tags are recoverable without discarding the ranking.
+        # Items and the original list length have already passed validation.
+        distinct: list[str] = []
+        seen: set[str] = set()
+        for hashtag in hashtags:
+            if hashtag.casefold() not in seen:
+                distinct.append(hashtag)
+                seen.add(hashtag.casefold())
+        for fallback in ("#VideoClip", "#Highlights", "#MustWatch"):
+            if len(distinct) >= 3:
+                break
+            if fallback.casefold() not in seen:
+                distinct.append(fallback)
+                seen.add(fallback.casefold())
+        return distinct
 
 
 class CandidateEnvelope(BaseModel):
@@ -109,7 +133,7 @@ class EditorialGenerationConfig:
 
 
 class OllamaEditorialProvider:
-    CONTRACT_VERSION = "editorial-ranking-10"
+    CONTRACT_VERSION = "editorial-ranking-12"
 
     def __init__(
         self,
@@ -806,7 +830,9 @@ class OllamaEditorialProvider:
             "debate, educational, emotional, or promotional. Make "
             "suggested_title concise, accurate, curiosity-driven, and catchy without misleading "
             "clickbait. Return 3-6 distinct, relevant, ready-to-paste hashtags, each beginning "
-            "with # and containing no spaces. Do not generate or change timestamps, boundaries, "
+            "with # and containing no spaces. Use underscores between words, including in "
+            "Urdu and other non-English hashtags. Do not generate or change timestamps, "
+            "boundaries, "
             "effects, or rendering instructions. Prefer coherent ideas with strong openings and "
             "natural endings. For goal=views, prioritize an immediate hook, density, and a clean "
             "loop or payoff. For goal=revenue, prioritize sustained coherence and a payoff that "

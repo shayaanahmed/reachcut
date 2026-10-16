@@ -98,6 +98,24 @@ def test_best_clip_pipeline_publishes_only_highest_score(
             ),
         )
 
+        project.status = "queued"
+        session.commit()
+        assert (
+            service.execute_due(
+                session,
+                object(),  # type: ignore[arg-type]
+                PublicationService(),
+                {"youtube": publisher},
+                FakeCredentials(),
+            )
+            == []
+        )
+        session.refresh(pipeline)
+        assert pipeline.status == "active"
+        assert not publisher.requests
+        project.status = "review"
+        session.commit()
+
         completed = service.execute_due(
             session,
             object(),  # type: ignore[arg-type]

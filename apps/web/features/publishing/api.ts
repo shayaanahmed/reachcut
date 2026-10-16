@@ -1,4 +1,9 @@
 import {
+  socialAccountGroupSchema,
+  type SocialAccountGroup,
+  oauthAccountSelectionSchema,
+} from "../../lib/contracts";
+import {
   accountConnectionReadinessSchema,
   projectSchema,
   socialAccountSchema,
@@ -190,4 +195,100 @@ export async function disconnectSocialAccount(
   if (!response.ok)
     throw await responseError(response, "Could not disconnect account");
   return socialAccountSchema.parse(await response.json());
+}
+
+export async function getOAuthAccountSelection(token: string) {
+  const response = await fetch(
+    `${API_URL}/social-account-selections/${encodeURIComponent(token)}`,
+    { cache: "no-store" },
+  );
+  if (!response.ok)
+    throw await responseError(response, "Could not load account choices");
+  return oauthAccountSelectionSchema.parse(await response.json());
+}
+
+export async function selectOAuthAccount(
+  token: string,
+  externalAccountId: string,
+): Promise<SocialAccount> {
+  const response = await fetch(
+    `${API_URL}/social-account-selections/${encodeURIComponent(token)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ external_account_id: externalAccountId }),
+    },
+  );
+  if (!response.ok)
+    throw await responseError(response, "Could not connect this destination");
+  return socialAccountSchema.parse(await response.json());
+}
+
+export async function listAccountGroups(): Promise<SocialAccountGroup[]> {
+  const response = await fetch(`${API_URL}/social-account-groups`, {
+    cache: "no-store",
+  });
+  if (!response.ok)
+    throw await responseError(response, "Could not load account groups");
+  return socialAccountGroupSchema.array().parse(await response.json());
+}
+export type GroupWrite = Omit<SocialAccountGroup, "id">;
+export async function saveAccountGroup(id: string | null, data: GroupWrite) {
+  const response = await fetch(
+    `${API_URL}/social-account-groups${id ? `/${id}` : ""}`,
+    {
+      method: id ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    },
+  );
+  if (!response.ok)
+    throw await responseError(response, "Could not save account group");
+  return socialAccountGroupSchema.parse(await response.json());
+}
+export async function deleteAccountGroup(id: string) {
+  const response = await fetch(`${API_URL}/social-account-groups/${id}`, {
+    method: "DELETE",
+  });
+  if (!response.ok)
+    throw await responseError(response, "Could not delete account group");
+}
+export async function approveClipBatch(
+  projectId: string,
+  clipIds: string[] | null,
+): Promise<Project> {
+  const response = await fetch(
+    `${API_URL}/projects/${projectId}/clips/approve-batch`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clip_ids: clipIds }),
+    },
+  );
+  if (!response.ok)
+    throw await responseError(response, "Could not approve clips");
+  return projectSchema.parse(await response.json());
+}
+export type BulkPublishResult = {
+  project: Project;
+  queued: number;
+  skipped: { clip_id: string; account_id: string; reason: string }[];
+};
+export async function publishProjectBatch(
+  projectId: string,
+  clipIds: string[],
+  accountIds: string[],
+): Promise<BulkPublishResult> {
+  const response = await fetch(
+    `${API_URL}/projects/${projectId}/publish-batch`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clip_ids: clipIds, account_ids: accountIds }),
+    },
+  );
+  if (!response.ok)
+    throw await responseError(response, "Could not publish clips");
+  const data = (await response.json()) as BulkPublishResult;
+  return { ...data, project: projectSchema.parse(data.project) };
 }

@@ -4,7 +4,7 @@ ReachCut is a local-first application for turning media you are authorized to re
 
 The current vertical slice provides secure local upload and allowlisted URL import through `yt-dlp`, media probing, durable stage state, provider-based `faster-whisper` transcription, configurable Ollama editorial selection, and schema-validated views- and revenue-oriented editing plans. Transcript signals suggest useful clip directions such as funny moments, advice, stories, insights, and educational sections. The Creative Studio adds auto-curated source slices, content modes, OpenCV face/action tracking, caption presets and translation, hook/CTA/card overlays, transitions, zoom/progress effects, gameplay split-screen, B-roll, reaction PIP, SFX, music, and alternate source-audio selection. Deterministic FFmpeg rendering produces review previews and final 9:16 exports. Clips require human approval unless the user explicitly creates an automation pipeline that opts into approval, rendering, and publishing.
 
-For Urdu and other non-English media, select the spoken language before analysis. The default `large-v3-turbo` Whisper model substantially improves multilingual recognition, while ASS/libass captions preserve Unicode/RTL shaping. Caption position, font, size, colors, highlighted words, line length, and pop/karaoke animation can be reviewed and changed on each generated clip.
+For Urdu and other non-English media, select the spoken language when importing the source or before manually requesting analysis. The default `large-v3-turbo` Whisper model substantially improves multilingual recognition, while ASS/libass captions preserve Unicode/RTL shaping. Caption position, font, size, colors, highlighted words, line length, and pop/karaoke animation can be reviewed and changed on each generated clip.
 
 Caption translation uses the configured local Ollama model and can render either the
 translation or both languages. Visual tracking runs locally through OpenCV. Uploaded
@@ -60,6 +60,43 @@ Use **Settings** in the ReachCut sidebar to change the Ollama URL and select any
 installed model. Use **Automations** to schedule one-time, daily, or weekly
 end-to-end flows that analyze a project, select either the best-scored clip or all
 matching clips, render them, and publish them to selected connected accounts.
+
+The Automation source step supports existing projects, public video URLs, and local
+uploads. URL submission creates a project immediately; downloads and analysis run
+in a durable FIFO queue. Uploads join the same queue once the file has been saved.
+Manual analysis also uses this queue, with one project processed at a time. View
+live stages, cancel work, or retry failed jobs from **Automations** or **Projects**.
+Retry preserves the original language and clip settings. Interrupted jobs resume
+on API startup using saved stage artifacts. The queue table is created automatically
+in the existing database; no additional queue service is required. Keep the API
+running for processing and scheduled publishing to continue.
+
+
+Use **Publishing** in the sidebar to approve selected or all generated clips, render
+approved selections, and publish finished exports to accounts, platforms, or social
+account groups. Create groups such as Religious, Art, and Tech under **Accounts**;
+rename them, change their members, or delete them without disconnecting accounts or
+removing published history. An account may belong to several groups. Bulk publishing
+shows its exact destinations and skips unapproved clips, missing exports, disconnected
+accounts, and posts already queued or published to the same account. Failed attempts
+can be retried; concurrent duplicate requests cannot reserve the same clip/account.
+
+**Insights** provides cumulative views charts, group/platform/account filters,
+engagement, saved business metrics, and post performance. Totals use only the latest
+snapshot per post; currencies remain separate. Automatic refresh skips unavailable
+accounts and isolates each provider failure, while saved metrics remain visible.
+Expired or revoked credentials require reconnecting the original account in Accounts.
+Metrics unavailable through the current provider adapters can still be entered on a
+clip's publishing page. Chart period controls the chart; summary cards show latest
+lifetime totals for the selected destinations.
+
+For Facebook and Instagram logins with multiple destinations, ReachCut lists the
+Pages or linked Instagram accounts after authorization. Choose the destination to
+add. Reconnect refreshes only the existing provider account ID and refuses to
+replace it with another Page/profile. When granting access to additional Pages in
+Meta's login dialog, retain access to your existing destinations too. Each Instagram
+professional account must be linked to its corresponding Facebook Page. Account
+selection credentials remain encrypted on the API and expire after ten minutes.
 
 ReachCut retains the existing `CLIPPER_*` environment-variable prefix, `clipper`
 Python import package, database filename, and Docker data-volume name for backward
@@ -371,6 +408,13 @@ array contains only non-secret setup metadata and never exposes client secrets.
 Finally, open **Settings → Connected accounts**, select a platform, approve access on
 the provider's site, then return to ReachCut. Approve and render a clip before using
 **Publish with ReachCut**.
+
+Instagram uploads local files directly, so publishing does not require a public
+HTTPS address. If Meta rejects an upload with error 1363008 / `FILE_NOT_FOUND` and
+reports zero bytes accepted, ReachCut retries once in a fresh container using a
+temporary 720p H.264 Baseline / AAC copy. The original render is preserved. This
+compatibility retry happens before publishing; the publish call is never retried
+automatically.
 
 Provider access and refresh tokens are encrypted under the private data directory and
 are not stored in SQLite. Keep both `credentials.key` and the `credentials/` directory

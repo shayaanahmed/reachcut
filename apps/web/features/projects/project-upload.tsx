@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 import type { Project } from "../../lib/contracts";
+import { ImportLanguage } from "./import-language";
 import type { UrlImportRequest } from "./api";
 
 type ImportMode = "file" | "url";
@@ -12,15 +13,15 @@ const URL_STEPS = [
   { title: "Check the link", detail: "Validate the source and permissions" },
   {
     title: "Fetch the video",
-    detail: "Download one playable source with yt-dlp",
+    detail: "Download the video in the background",
   },
   {
     title: "Prepare the project",
     detail: "Verify the file and save it locally",
   },
   {
-    title: "Open your workspace",
-    detail: "Ready for transcription and highlights",
+    title: "Analyze in the queue",
+    detail: "Start automatically when the worker is free",
   },
 ] as const;
 
@@ -42,40 +43,23 @@ export function ProjectUpload({
   const [title, setTitle] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [importState, setImportState] = useState<ImportState>("idle");
-  const [activeStep, setActiveStep] = useState(0);
-  const stepTimer = useRef<number | null>(null);
-  const navigationTimer = useRef<number | null>(null);
-
-  useEffect(
-    () => () => {
-      if (stepTimer.current !== null) window.clearInterval(stepTimer.current);
-      if (navigationTimer.current !== null)
-        window.clearTimeout(navigationTimer.current);
-    },
-    [],
-  );
 
   async function importUrl(data: FormData) {
     setImportState("working");
-    setActiveStep(0);
-    stepTimer.current = window.setInterval(
-      () => setActiveStep((current) => Math.min(current + 1, 2)),
-      2200,
-    );
     const created = await onImportUrl({
       title: String(data.get("title")),
       url: String(data.get("url")),
       authorization_confirmed: data.get("authorization_confirmed") === "true",
+      ...(data.get("language")
+        ? { language: String(data.get("language")) }
+        : {}),
     });
-    if (stepTimer.current !== null) window.clearInterval(stepTimer.current);
-    stepTimer.current = null;
     if (!created) {
       setImportState("failed");
       return;
     }
-    setActiveStep(3);
     setImportState("ready");
-    navigationTimer.current = window.setTimeout(() => onCreated(created), 700);
+    onCreated(created);
   }
 
   return (
@@ -166,6 +150,7 @@ export function ProjectUpload({
                 placeholder="Founder interview — August"
               />
             </label>
+            <ImportLanguage disabled={busy} />
             <Authorization disabled={busy} />
             <button className="primary-button import-action" disabled={busy}>
               {busy ? "Creating your workspace…" : "Create project"}
@@ -236,10 +221,11 @@ export function ProjectUpload({
                 placeholder="Product launch cutdowns"
               />
             </label>
+            <ImportLanguage disabled={busy} />
             <Authorization disabled={busy} />
             <button className="primary-button import-action" disabled={busy}>
               {importState === "working"
-                ? "Importing video…"
+                ? "Adding to queue…"
                 : importState === "failed"
                   ? "Try import again"
                   : "Continue with this video"}
@@ -252,11 +238,7 @@ export function ProjectUpload({
             </div>
           </form>
 
-          <ImportJourney
-            state={importState}
-            activeStep={activeStep}
-            error={error}
-          />
+          <ImportJourney state={importState} error={error} />
         </div>
       )}
       <p className="notice">
@@ -305,37 +287,30 @@ function CreationOutcome() {
 
 function ImportJourney({
   state,
-  activeStep,
   error,
 }: {
   state: ImportState;
-  activeStep: number;
   error?: string | null;
 }) {
-  const progress =
-    state === "idle"
-      ? 0
-      : state === "ready"
-        ? 100
-        : Math.round(((activeStep + 0.55) / URL_STEPS.length) * 100);
+  const progress = state === "idle" ? 0 : state === "ready" ? 100 : 0;
   return (
     <aside className={`import-journey ${state}`} aria-live="polite">
       <div className="journey-heading">
         <span className="eyebrow">WHAT HAPPENS NEXT</span>
         <strong>
           {state === "ready"
-            ? "Video imported"
+            ? "Project queued"
             : state === "failed"
               ? "Import needs attention"
               : state === "working"
-                ? "Bringing in your video"
+                ? "Creating your project"
                 : "A guided local import"}
         </strong>
         <p>
           {state === "failed"
             ? error ||
               "The source could not be imported. Check the link and try again."
-            : "Keep this page open while ReachCut prepares your source."}
+            : "Downloads and analysis run in the background. You can add another project right away."}
         </p>
       </div>
       <div className="journey-progress" aria-hidden="true">
@@ -343,10 +318,9 @@ function ImportJourney({
       </div>
       <ol>
         {URL_STEPS.map((step, index) => {
-          const completed =
-            state === "ready" || (state === "working" && index < activeStep);
-          const active = state === "working" && index === activeStep;
-          const failed = state === "failed" && index === activeStep;
+          const completed = state === "ready" && index === 0;
+          const active = state === "working" && index === 0;
+          const failed = state === "failed" && index === 0;
           return (
             <li
               className={

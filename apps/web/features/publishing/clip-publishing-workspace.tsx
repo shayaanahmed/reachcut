@@ -100,6 +100,7 @@ export function ClipPublishingWorkspace({
         <PublicationTracker
           clip={clip}
           accounts={workbench.accounts}
+          groups={workbench.groups}
           isPending={workbench.isPending}
           onPublish={workbench.publish}
           onRecordMetrics={workbench.recordMetrics}

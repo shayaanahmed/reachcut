@@ -57,6 +57,7 @@ class MetricSnapshotResponse(BaseModel):
 
 
 class PublicationResponse(BaseModel):
+    error: str | None = None
     model_config = ConfigDict(from_attributes=True)
     id: str
     platform: str
@@ -93,12 +94,22 @@ class ClipResponse(BaseModel):
         return recommend_for_publishing(self.plan)
 
 
+class ProjectJobResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    status: str
+    phase: str
+    source_url: str | None
+    error: str | None
+    enqueued_at: datetime
+
+
 class ProjectResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     source_path: str = Field(exclude=True)
     title: str
     original_filename: str
+    job: ProjectJobResponse | None = None
     status: str
     duration_seconds: float | None
     authorization_confirmed_at: datetime
@@ -286,6 +297,7 @@ class ProjectUpdateRequest(BaseModel):
 
 
 class UrlImportRequest(BaseModel):
+    language: str | None = Field(default=None, pattern=r"^[a-z]{2}$")
     title: str = Field(min_length=1, max_length=200)
     url: str = Field(min_length=1, max_length=2_048)
     authorization_confirmed: bool
@@ -344,7 +356,7 @@ class AutomaticPublicationRequest(BaseModel):
 
 
 class AutomaticPublicationBatchRequest(BaseModel):
-    publications: list[AutomaticPublicationRequest] = Field(min_length=1, max_length=5)
+    publications: list[AutomaticPublicationRequest] = Field(min_length=1, max_length=200)
 
 
 class MetricCreateRequest(BaseModel):
@@ -361,6 +373,8 @@ class MetricCreateRequest(BaseModel):
 
 
 class SocialAccountResponse(BaseModel):
+    external_account_id: str | None = None
+    parent_page_name: str | None = None
     model_config = ConfigDict(from_attributes=True)
     id: str
     platform: SocialPlatform
@@ -376,6 +390,25 @@ class SocialAccountResponse(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+
+class OAuthAccountChoiceResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    external_account_id: str
+    display_name: str
+    username: str
+    parent_page_name: str
+    already_connected: bool
+
+
+class OAuthAccountSelectionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    platform: SocialPlatform
+    candidates: list[OAuthAccountChoiceResponse]
+
+
+class OAuthAccountSelectionRequest(BaseModel):
+    external_account_id: str = Field(min_length=1, max_length=200)
 
 
 class SocialAccountUpdateRequest(BaseModel):

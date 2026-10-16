@@ -1,5 +1,7 @@
 "use client";
 
+import { GroupManager } from "./group-manager";
+import { AccountConnectionPicker } from "./account-connection-picker";
 import { useEffect, useState } from "react";
 
 import type {
@@ -116,6 +118,8 @@ function accountData(data: FormData): SocialAccountUpdate {
 export function AccountSettings() {
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
   const [readiness, setReadiness] = useState<AccountConnectionReadiness[]>([]);
+  const [accountQuery, setAccountQuery] = useState("");
+  const [accountPlatform, setAccountPlatform] = useState("");
   const [loading, setLoading] = useState(true);
   const [operations, setOperations] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
@@ -222,6 +226,13 @@ export function AccountSettings() {
           {notice}
         </p>
       )}
+      <AccountConnectionPicker
+        onConnected={async (account) => {
+          setNotice(`${account.username || account.label} is connected.`);
+          setError(null);
+          await refresh();
+        }}
+      />
       <section className="account-health-grid" aria-label="Account health">
         <article>
           <span>Ready to publish</span>
@@ -315,6 +326,7 @@ export function AccountSettings() {
           />
         )}
       </section>
+      <GroupManager accounts={accounts} />
       <section className="section-block" aria-labelledby="configured-accounts">
         <div className="section-heading">
           <div>
@@ -322,6 +334,30 @@ export function AccountSettings() {
             <h2 id="configured-accounts">Destinations and readiness</h2>
           </div>
           <span>{readyCount} ready now</span>
+        </div>
+        <div className="publishing-project-picker">
+          <label>
+            Find accounts
+            <input
+              value={accountQuery}
+              onChange={(e) => setAccountQuery(e.target.value)}
+              placeholder="Search name or username"
+            />
+          </label>
+          <label>
+            Filter platform
+            <select
+              value={accountPlatform}
+              onChange={(e) => setAccountPlatform(e.target.value)}
+            >
+              <option value="">All platforms</option>
+              {platforms.map((p) => (
+                <option value={p} key={p}>
+                  {platformDetails[p].short}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
         {loading ? (
           <div className="loading-card">Loading accounts…</div>
@@ -332,117 +368,133 @@ export function AccountSettings() {
           </div>
         ) : (
           <div className="account-list">
-            {accounts.map((account) => {
-              const state = readinessById.get(account.id);
-              const connected = state?.credentials_available ?? false;
-              const ready = state?.publishing_ready ?? false;
-              const configured = capabilities.configured_platforms.includes(
-                account.platform,
-              );
-              const disconnectKey = `account:${account.id}:disconnect`;
-              const archiveKey = `account:${account.id}:archive`;
-              const updateKey = `account:${account.id}:update`;
-              return (
-                <article className="account-card" key={account.id}>
-                  <div className="account-card-heading">
-                    <span className={`account-avatar ${account.platform}`}>
-                      {platformDetails[account.platform].mark}
+            {accounts
+              .filter(
+                (a) =>
+                  (!accountPlatform || a.platform === accountPlatform) &&
+                  `${a.label} ${a.username}`
+                    .toLowerCase()
+                    .includes(accountQuery.toLowerCase()),
+              )
+              .map((account) => {
+                const state = readinessById.get(account.id);
+                const connected = state?.credentials_available ?? false;
+                const ready = state?.publishing_ready ?? false;
+                const configured = capabilities.configured_platforms.includes(
+                  account.platform,
+                );
+                const disconnectKey = `account:${account.id}:disconnect`;
+                const archiveKey = `account:${account.id}:archive`;
+                const updateKey = `account:${account.id}:update`;
+                return (
+                  <article className="account-card" key={account.id}>
+                    <div className="account-card-heading">
+                      <span className={`account-avatar ${account.platform}`}>
+                        {platformDetails[account.platform].mark}
+                      </span>
+                      <span
+                        className={`connection-badge ${ready ? "connected" : ""}`}
+                      >
+                        {ready ? "● Ready to publish" : "○ Action required"}
+                      </span>
+                    </div>
+                    <span className={`account-platform ${account.platform}`}>
+                      {platformDetails[account.platform].label}
                     </span>
-                    <span
-                      className={`connection-badge ${ready ? "connected" : ""}`}
-                    >
-                      {ready ? "● Ready to publish" : "○ Action required"}
-                    </span>
-                  </div>
-                  <span className={`account-platform ${account.platform}`}>
-                    {platformDetails[account.platform].label}
-                  </span>
-                  <h3>{account.label}</h3>
-                  <p>
-                    {account.username
-                      ? `@${account.username}`
-                      : "Profile details sync after connection"}
-                  </p>
-                  <div
-                    className="account-readiness"
-                    aria-label="Readiness checks"
-                  >
-                    <ReadinessCheck
-                      ready={state?.provider_configured ?? configured}
-                      label="Provider configured"
-                    />
-                    <ReadinessCheck
-                      ready={connected}
-                      label="Secure credentials"
-                    />
-                    <ReadinessCheck
-                      ready={
-                        Boolean(account.default_cta) ||
-                        account.default_hashtags.length > 0
-                      }
-                      label="Publishing defaults"
-                      optional
-                    />
-                  </div>
-                  <div className="account-card-actions">
-                    {configured && (
-                      <a href={socialConnectUrl(account.id)}>
-                        {connected ? "Reconnect" : "Connect"}
-                      </a>
+                    <h3>{account.label}</h3>
+                    <p>
+                      {account.username
+                        ? `@${account.username}`
+                        : "Profile details sync after connection"}
+                    </p>
+                    {account.external_account_id && (
+                      <small className="account-provider-id">
+                        Account ID: {account.external_account_id}
+                      </small>
                     )}
-                    {connected && (
+                    {account.parent_page_name && (
+                      <p>Facebook Page: {account.parent_page_name}</p>
+                    )}
+                    <div
+                      className="account-readiness"
+                      aria-label="Readiness checks"
+                    >
+                      <ReadinessCheck
+                        ready={state?.provider_configured ?? configured}
+                        label="Provider configured"
+                      />
+                      <ReadinessCheck
+                        ready={connected}
+                        label="Secure credentials"
+                      />
+                      <ReadinessCheck
+                        ready={
+                          Boolean(account.default_cta) ||
+                          account.default_hashtags.length > 0
+                        }
+                        label="Publishing defaults"
+                        optional
+                      />
+                    </div>
+                    <div className="account-card-actions">
+                      {configured && (
+                        <a href={socialConnectUrl(account.id)}>
+                          {connected ? "Reconnect" : "Connect"}
+                        </a>
+                      )}
+                      {connected && (
+                        <button
+                          type="button"
+                          disabled={isPending(disconnectKey)}
+                          onClick={() =>
+                            void mutate(disconnectKey, () =>
+                              disconnectSocialAccount(account.id),
+                            )
+                          }
+                        >
+                          {isPending(disconnectKey)
+                            ? "Disconnecting…"
+                            : "Disconnect"}
+                        </button>
+                      )}
                       <button
                         type="button"
-                        disabled={isPending(disconnectKey)}
-                        onClick={() =>
-                          void mutate(disconnectKey, () =>
-                            disconnectSocialAccount(account.id),
+                        disabled={isPending(archiveKey)}
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              `Remove “${account.label}”? Existing publication history will remain.`,
+                            )
+                          )
+                            void mutate(archiveKey, () =>
+                              archiveSocialAccount(account.id),
+                            );
+                        }}
+                      >
+                        {isPending(archiveKey) ? "Removing…" : "Remove"}
+                      </button>
+                    </div>
+                    {!configured && (
+                      <small className="setup-hint">
+                        Ask the workspace owner to configure{" "}
+                        {platformDetails[account.platform].short} OAuth.
+                      </small>
+                    )}
+                    <details className="account-edit">
+                      <summary>Publishing defaults</summary>
+                      <AccountForm
+                        account={account}
+                        busy={isPending(updateKey)}
+                        onSave={(data) =>
+                          mutate(updateKey, () =>
+                            updateSocialAccount(account.id, accountData(data)),
                           )
                         }
-                      >
-                        {isPending(disconnectKey)
-                          ? "Disconnecting…"
-                          : "Disconnect"}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      disabled={isPending(archiveKey)}
-                      onClick={() => {
-                        if (
-                          window.confirm(
-                            `Remove “${account.label}”? Existing publication history will remain.`,
-                          )
-                        )
-                          void mutate(archiveKey, () =>
-                            archiveSocialAccount(account.id),
-                          );
-                      }}
-                    >
-                      {isPending(archiveKey) ? "Removing…" : "Remove"}
-                    </button>
-                  </div>
-                  {!configured && (
-                    <small className="setup-hint">
-                      Ask the workspace owner to configure{" "}
-                      {platformDetails[account.platform].short} OAuth.
-                    </small>
-                  )}
-                  <details className="account-edit">
-                    <summary>Publishing defaults</summary>
-                    <AccountForm
-                      account={account}
-                      busy={isPending(updateKey)}
-                      onSave={(data) =>
-                        mutate(updateKey, () =>
-                          updateSocialAccount(account.id, accountData(data)),
-                        )
-                      }
-                    />
-                  </details>
-                </article>
-              );
-            })}
+                      />
+                    </details>
+                  </article>
+                );
+              })}
           </div>
         )}
       </section>

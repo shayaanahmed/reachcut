@@ -316,3 +316,213 @@ def test_tiktok_chunk_plan_keeps_the_remainder_in_the_final_chunk(
     expected: tuple[int, int],
 ) -> None:
     assert _tiktok_chunk_plan(size) == expected
+
+
+def test_instagram_upload_error_exposes_container_diagnostics_without_publishing(
+    media: Path,
+) -> None:
+    published = False
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal published
+        if request.url.host == "rupload.facebook.com":
+            return httpx.Response(
+                400,
+                json={
+                    "debug_info": {
+                        "retriable": False,
+                        "type": "ProcessingFailedError",
+                        "message": "Request processing failed",
+                    }
+                },
+                headers={"x-fb-trace-id": "trace-123"},
+            )
+        if request.method == "POST" and request.url.path.endswith("/ig-1/media"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": "container-1",
+                    "uri": "https://rupload.facebook.com/ig-api-upload/container-1",
+                },
+            )
+        if request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "video_status": {
+                        "uploading_phase": {
+                            "status": "error",
+                            "bytes_transferred": 0,
+                            "errors": [
+                                {"code": 1363008, "message": "OIL Error[FILE_NOT_FOUND: 6]"}
+                            ],
+                        }
+                    }
+                },
+            )
+        published = True
+        raise AssertionError("A failed upload must not publish")
+
+    adapter = InstagramPublishingAdapter(
+        "v26.0",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        compatibility_encoder=None,
+    )
+    with pytest.raises(ProviderApiError) as error:
+        adapter.publish(
+            PublishRequest(media, "Title", "Caption"),
+            OAuthConnection(access_token="test-value", external_account_id="ig-1"),  # noqa: S106
+        )
+    assert "container-1" in str(error.value)
+    assert "1363008" in str(error.value)
+    assert "bytes transferred: 0" in str(error.value)
+    assert "trace-123" in str(error.value)
+    assert not published
+
+
+@pytest.mark.parametrize("second_upload_fails", [False, True])
+def test_instagram_reencodes_rejected_video_once_before_publishing(
+    media: Path, second_upload_fails: bool
+) -> None:
+    containers = 0
+    uploads: list[bytes] = []
+    publications: list[str] = []
+    copies: list[Path] = []
+
+    def encode(source: Path, output: Path) -> None:
+        assert source == media
+        copies.append(output)
+        output.write_bytes(b"compatible-video")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal containers
+        if request.url.host == "rupload.facebook.com":
+            uploads.append(request.content)
+            return httpx.Response(400 if len(uploads) == 1 or second_upload_fails else 200)
+        if request.method == "POST" and request.url.path.endswith("/ig-1/media"):
+            containers += 1
+            return httpx.Response(
+                200,
+                json={
+                    "id": f"container-{containers}",
+                    "uri": f"https://rupload.facebook.com/ig-api-upload/container-{containers}",
+                },
+            )
+        if request.method == "GET" and "/container-" in request.url.path:
+            if len(uploads) == 1 or second_upload_fails:
+                return httpx.Response(
+                    200,
+                    json={
+                        "video_status": {
+                            "uploading_phase": {
+                                "status": "error",
+                                "bytes_transferred": 0,
+                                "errors": [
+                                    {"code": 1363008, "message": "OIL Error[FILE_NOT_FOUND: 6]"}
+                                ],
+                            }
+                        }
+                    },
+                )
+            return httpx.Response(200, json={"status_code": "FINISHED"})
+        if request.url.path.endswith("/media_publish"):
+            publications.append(request.url.params["creation_id"])
+            return httpx.Response(200, json={"id": "media-1"})
+        return httpx.Response(200, json={"permalink": "https://www.instagram.com/reel/test/"})
+
+    adapter = InstagramPublishingAdapter(
+        "v26.0",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        compatibility_encoder=encode,
+    )
+    request = PublishRequest(media, "Title", "Caption")
+    connection = OAuthConnection(access_token="test-value", external_account_id="ig-1")  # noqa: S106
+    if second_upload_fails:
+        with pytest.raises(ProviderApiError, match="compatibility upload also failed"):
+            adapter.publish(request, connection)
+    else:
+        assert adapter.publish(request, connection).external_id == "media-1"
+    assert containers == 2
+    assert uploads == [b"rendered-video", b"compatible-video"]
+    assert publications == ([] if second_upload_fails else ["container-2"])
+    assert media.read_bytes() == b"rendered-video"
+    assert len(copies) == 1 and not copies[0].exists()
+
+
+def test_instagram_never_retries_a_failed_publish_call(media: Path) -> None:
+    publish_calls = 0
+
+    def encode(source: Path, output: Path) -> None:
+        raise AssertionError("A publishing failure must not trigger re-encoding or another post")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal publish_calls
+        if request.url.host == "rupload.facebook.com":
+            return httpx.Response(200)
+        if request.url.path.endswith("/ig-1/media"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": "container-1",
+                    "uri": "https://rupload.facebook.com/container-1",
+                },
+            )
+        if request.method == "GET":
+            return httpx.Response(200, json={"status_code": "FINISHED"})
+        publish_calls += 1
+        return httpx.Response(500, json={"error": {"message": "Temporary publishing failure"}})
+
+    adapter = InstagramPublishingAdapter(
+        "v26.0",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        compatibility_encoder=encode,
+    )
+    with pytest.raises(ProviderApiError, match="Temporary publishing failure"):
+        adapter.publish(
+            PublishRequest(media, "Title", "Caption"),
+            OAuthConnection(access_token="test-value", external_account_id="ig-1"),  # noqa: S106
+        )
+    assert publish_calls == 1
+
+
+@pytest.mark.parametrize(("error_code", "transferred"), [(190, 0), (1363008, 100), (1363010, 0)])
+def test_instagram_does_not_reencode_unrelated_upload_failures(
+    media: Path, error_code: int, transferred: int
+) -> None:
+    def encode(source: Path, output: Path) -> None:
+        raise AssertionError("Only the verified zero-byte FILE_NOT_FOUND rejection may retry")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "rupload.facebook.com":
+            return httpx.Response(400)
+        if request.method == "POST":
+            return httpx.Response(
+                200,
+                json={
+                    "id": "container-1",
+                    "uri": "https://rupload.facebook.com/container-1",
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "video_status": {
+                    "uploading_phase": {
+                        "status": "error",
+                        "bytes_transferred": transferred,
+                        "errors": [{"code": error_code, "message": "OIL Error[FILE_NOT_FOUND: 6]"}],
+                    }
+                }
+            },
+        )
+
+    adapter = InstagramPublishingAdapter(
+        "v26.0",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        compatibility_encoder=encode,
+    )
+    with pytest.raises(ProviderApiError, match="Instagram video upload failed"):
+        adapter.publish(
+            PublishRequest(media, "Title", "Caption"),
+            OAuthConnection(access_token="test-value", external_account_id="ig-1"),  # noqa: S106
+        )

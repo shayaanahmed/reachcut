@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import Literal, Protocol, runtime_checkable
 
 PublishingPlatform = Literal["youtube", "tiktok", "instagram", "facebook", "x"]
 
@@ -15,6 +15,8 @@ class OAuthConnection:
     display_name: str = ""
     username: str = ""
     profile_url: str = ""
+    parent_page_id: str = ""
+    parent_page_name: str = ""
 
 
 class OAuthConfigurationError(RuntimeError):
@@ -66,6 +68,11 @@ class OAuthClient(Protocol):
     def authorization_url(self, state: str) -> str: ...
 
     def exchange_code(self, code: str, state: str = "") -> OAuthConnection: ...
+
+
+@runtime_checkable
+class MultiAccountOAuthClient(OAuthClient, Protocol):
+    def exchange_code_candidates(self, code: str, state: str = "") -> list[OAuthConnection]: ...
 
 
 class PublishingAdapter(Protocol):

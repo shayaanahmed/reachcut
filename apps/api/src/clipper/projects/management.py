@@ -41,7 +41,12 @@ class ProjectService:
         return project
 
     def delete(self, session: Session, project: Project) -> None:
-        if project.status in (ProjectStatus.PROCESSING, "cancel_requested"):
+        if project.status in (
+            ProjectStatus.PROCESSING,
+            "downloading",
+            "queued",
+            "cancel_requested",
+        ):
             raise ValueError("active projects cannot be deleted")
         project_root = Path(project.source_path).resolve().parent.parent
         expected_root = self.projects_root / project.id

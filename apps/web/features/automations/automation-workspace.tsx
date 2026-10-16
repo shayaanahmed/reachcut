@@ -8,7 +8,9 @@ import type {
   Project,
   SocialAccount,
 } from "../../lib/contracts";
-import { listProjects } from "../projects/api";
+import { listProjects, stopProject, retryProject } from "../projects/api";
+import { ProjectQueue, projectPhase } from "../projects/project-queue";
+import { ProjectSource } from "./project-source";
 import { listSocialAccounts } from "../publishing/api";
 import {
   createAutomation,
@@ -60,6 +62,7 @@ export function AutomationWorkspace() {
   const [draft, setDraft] = useState<BuilderDraft>(emptyDraft);
   const [activeStep, setActiveStep] = useState(0);
   const [creating, setCreating] = useState(false);
+  const [pendingProject, setPendingProject] = useState<string | null>(null);
   const [pendingPipeline, setPendingPipeline] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const projectNames = useMemo(
@@ -97,9 +100,12 @@ export function AutomationWorkspace() {
       })
       .catch((caught: Error) => setError(caught.message));
     const timer = window.setInterval(() => {
-      void listAutomations()
-        .then(setAutomations)
-        .catch(() => undefined);
+      void Promise.all([listAutomations(), listProjects()])
+        .then(([pipelines, items]) => {
+          setAutomations(pipelines);
+          setProjects(items);
+        })
+        .catch((caught: Error) => setError(caught.message));
     }, 5000);
     return () => window.clearInterval(timer);
   }, []);
@@ -200,26 +206,31 @@ export function AutomationWorkspace() {
     }
   }
 
+  async function updateProjectQueue(id: string, action: () => Promise<void>) {
+    setPendingProject(id);
+    setError(null);
+    try {
+      await action();
+      await refresh();
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "Could not update queue",
+      );
+    } finally {
+      setPendingProject(null);
+    }
+  }
+
   return (
     <main className="page automations-page">
       <div className="topbar automation-topbar">
         <div>
           <span className="eyebrow">AUTOPILOT</span>
-          <h1>Publishing pipelines</h1>
+          <h1>Your content, on autopilot</h1>
           <p>
-            Connect a source, clip logic, destinations, and a schedule into one
-            reusable flow.
+            Add a video, choose the moments that matter, and let your publishing
+            flow take it from there.
           </p>
-        </div>
-        <div className="automation-metric">
-          <strong>
-            {
-              automations.filter((pipeline) =>
-                ["active", "running"].includes(pipeline.status),
-              ).length
-            }
-          </strong>
-          <span>active flows</span>
         </div>
       </div>
       {error && (
@@ -227,6 +238,45 @@ export function AutomationWorkspace() {
           {error}
         </p>
       )}
+      <div className="automation-overview" aria-label="Automation overview">
+        <div>
+          <span>Scheduled & active</span>
+          <strong>
+            {automations.filter((p) => p.status === "active").length}
+          </strong>
+          <small>Ready for their next run</small>
+        </div>
+        <div>
+          <span>Projects in progress</span>
+          <strong>
+            {
+              projects.filter((p) =>
+                [
+                  "queued",
+                  "downloading",
+                  "processing",
+                  "cancel_requested",
+                ].includes(p.status),
+              ).length
+            }
+          </strong>
+          <small>Processing in the background</small>
+        </div>
+        <div>
+          <span>Needs attention</span>
+          <strong>
+            {automations.filter((p) => p.status === "failed").length +
+              projects.filter((p) => p.status === "failed").length}
+          </strong>
+          <small>Open a failed item to retry</small>
+        </div>
+      </div>
+      <ProjectQueue
+        projects={projects}
+        pendingId={pendingProject}
+        onCancel={(id) => updateProjectQueue(id, () => stopProject(id))}
+        onRetry={(id) => updateProjectQueue(id, () => retryProject(id))}
+      />
       <section className="automation-grid">
         <section
           className="pipeline-builder"
@@ -276,28 +326,27 @@ export function AutomationWorkspace() {
                   <span className="stage-number">01</span>
                   <h3>Pick the video project</h3>
                   <p>
-                    The flow starts from a ReachCut project that is ready to
-                    analyze or publish.
+                    Choose a project or add a new video without leaving this
+                    flow.
                   </p>
                 </div>
-                <label>
-                  Source project
-                  <select
-                    value={draft.projectId}
-                    onChange={(event) =>
-                      setDraft({ ...draft, projectId: event.target.value })
-                    }
-                  >
-                    <option value="">Select a project</option>
-                    {projects
-                      .filter((project) => project.status !== "processing")
-                      .map((project) => (
-                        <option value={project.id} key={project.id}>
-                          {project.title} · {project.status}
-                        </option>
-                      ))}
-                  </select>
-                </label>
+                <ProjectSource
+                  projects={projects}
+                  selectedId={draft.projectId}
+                  onSelect={(projectId) =>
+                    setDraft((current) => ({ ...current, projectId }))
+                  }
+                  onCreated={(project) => {
+                    setProjects((current) => [
+                      project,
+                      ...current.filter((item) => item.id !== project.id),
+                    ]);
+                    setDraft((current) => ({
+                      ...current,
+                      projectId: project.id,
+                    }));
+                  }}
+                />
               </div>
             )}
 
@@ -570,6 +619,21 @@ export function AutomationWorkspace() {
             automations.map((pipeline) => {
               const enabled = ["active", "running"].includes(pipeline.status);
               const pending = pendingPipeline === pipeline.id;
+              const source = projects.find((p) => p.id === pipeline.project_id);
+              const waiting =
+                pipeline.status === "active" &&
+                source &&
+                [
+                  "queued",
+                  "processing",
+                  "downloading",
+                  "cancel_requested",
+                ].includes(source.status);
+              const displayStatus = waiting
+                ? "waiting for source"
+                : pipeline.status === "active"
+                  ? "scheduled"
+                  : pipeline.status;
               return (
                 <article
                   key={pipeline.id}
@@ -578,7 +642,7 @@ export function AutomationWorkspace() {
                   <header>
                     <div>
                       <span className={`status ${pipeline.status}`}>
-                        {pipeline.status}
+                        {displayStatus}
                       </span>
                       <h3>{pipeline.name}</h3>
                     </div>
@@ -601,6 +665,14 @@ export function AutomationWorkspace() {
                       </button>
                     </div>
                   </header>
+                  {source && (
+                    <p className="automation-source-status">
+                      <span className={`status ${source.status}`}>
+                        {source.status}
+                      </span>
+                      {projectPhase(source)}
+                    </p>
+                  )}
                   <div
                     className="automation-mini-flow"
                     aria-label="Pipeline summary"
@@ -624,8 +696,13 @@ export function AutomationWorkspace() {
                     <span>
                       <small>Publish</small>
                       <strong>
-                        {pipeline.social_account_ids.length} account
-                        {pipeline.social_account_ids.length === 1 ? "" : "s"}
+                        {pipeline.social_account_ids
+                          .map(
+                            (id) =>
+                              accounts.find((account) => account.id === id)
+                                ?.label ?? "Account",
+                          )
+                          .join(", ")}
                       </strong>
                     </span>
                   </div>
@@ -633,7 +710,9 @@ export function AutomationWorkspace() {
                     <span>
                       <small>Next run</small>
                       <strong>
-                        {new Date(pipeline.next_run_at).toLocaleString()}
+                        {pipeline.status === "completed"
+                          ? "Completed"
+                          : new Date(pipeline.next_run_at).toLocaleString()}
                       </strong>
                     </span>
                     <span>
@@ -662,7 +741,11 @@ export function AutomationWorkspace() {
                         )
                       }
                     >
-                      {pipeline.status === "running" ? "Running…" : "Run now"}
+                      {pipeline.status === "running"
+                        ? "Running…"
+                        : pipeline.status === "failed"
+                          ? "Retry run"
+                          : "Run now"}
                     </button>
                     <button
                       type="button"

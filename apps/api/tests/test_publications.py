@@ -456,3 +456,85 @@ def test_publication_routes_return_project_performance_data(
             assert snapshots[-1]["revenue"] == 14.5
     finally:
         app.dependency_overrides.clear()
+
+
+def test_failed_background_publication_preserves_safe_provider_error(
+    make_plan: Callable[..., EditingPlanV1],
+) -> None:
+    from clipper.api.schemas import PublicationResponse
+    from clipper.persistence import Publication
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    service = PublicationService()
+    with Session(engine) as session:
+        clip = add_project_with_clip(session, make_plan)
+        session.add(
+            SocialAccount(
+                id="account-1", platform="instagram", label="Channel", connection_status="connected"
+            )
+        )
+        session.commit()
+        _, queued = service.queue_many(
+            session,
+            clip.id,
+            [AutomaticPublicationCreate("account-1", "Title", "Description")],
+            FakeCredentials(),
+        )
+        service.mark_failed(
+            session,
+            queued[0][0],
+            "Instagram upload failed: ProcessingFailedError; Meta 1363008: FILE_NOT_FOUND; "
+            "https://graph.facebook.com/id?access_token=private-token "
+            "Authorization: OAuth secret-token",
+        )
+        session.expire_all()
+        publication = session.get(Publication, queued[0][0])
+        assert publication and publication.status == "failed"
+        assert publication.error and "1363008" in publication.error
+        assert "private-token" not in publication.error
+        assert "secret-token" not in publication.error
+        assert PublicationResponse.model_validate(publication).error == publication.error
+        # A late error callback must not overwrite a successfully published record.
+        publication.status = "published"
+        session.commit()
+        service.mark_failed(session, publication.id, "late callback")
+        assert publication.status == "published"
+        assert "late callback" not in (publication.error or "")
+
+
+def test_meta_publish_refuses_credentials_bound_to_another_destination(
+    make_plan: Callable[..., EditingPlanV1],
+) -> None:
+    import pytest
+
+    from clipper.persistence.models import SocialAccountIdentity
+
+    class WrongCredentials(FakeCredentials):
+        def load(self, account_id: str) -> OAuthConnection:
+            return OAuthConnection(access_token="test-value", external_account_id="different-ig")  # noqa: S106
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    service = PublicationService()
+    with Session(engine) as session:
+        clip = add_project_with_clip(session, make_plan)
+        account = SocialAccount(
+            id="account-1",
+            platform="instagram",
+            label="Intended profile",
+            connection_status="connected",
+        )
+        account.identity = SocialAccountIdentity(
+            platform="instagram", external_account_id="intended-ig"
+        )
+        session.add(account)
+        session.commit()
+        with pytest.raises(PublicationStateError, match="different destination"):
+            service.queue_many(
+                session,
+                clip.id,
+                [AutomaticPublicationCreate(account.id, "Title", "Caption")],
+                WrongCredentials(),
+            )
+        assert not clip.publications

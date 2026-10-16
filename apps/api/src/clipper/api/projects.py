@@ -2,7 +2,6 @@ from uuid import uuid4
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -14,7 +13,7 @@ from fastapi import (
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from clipper.api.dependencies import find_project, media_downloader, run_pipeline
+from clipper.api.dependencies import find_project, project_queue
 from clipper.api.schemas import (
     ClipTypeSuggestionResponse,
     ProcessRequest,
@@ -32,6 +31,7 @@ from clipper.persistence import (
     Publication,
     PublicationAccountLink,
     get_session,
+    now_utc,
 )
 from clipper.projects import ProjectService
 
@@ -52,6 +52,10 @@ def projects(session: Session = Depends(get_session)) -> list[Project]:
         session.scalars(
             select(Project)
             .options(
+                selectinload(Project.clips)
+                .selectinload(Clip.publications)
+                .selectinload(Publication.failure),
+                selectinload(Project.job),
                 selectinload(Project.stages),
                 selectinload(Project.clips)
                 .selectinload(Clip.publications)
@@ -112,6 +116,7 @@ def upload_project(
     title: str = Form(min_length=1, max_length=200),
     authorization_confirmed: bool = Form(),
     media: UploadFile = File(),
+    language: str | None = Form(default=None, pattern=r"^[a-z]{2}$"),
     session: Session = Depends(get_session),
 ) -> Project:
     if not authorization_confirmed:
@@ -130,6 +135,7 @@ def upload_project(
         filename,
         stored,
     )
+    project_queue.enqueue(session, created, language=language)
     return project_or_404(session, created.id)
 
 
@@ -147,46 +153,57 @@ def import_project_url(
     try:
         url = validate_public_media_url(request.url, settings.media_import_hosts)
         project_id = str(uuid4())
-        target = settings.data_dir.resolve() / "projects" / project_id / "source"
-        stored = media_downloader.download(url, target, settings.max_upload_bytes)
     except MediaError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
-    created = project_service.create(
-        session,
-        project_id,
-        request.title,
-        stored.path.name,
-        stored,
+    created = Project(
+        id=project_id,
+        title=request.title.strip(),
+        original_filename="Pending URL import",
+        source_path=str(
+            settings.data_dir.resolve() / "projects" / project_id / "source" / "source.mp4"
+        ),
+        media_sha256="",
+        authorization_confirmed_at=now_utc(),
+        status="created",
     )
+    session.add(created)
+    session.flush()
+    project_queue.enqueue(session, created, language=request.language, source_url=url)
     return project_or_404(session, created.id)
 
 
 @router.post("/projects/{project_id}/process", status_code=status.HTTP_202_ACCEPTED)
 def process_project(
     project_id: str,
-    background_tasks: BackgroundTasks,
     request: ProcessRequest | None = None,
     session: Session = Depends(get_session),
 ) -> dict[str, str]:
     selected = project_or_404(session, project_id)
-    if selected.status in {"processing", "cancel_requested"}:
-        raise HTTPException(status_code=409, detail="project is already processing")
-    selected.status = "processing"
-    session.commit()
-    background_tasks.add_task(
-        run_pipeline,
-        project_id,
-        request.language if request else None,
-        tuple(request.clip_types) if request else (),
-    )
+    try:
+        project_queue.enqueue(
+            session,
+            selected,
+            request.language if request else None,
+            tuple(request.clip_types) if request else (),
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
     return {"status": "queued", "project_id": project_id}
 
 
 @router.post("/projects/{project_id}/cancel", status_code=status.HTTP_202_ACCEPTED)
 def cancel_project(project_id: str, session: Session = Depends(get_session)) -> dict[str, str]:
     selected = project_or_404(session, project_id)
-    if selected.status not in {"processing", "cancel_requested"}:
-        return {"status": selected.status}
-    selected.status = "cancel_requested"
-    session.commit()
-    return {"status": "cancel_requested"}
+    project_queue.cancel(session, selected)
+    return {"status": selected.status}
+
+
+@router.post("/projects/{project_id}/retry", status_code=status.HTTP_202_ACCEPTED)
+def retry_project(project_id: str, session: Session = Depends(get_session)) -> dict[str, str]:
+    selected = project_or_404(session, project_id)
+    if selected.status not in {"failed", "cancelled"}:
+        raise HTTPException(
+            status_code=409, detail="only failed or cancelled projects can be retried"
+        )
+    project_queue.enqueue(session, selected, retry=True)
+    return {"status": "queued", "project_id": project_id}

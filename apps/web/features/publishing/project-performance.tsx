@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Project } from "../../lib/contracts";
 
 type Publication = Project["clips"][number]["publications"][number];
@@ -54,7 +55,11 @@ export function ProjectPerformance({ project }: { project: Project }) {
           <span className="eyebrow">PROJECT PERFORMANCE</span>
           <h2 id="performance-title">Publishing results</h2>
         </div>
-        <small>Latest saved snapshot from each published clip</small>
+        <div>
+          <small>Latest saved snapshot from each published clip</small>
+          <br />
+          <Link href="/insights">Explore charts & insights →</Link>
+        </div>
       </div>
       <div className="performance-grid">
         <article>

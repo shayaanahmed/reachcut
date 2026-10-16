@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { BulkClipActions } from "../publishing/bulk-clip-actions";
 import { ProjectCard } from "./project-card";
 import { useProjectWorkbench } from "./use-project-workbench";
 
 export function ProjectWorkspace({ projectId }: { projectId: string }) {
-  const workbench = useProjectWorkbench(projectId);
+  const workbench = useProjectWorkbench(projectId, { loadAccounts: true });
   const router = useRouter();
   const project = workbench.projects.find((item) => item.id === projectId);
 
@@ -42,6 +43,17 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           {workbench.error}
         </p>
       )}
+      {project.clips.length > 0 && (
+        <BulkClipActions
+          project={project}
+          accounts={workbench.accounts}
+          groups={workbench.groups}
+          pending={workbench.isPending(`project:${project.id}:bulk`)}
+          onApprove={workbench.bulkApprove}
+          onRender={workbench.render}
+          onPublish={workbench.bulkPublish}
+        />
+      )}
       <ProjectCard
         project={project}
         language={workbench.languages[project.id] ?? ""}
@@ -52,6 +64,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         isPending={workbench.isPending}
         operationState={workbench.operationState}
         onStop={workbench.stop}
+        onRetry={workbench.retry}
         onProcess={workbench.process}
         onApprove={workbench.approve}
         onDeleteClip={workbench.removeClip}

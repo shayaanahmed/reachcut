@@ -11,7 +11,6 @@ import clipper.api.clips as clip_routes
 import clipper.api.projects as project_routes
 from clipper.config import settings
 from clipper.main import app
-from clipper.media import StoredUpload
 from clipper.persistence import Base, Clip, Project, Publication, get_session, now_utc
 from clipper.projects import ClipService, ProjectService
 
@@ -88,14 +87,6 @@ def test_project_routes_support_create_read_update_and_delete(
         ProjectService(tmp_path / "projects"),
     )
 
-    class FakeDownloader:
-        def download(self, _: str, target: Path, __: int) -> StoredUpload:
-            target.mkdir(parents=True)
-            source = target / "source.mp4"
-            source.write_bytes(b"\x00\x00\x00\x18ftypisom")
-            return StoredUpload(source, "b" * 64, source.stat().st_size)
-
-    monkeypatch.setattr(project_routes, "media_downloader", FakeDownloader())
     monkeypatch.setattr(
         project_routes,
         "validate_public_media_url",
@@ -106,7 +97,7 @@ def test_project_routes_support_create_read_update_and_delete(
         with TestClient(app) as client:
             created = client.post(
                 "/api/projects/upload",
-                data={"title": "First name", "authorization_confirmed": "true"},
+                data={"title": "First name", "authorization_confirmed": "true", "language": ""},
                 files={"media": ("fixture.mp4", b"\x00\x00\x00\x18ftypisom", "video/mp4")},
             )
             assert created.status_code == 201
@@ -121,6 +112,10 @@ def test_project_routes_support_create_read_update_and_delete(
             assert updated.status_code == 200
             assert updated.json()["title"] == "Renamed project"
 
+            assert created.json()["status"] == "queued"
+            assert created.json()["job"]["status"] == "queued"
+            assert client.delete(f"/api/projects/{project_id}").status_code == 409
+            assert client.post(f"/api/projects/{project_id}/cancel").json()["status"] == "cancelled"
             deleted = client.delete(f"/api/projects/{project_id}")
             assert deleted.status_code == 204
             assert client.get(f"/api/projects/{project_id}").status_code == 404
@@ -135,7 +130,14 @@ def test_project_routes_support_create_read_update_and_delete(
                 },
             )
             assert imported.status_code == 201
-            assert imported.json()["original_filename"] == "source.mp4"
+            assert imported.json()["status"] == "queued"
+            assert imported.json()["job"]["source_url"] == "https://youtube.com/watch?v=abc"
+            assert imported.json()["storage_bytes"] == 0
+            assert not (tmp_path / "projects" / imported.json()["id"]).exists()
+            imported_id = imported.json()["id"]
+            assert client.post(f"/api/projects/{imported_id}/cancel").status_code == 202
+            assert client.post(f"/api/projects/{imported_id}/retry").status_code == 202
+            assert client.get(f"/api/projects/{imported_id}").json()["status"] == "queued"
     finally:
         app.dependency_overrides.clear()
 

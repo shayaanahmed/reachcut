@@ -72,7 +72,7 @@ class Pipeline:
         if project.status == "cancel_requested":
             project.status = ProjectStatus.CREATED
             session.commit()
-            return
+            raise InterruptedError("Project stopped")
         project.status = ProjectStatus.PROCESSING
         session.commit()
         try:

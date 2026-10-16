@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { insightPosts, summarizeInsights } from "../publishing/insight-data";
 import type { Project } from "../../lib/contracts";
 import { ProjectList } from "./project-list";
 import type { useProjectWorkbench } from "./use-project-workbench";
@@ -16,7 +17,8 @@ export function summarizeWorkspace(projects: Project[]) {
     for (const clip of project.clips) {
       if (clip.final_path) exported += 1;
       for (const publication of clip.publications) {
-        if (publication.status === "published") published += 1;
+        if (publication.status !== "published") continue;
+        published += 1;
         const metrics = publication.metric_snapshots.at(-1);
         if (!metrics) continue;
         views += metrics.views;
@@ -42,8 +44,10 @@ export function Dashboard({ workbench }: { workbench: Workbench }) {
   const reviewProjects = workbench.projects.filter(
     (project) => project.status === "review",
   );
-  const processingProjects = workbench.projects.filter(
-    (project) => project.status === "processing",
+  const processingProjects = workbench.projects.filter((project) =>
+    ["queued", "downloading", "processing", "cancel_requested"].includes(
+      project.status,
+    ),
   );
   const failedProjects = workbench.projects.filter(
     (project) => project.status === "failed",
@@ -58,22 +62,15 @@ export function Dashboard({ workbench }: { workbench: Workbench }) {
       (clip) => clip.approval_status === "approved" && !clip.final_path,
     ),
   ).length;
-  const revenue = workbench.projects.reduce(
-    (total, project) =>
-      total +
-      project.clips.reduce(
-        (clipTotal, clip) =>
-          clipTotal +
-          clip.publications.reduce(
-            (publicationTotal, publication) =>
-              publicationTotal +
-              (publication.metric_snapshots.at(-1)?.revenue ?? 0),
-            0,
-          ),
-        0,
-      ),
-    0,
-  );
+  const revenue = summarizeInsights(insightPosts(workbench.projects)).revenue;
+  const revenueLabel =
+    Object.entries(revenue)
+      .map(([currency, value]) =>
+        new Intl.NumberFormat("en", { style: "currency", currency }).format(
+          value,
+        ),
+      )
+      .join(" · ") || "€0.00";
 
   return (
     <main className="page dashboard-page">
@@ -85,6 +82,12 @@ export function Dashboard({ workbench }: { workbench: Workbench }) {
             Move ideas from source to published clip, then learn from what
             performs.
           </p>
+        </div>
+        <div className="inline-actions">
+          <Link className="primary-link" href="/publishing">
+            Publish clips ↗
+          </Link>
+          <Link href="/insights">View insights</Link>
         </div>
         <Link className="primary-link" href="/projects/new">
           ＋ New project
@@ -111,7 +114,7 @@ export function Dashboard({ workbench }: { workbench: Workbench }) {
         </article>
         <article>
           <span>Tracked revenue</span>
-          <strong>€{revenue.toFixed(2)}</strong>
+          <strong>{revenueLabel}</strong>
           <small>{summary.engagementRate.toFixed(1)}% engagement rate</small>
         </article>
       </section>

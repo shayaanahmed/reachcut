@@ -73,6 +73,40 @@ class _OAuthHttpClient:
             if isinstance(permission, dict) and permission.get("permission")
         }
 
+    @staticmethod
+    def meta_pages(
+        client: httpx.Client,
+        base_url: str,
+        user_token: str,
+        response: httpx.Response,
+    ) -> object:
+        """Follow cursor pagination on a fixed Meta endpoint; never trust paging URLs."""
+        payload = response.json()
+        if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+            return None
+        pages = list(payload["data"])
+        seen: set[str] = set()
+        original = dict(response.request.url.params)
+        original["access_token"] = user_token
+        for _ in range(100):
+            paging = payload.get("paging")
+            if not isinstance(paging, dict) or not paging.get("next"):
+                return pages
+            cursors = paging.get("cursors")
+            after = cursors.get("after") if isinstance(cursors, dict) else None
+            if not isinstance(after, str) or not after or after in seen:
+                raise OAuthProviderError(
+                    "Meta returned incomplete Page pagination. Please reconnect."
+                )
+            seen.add(after)
+            response = client.get(f"{base_url}/me/accounts", params={**original, "after": after})
+            response.raise_for_status()
+            payload = response.json()
+            if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+                raise OAuthProviderError("Meta returned an invalid Facebook Page list")
+            pages.extend(payload["data"])
+        raise OAuthProviderError("Meta returned too many Page result pages")
+
 
 class TikTokOAuthClient(_OAuthHttpClient):
     def __init__(
@@ -184,6 +218,14 @@ class InstagramOAuthClient(_OAuthHttpClient):
         return f"https://www.facebook.com/{version}/dialog/oauth?{query}"
 
     def exchange_code(self, code: str, state: str = "") -> OAuthConnection:
+        connections = self.exchange_code_candidates(code, state)
+        if len(connections) != 1:
+            raise OAuthProviderError(
+                "Multiple Instagram accounts are available. Choose one in ReachCut."
+            )
+        return connections[0]
+
+    def exchange_code_candidates(self, code: str, state: str = "") -> list[OAuthConnection]:
         del state
         self._require_configured()
         permission_statuses: dict[str, str] | None = None
@@ -213,8 +255,7 @@ class InstagramOAuthClient(_OAuthHttpClient):
                     },
                 )
                 accounts_response.raise_for_status()
-                accounts_payload = accounts_response.json()
-                pages = accounts_payload.get("data") if isinstance(accounts_payload, dict) else None
+                pages = self.meta_pages(client, self._base, str(user_token), accounts_response)
                 if pages == []:
                     permission_statuses = self.meta_permission_statuses(
                         client,
@@ -223,35 +264,31 @@ class InstagramOAuthClient(_OAuthHttpClient):
                     )
         except httpx.HTTPError as error:
             raise self.provider_error("Meta", error) from error
-        connection = self._connection_from_pages(pages, str(user_token))
-        if connection is None:
+        connections: dict[str, OAuthConnection] = {}
+        if isinstance(pages, list):
+            for page in pages:
+                if not isinstance(page, dict) or not page.get("access_token"):
+                    continue
+                instagram = page.get("instagram_business_account")
+                if not isinstance(instagram, dict) or not instagram.get("id"):
+                    continue
+                external_id = str(instagram["id"])
+                username = str(instagram.get("username") or "").lstrip("@")
+                connections.setdefault(
+                    external_id,
+                    OAuthConnection(
+                        access_token=str(user_token),
+                        external_account_id=external_id,
+                        display_name=str(instagram.get("name") or username or "Instagram account"),
+                        username=username,
+                        profile_url=f"https://www.instagram.com/{username}/" if username else "",
+                        parent_page_id=str(page.get("id") or ""),
+                        parent_page_name=str(page.get("name") or "Facebook Page"),
+                    ),
+                )
+        if not connections:
             raise self._missing_connection_error(pages, permission_statuses)
-        return connection
-
-    @staticmethod
-    def _connection_from_pages(
-        pages: object,
-        user_token: str,
-    ) -> OAuthConnection | None:
-        if not isinstance(pages, list):
-            return None
-        for page in pages:
-            if not isinstance(page, dict) or not page.get("access_token"):
-                continue
-            instagram = page.get("instagram_business_account")
-            if not isinstance(instagram, dict) or not instagram.get("id"):
-                continue
-            username = str(instagram.get("username") or "").lstrip("@")
-            return OAuthConnection(
-                # Meta's maintained local-file publishing sample uses the Facebook
-                # user token for the resumable upload and subsequent Graph calls.
-                access_token=user_token,
-                external_account_id=str(instagram["id"]),
-                display_name=str(instagram.get("name") or username or "Instagram account"),
-                username=username,
-                profile_url=(f"https://www.instagram.com/{username}/" if username else ""),
-            )
-        return None
+        return list(connections.values())
 
     @staticmethod
     def _missing_connection_error(
@@ -349,6 +386,14 @@ class FacebookOAuthClient(_OAuthHttpClient):
         return f"https://www.facebook.com/{self._base.rsplit('/', 1)[-1]}/dialog/oauth?{query}"
 
     def exchange_code(self, code: str, state: str = "") -> OAuthConnection:
+        connections = self.exchange_code_candidates(code, state)
+        if len(connections) != 1:
+            raise OAuthProviderError(
+                "Multiple Facebook Pages are available. Choose one in ReachCut."
+            )
+        return connections[0]
+
+    def exchange_code_candidates(self, code: str, state: str = "") -> list[OAuthConnection]:
         del state
         self._require_configured()
         permission_statuses: dict[str, str] | None = None
@@ -375,10 +420,7 @@ class FacebookOAuthClient(_OAuthHttpClient):
                     },
                 )
                 accounts_response.raise_for_status()
-                accounts_payload = accounts_response.json()
-                accounts = (
-                    accounts_payload.get("data") if isinstance(accounts_payload, dict) else None
-                )
+                accounts = self.meta_pages(client, self._base, str(user_token), accounts_response)
                 if accounts == []:
                     permission_statuses = self.meta_permission_statuses(
                         client,
@@ -387,25 +429,24 @@ class FacebookOAuthClient(_OAuthHttpClient):
                     )
         except httpx.HTTPError as error:
             raise self.provider_error("Meta", error) from error
-        connection = self._connection_from_pages(accounts)
-        if connection is None:
-            raise self._missing_connection_error(accounts, permission_statuses)
-        return connection
-
-    def _connection_from_pages(self, pages: object) -> OAuthConnection | None:
-        if not isinstance(pages, list):
-            return None
-        for page in pages:
-            if not isinstance(page, dict) or not page.get("access_token"):
-                continue
-            if page.get("id"):
-                return OAuthConnection(
-                    access_token=str(page["access_token"]),
-                    external_account_id=str(page["id"]),
-                    display_name=str(page.get("name") or "Facebook Page"),
-                    profile_url=f"https://www.facebook.com/{page['id']}",
+        connections: dict[str, OAuthConnection] = {}
+        if isinstance(accounts, list):
+            for page in accounts:
+                if not isinstance(page, dict) or not page.get("access_token") or not page.get("id"):
+                    continue
+                external_id = str(page["id"])
+                connections.setdefault(
+                    external_id,
+                    OAuthConnection(
+                        access_token=str(page["access_token"]),
+                        external_account_id=external_id,
+                        display_name=str(page.get("name") or "Facebook Page"),
+                        profile_url=f"https://www.facebook.com/{external_id}",
+                    ),
                 )
-        return None
+        if not connections:
+            raise self._missing_connection_error(accounts, permission_statuses)
+        return list(connections.values())
 
     def _missing_connection_error(
         self,

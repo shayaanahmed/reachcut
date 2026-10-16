@@ -3,7 +3,11 @@
 import Link from "next/link";
 import { useState } from "react";
 
-import type { Project, SocialAccount } from "../../lib/contracts";
+import type {
+  Project,
+  SocialAccount,
+  SocialAccountGroup,
+} from "../../lib/contracts";
 import type { MetricCreate, Platform, PublicationCreate } from "./api";
 
 type Clip = Project["clips"][number];
@@ -63,6 +67,7 @@ function metricValue(data: FormData, name: string): number {
 export function PublicationTracker({
   clip,
   accounts,
+  groups = [],
   isPending,
   onPublish,
   onRecordMetrics,
@@ -72,6 +77,7 @@ export function PublicationTracker({
 }: {
   clip: Clip;
   accounts: SocialAccount[];
+  groups?: SocialAccountGroup[];
   isPending: IsPending;
   onPublish: (clipId: string, data: PublicationCreate[]) => Promise<unknown>;
   onRecordMetrics: (
@@ -194,6 +200,60 @@ export function PublicationTracker({
             <Link href="/settings/accounts">Manage accounts →</Link>
           </div>
 
+          <div className="destination-presets">
+            <label>
+              Choose a social group
+              <select
+                aria-label="Publishing social group"
+                defaultValue=""
+                onChange={(event) =>
+                  setSelectedAccountIds(
+                    (
+                      groups.find((group) => group.id === event.target.value)
+                        ?.account_ids ?? []
+                    ).filter((id) =>
+                      orderedAccounts.some(
+                        (a) =>
+                          a.id === id && a.connection_status === "connected",
+                      ),
+                    ),
+                  )
+                }
+              >
+                <option value="">Select a group…</option>
+                {groups.map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Or choose a platform
+              <select
+                aria-label="Publishing platform"
+                defaultValue=""
+                onChange={(event) =>
+                  setSelectedAccountIds(
+                    orderedAccounts
+                      .filter(
+                        (a) =>
+                          a.platform === event.target.value &&
+                          a.connection_status === "connected",
+                      )
+                      .map((a) => a.id),
+                  )
+                }
+              >
+                <option value="">Select a platform…</option>
+                {platformOrder.map((p) => (
+                  <option key={p} value={p}>
+                    {platformDetails[p].shortLabel}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           {orderedAccounts.length ? (
             <div className="destination-picker" aria-label="Publishing account">
               {orderedAccounts.map((account) => {
@@ -316,6 +376,7 @@ function BatchPublishComposer({
 }: {
   clip: Clip;
   accounts: SocialAccount[];
+  groups?: SocialAccountGroup[];
   pending: boolean;
   onPublish: (clipId: string, data: PublicationCreate[]) => Promise<unknown>;
 }) {
@@ -578,7 +639,9 @@ function PublicationRow({
           <span>!</span>
           <p>
             <strong>Publishing failed</strong>
-            Check the account connection and try publishing again.
+            {publication.error ||
+              "The provider did not return a saved error. Open Accounts to check the connection, then review the API logs for this attempt."}
+            <small>Attempt: {publication.id}</small>
           </p>
         </div>
       )}

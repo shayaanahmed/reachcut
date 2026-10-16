@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -10,6 +11,22 @@ import httpx
 
 class ProviderApiError(RuntimeError):
     pass
+
+
+class ProviderAuthenticationError(ProviderApiError):
+    pass
+
+
+def safe_provider_error(message: str) -> str:
+    """Retain diagnostics without exposing credentials embedded in URLs or headers."""
+    message = re.sub(r"(https?://[^\s?\"']+)\?[^\s\"']+", r"\1?[redacted]", message)
+    message = re.sub(
+        r"(?i)((?:access_token|refresh_token|client_secret|authorization)"
+        r"[\"'\s:=]+)(?:OAuth\s+|Bearer\s+)?[^\s,}\"']+",
+        r"\1[redacted]",
+        message,
+    )
+    return message[:2000]
 
 
 def local_video_size(path: Path, provider: str) -> int:
@@ -68,5 +85,17 @@ class PublishingHttpClient:
     @staticmethod
     def raise_error(prefix: str, error: httpx.HTTPError) -> ProviderApiError:
         if isinstance(error, httpx.HTTPStatusError):
+            try:
+                payload = error.response.json()
+                details = payload.get("error", {}) if isinstance(payload, dict) else {}
+            except ValueError:
+                details = {}
+            if error.response.status_code == 401 or (
+                isinstance(details, dict) and details.get("code") == 190
+            ):
+                return ProviderAuthenticationError(
+                    f"{prefix}: authorization expired or was revoked. "
+                    "Reconnect this account in Settings → Accounts. Saved metrics are preserved."
+                )
             return ProviderApiError(f"{prefix}: {error.response.text[:500]}")
         return ProviderApiError(f"{prefix}: {error}")

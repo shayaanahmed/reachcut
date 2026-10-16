@@ -24,8 +24,13 @@ function latestProjectViews(project: Project) {
 }
 
 function projectProgress(project: Project) {
+  if (["queued", "downloading", "cancelled"].includes(project.status)) return 0;
   if (project.status === "created") return 8;
-  if (["processing", "cancel_requested"].includes(project.status)) {
+  if (
+    ["queued", "downloading", "processing", "cancel_requested"].includes(
+      project.status,
+    )
+  ) {
     if (project.stages.length === 0) return 24;
     return Math.max(
       12,
@@ -43,7 +48,14 @@ function projectProgress(project: Project) {
 
 function matchesFilter(project: Project, filter: ProjectFilter) {
   if (filter === "active")
-    return ["created", "processing", "failed"].includes(project.status);
+    return [
+      "created",
+      "queued",
+      "downloading",
+      "processing",
+      "failed",
+      "cancel_requested",
+    ].includes(project.status);
   if (filter === "review") return project.status === "review";
   if (filter === "complete")
     return project.clips.some((clip) => Boolean(clip.final_path));
@@ -51,8 +63,15 @@ function matchesFilter(project: Project, filter: ProjectFilter) {
 }
 
 function nextAction(project: Project) {
+  if (project.status === "queued") return "Waiting in queue";
+  if (project.status === "downloading") return "Downloading video";
+  if (project.status === "cancelled") return "Resume analysis";
   if (project.status === "created") return "Run analysis";
-  if (["processing", "cancel_requested"].includes(project.status))
+  if (
+    ["queued", "downloading", "processing", "cancel_requested"].includes(
+      project.status,
+    )
+  )
     return "Processing locally";
   if (project.status === "failed") return "Resolve failed stage";
   const pending = project.clips.filter(
@@ -264,7 +283,12 @@ export function ProjectList({
                   type="button"
                   disabled={
                     isPending(`project:${project.id}:delete`) ||
-                    ["processing", "cancel_requested"].includes(project.status)
+                    [
+                      "queued",
+                      "downloading",
+                      "processing",
+                      "cancel_requested",
+                    ].includes(project.status)
                   }
                   aria-label={`Delete ${project.title}`}
                   onClick={() => {

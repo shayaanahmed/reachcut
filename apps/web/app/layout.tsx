@@ -30,6 +30,12 @@ export default function RootLayout({
               <Link href="/projects">
                 <span aria-hidden="true">▤</span> Projects
               </Link>
+              <Link href="/publishing">
+                <span aria-hidden="true">↗</span> Publishing
+              </Link>
+              <Link href="/insights">
+                <span aria-hidden="true">▥</span> Insights
+              </Link>
               <Link href="/stories">
                 <span aria-hidden="true">◫</span> Story projects
               </Link>

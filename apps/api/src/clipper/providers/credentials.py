@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import asdict
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -22,19 +24,16 @@ class EncryptedCredentialStore:
 
     def save(self, account_id: str, connection: OAuthConnection) -> None:
         self._directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-        payload = json.dumps(
-            {
-                "refresh_token": connection.refresh_token,
-                "access_token": connection.access_token,
-                "external_account_id": connection.external_account_id,
-                "display_name": connection.display_name,
-                "username": connection.username,
-                "profile_url": connection.profile_url,
-            }
-        ).encode()
+        payload = json.dumps(asdict(connection)).encode()
         target = self._directory / f"{account_id}.token"
-        target.write_bytes(self._cipher().encrypt(payload))
-        target.chmod(0o600)
+        with NamedTemporaryFile(dir=self._directory, delete=False) as temporary:
+            temporary.write(self._cipher().encrypt(payload))
+            temporary_path = Path(temporary.name)
+        try:
+            temporary_path.chmod(0o600)
+            temporary_path.replace(target)
+        finally:
+            temporary_path.unlink(missing_ok=True)
 
     def load(self, account_id: str) -> OAuthConnection | None:
         target = self._directory / f"{account_id}.token"
@@ -49,6 +48,8 @@ class EncryptedCredentialStore:
                 display_name=str(payload.get("display_name", "")),
                 username=str(payload.get("username", "")),
                 profile_url=str(payload.get("profile_url", "")),
+                parent_page_id=str(payload.get("parent_page_id", "")),
+                parent_page_name=str(payload.get("parent_page_name", "")),
             )
         except (InvalidToken, KeyError, ValueError, json.JSONDecodeError) as error:
             raise CredentialStoreError("stored publishing credentials could not be read") from error

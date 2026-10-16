@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 from clipper.api.dependencies import publishing_connections
 from clipper.api.schemas import (
     AccountConnectionReadinessResponse,
+    OAuthAccountSelectionRequest,
+    OAuthAccountSelectionResponse,
     ProviderSetupResponse,
     PublishingCapabilitiesResponse,
     SocialAccountResponse,
@@ -21,6 +23,7 @@ from clipper.projects import (
     SocialAccountService,
     SocialAccountUpdate,
 )
+from clipper.projects.publishing_connections import AccountSelectionRequired
 from clipper.providers.credentials import CredentialStoreError
 from clipper.publishing import (
     OAuthConfigurationError,
@@ -157,6 +160,8 @@ def oauth_callback(
         return _account_settings_redirect(connection_error=message)
     try:
         account = publishing_connections.complete_authorization(session, platform, state, code)
+    except AccountSelectionRequired as selection:
+        return _account_settings_redirect(connection_selection=selection.selection_token)
     except PublishingConnectionError as error:
         return _account_settings_redirect(connection_error=str(error))
     except OAuthConfigurationError as error:
@@ -166,11 +171,32 @@ def oauth_callback(
     return _account_settings_redirect(connected=account.platform)
 
 
+@router.get("/social-account-selections/{token}", response_model=OAuthAccountSelectionResponse)
+def pending_account_selection(token: str, session: Session = Depends(get_session)) -> object:
+    try:
+        return publishing_connections.pending_selection(session, token)
+    except (PublishingConnectionError, CredentialStoreError) as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.post("/social-account-selections/{token}", response_model=SocialAccountResponse)
+def select_oauth_account(
+    token: str,
+    request: OAuthAccountSelectionRequest,
+    session: Session = Depends(get_session),
+) -> SocialAccount:
+    try:
+        return publishing_connections.select_account(session, token, request.external_account_id)
+    except (PublishingConnectionError, CredentialStoreError) as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
 def _account_settings_redirect(**parameters: str) -> RedirectResponse:
     query = urlencode(parameters)
     return RedirectResponse(
         f"{settings.web_base_url.rstrip('/')}/settings/accounts?{query}",
         status_code=status.HTTP_303_SEE_OTHER,
+        headers={"Cache-Control": "no-store"},
     )
 
 

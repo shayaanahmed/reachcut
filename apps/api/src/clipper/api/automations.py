@@ -3,13 +3,14 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
-from clipper.api.dependencies import automation_service, run_automation_cycle
+from clipper.api.dependencies import automation_service, project_queue, run_automation_cycle
 from clipper.api.schemas import (
     AutomationPipelineActiveRequest,
     AutomationPipelineCreateRequest,
     AutomationPipelineResponse,
 )
-from clipper.persistence import AutomationPipeline, get_session
+from clipper.domain.editing_plan import ClipType
+from clipper.persistence import AutomationPipeline, Project, get_session
 from clipper.projects import AutomationCreate, AutomationNotFoundError, AutomationStateError
 
 router = APIRouter()
@@ -61,6 +62,14 @@ def run_automation(
         raise HTTPException(status_code=404, detail="automation pipeline not found")
     if pipeline.status == "running":
         raise HTTPException(status_code=409, detail="automation pipeline is already running")
+    project = session.get(Project, pipeline.project_id)
+    if project and project.status in {"failed", "cancelled", "created"}:
+        project_queue.enqueue(
+            session,
+            project,
+            clip_types=tuple(ClipType(item) for item in pipeline.clip_types),
+            retry=bool(project.job),
+        )
     pipeline.status = "active"
     pipeline.next_run_at = datetime.now(UTC)
     pipeline.last_error = None

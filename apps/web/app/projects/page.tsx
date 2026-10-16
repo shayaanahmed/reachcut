@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 
+import { ProjectQueue } from "../../features/projects/project-queue";
 import { ProjectList } from "../../features/projects/project-list";
 import { useProjectWorkbench } from "../../features/projects/use-project-workbench";
 
@@ -23,6 +24,20 @@ export default function ProjectsPage() {
         <p role="alert" className="error">
           {workbench.error}
         </p>
+      )}
+      {!workbench.loading && (
+        <ProjectQueue
+          projects={workbench.projects}
+          pendingId={
+            workbench.projects.find(
+              (p) =>
+                workbench.isPending(`project:${p.id}:stop`) ||
+                workbench.isPending(`project:${p.id}:retry`),
+            )?.id
+          }
+          onCancel={workbench.stop}
+          onRetry={workbench.retry}
+        />
       )}
       <section className="section-block" aria-label="All projects">
         {workbench.loading ? (

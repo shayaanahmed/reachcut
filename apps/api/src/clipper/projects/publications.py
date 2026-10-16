@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from clipper.persistence import (
@@ -16,7 +18,19 @@ from clipper.persistence import (
     SocialAccount,
     now_utc,
 )
-from clipper.publishing import CredentialStore, MetricsAdapter, PublishingAdapter, PublishRequest
+from clipper.persistence.models import (
+    PublicationDestination,
+    PublicationFailure,
+    SocialAccountIdentity,
+)
+from clipper.providers.publishing_http import ProviderAuthenticationError, safe_provider_error
+from clipper.publishing import (
+    CredentialStore,
+    MetricsAdapter,
+    OAuthConnection,
+    PublishingAdapter,
+    PublishRequest,
+)
 
 
 class PublicationNotFoundError(LookupError):
@@ -62,6 +76,30 @@ class AutomaticPublicationCreate:
 
 class PublicationService:
     """Track where rendered clips were published and their metric history."""
+
+    @staticmethod
+    def _check_destination(
+        session: Session, account: SocialAccount, connection: OAuthConnection
+    ) -> None:
+        if account.platform not in {"facebook", "instagram"}:
+            return
+        expected = account.external_account_id
+        if expected and expected != connection.external_account_id:
+            raise PublicationStateError(
+                "Saved credentials belong to a different destination. Reconnect this account."
+            )
+        if connection.external_account_id:
+            owner = session.scalar(
+                select(SocialAccountIdentity).where(
+                    SocialAccountIdentity.platform == account.platform,
+                    SocialAccountIdentity.external_account_id == connection.external_account_id,
+                )
+            )
+            if owner and owner.account_id != account.id:
+                raise PublicationStateError(
+                    "This destination is linked to another ReachCut account. "
+                    "Reconnect the intended account."
+                )
 
     def create(
         self,
@@ -134,6 +172,7 @@ class PublicationService:
                 f"connect this {account.platform} account before publishing"
             )
 
+        self._check_destination(session, account, connection)
         result = adapter.publish(
             PublishRequest(
                 media_path=Path(clip.final_path),
@@ -184,6 +223,8 @@ class PublicationService:
         clip_id: str,
         requests: list[AutomaticPublicationCreate],
         credentials: CredentialStore,
+        *,
+        commit: bool = True,
     ) -> tuple[str, list[tuple[str, AutomaticPublicationCreate]]]:
         clip = session.get(Clip, clip_id)
         if not clip:
@@ -200,12 +241,22 @@ class PublicationService:
             account = session.get(SocialAccount, request.social_account_id)
             if not account or not account.is_active:
                 raise PublicationNotFoundError("social account not found")
-            if account.connection_status != "connected" or not credentials.load(account.id):
+            connection = credentials.load(account.id)
+            if account.connection_status != "connected" or not connection:
                 raise PublicationStateError(
                     f"connect this {account.platform} account before publishing"
                 )
+            self._check_destination(session, account, connection)
+            if any(
+                publication.social_account_id == account.id
+                and publication.status in {"queued", "processing", "published"}
+                for publication in clip.publications
+            ):
+                raise PublicationStateError(
+                    f"this clip is already queued or published to {account.label}"
+                )
             publication = Publication(
-                clip_id=clip.id,
+                clip=clip,
                 platform=account.platform,
                 status="queued",
                 post_url=None,
@@ -224,7 +275,20 @@ class PublicationService:
                 )
             )
             queued.append((publication.id, request))
-        session.commit()
+            session.add(
+                PublicationDestination(
+                    publication_id=publication.id, clip_id=clip.id, social_account_id=account.id
+                )
+            )
+            try:
+                session.flush()
+            except IntegrityError as error:
+                session.rollback()
+                raise PublicationStateError(
+                    "this clip is already queued or published to the selected account"
+                ) from error
+        if commit:
+            session.commit()
         return clip.project_id, queued
 
     def publish_queued(
@@ -251,6 +315,7 @@ class PublicationService:
         clip = publication.clip
         if clip.approval_status != "approved" or not clip.final_path:
             raise PublicationStateError("clip must be approved and rendered before publishing")
+        self._check_destination(session, account, connection)
         result = adapter.publish(
             PublishRequest(
                 media_path=Path(clip.final_path),
@@ -279,10 +344,16 @@ class PublicationService:
         session.commit()
         return clip.project_id
 
-    def mark_failed(self, session: Session, publication_id: str) -> None:
+    def mark_failed(self, session: Session, publication_id: str, error: str | None = None) -> None:
         publication = session.get(Publication, publication_id)
         if publication and publication.status == "queued":
+            reservation = session.get(PublicationDestination, publication_id)
+            if reservation:
+                session.delete(reservation)
             publication.status = "failed"
+            publication.failure = PublicationFailure(
+                message=safe_provider_error(error or "Publishing failed before completion.")
+            )
             session.commit()
 
     def refresh_publication(
@@ -305,6 +376,9 @@ class PublicationService:
         connection = credentials.load(publication.account_link.social_account_id)
         if not connection:
             raise PublicationStateError("publishing account is no longer connected")
+        account = session.get(SocialAccount, publication.account_link.social_account_id)
+        if account:
+            self._check_destination(session, account, connection)
         result = adapter.refresh(
             publication.provider_reference.external_id,
             connection,
@@ -318,6 +392,10 @@ class PublicationService:
             publication.provider_reference.external_id = result.external_id
         if result.status == "published":
             publication.published_at = publication.published_at or now_utc()
+        elif result.status == "failed":
+            reservation = session.get(PublicationDestination, publication_id)
+            if reservation:
+                session.delete(reservation)
         session.commit()
         return publication.clip.project_id
 
@@ -346,7 +424,7 @@ class PublicationService:
 
         session.add(
             MetricSnapshot(
-                publication_id=publication.id,
+                publication=publication,
                 views=request.views,
                 likes=request.likes,
                 comments=request.comments,
@@ -382,26 +460,40 @@ class PublicationService:
             raise PublicationStateError(
                 f"automatic metrics sync is not configured for {publication.platform}"
             )
-        connection = credentials.load(publication.account_link.social_account_id)
+        account = session.get(SocialAccount, publication.account_link.social_account_id)
+        if not account or not account.is_active or account.connection_status != "connected":
+            raise PublicationStateError(
+                "Reconnect the original publishing account in Settings → Accounts "
+                "to resume insights. Saved metrics are preserved."
+            )
+        connection = credentials.load(account.id)
         if not connection:
-            raise PublicationStateError("publishing account is no longer connected")
+            account.connection_status = "disconnected"
+            session.commit()
+            raise PublicationStateError(
+                "The original publishing account credentials are missing. "
+                "Reconnect it in Settings → Accounts to resume insights."
+            )
+        self._check_destination(session, account, connection)
         external_id = (
             publication.provider_reference.external_id if publication.provider_reference else None
         )
-        metrics = adapter.metrics(external_id, publication.post_url, connection)
+        try:
+            metrics = adapter.metrics(external_id, publication.post_url, connection)
+        except ProviderAuthenticationError:
+            account.connection_status = "disconnected"
+            session.commit()
+            raise
         if publication.provider_reference:
             publication.provider_reference.external_id = metrics.external_id
         else:
-            session.add(
-                PublicationProviderReference(
-                    publication_id=publication.id,
-                    external_id=metrics.external_id,
-                )
+            publication.provider_reference = PublicationProviderReference(
+                external_id=metrics.external_id
             )
         previous = publication.metric_snapshots[-1] if publication.metric_snapshots else None
         session.add(
             MetricSnapshot(
-                publication_id=publication.id,
+                publication=publication,
                 views=metrics.views,
                 likes=metrics.likes,
                 comments=metrics.comments,
@@ -423,6 +515,9 @@ class PublicationService:
         if not publication:
             raise PublicationNotFoundError("publication not found")
         project_id = publication.clip.project_id
+        reservation = session.get(PublicationDestination, publication_id)
+        if reservation:
+            session.delete(reservation)
         session.delete(publication)
         session.commit()
         return project_id

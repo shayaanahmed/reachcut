@@ -4,7 +4,18 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import uuid4
 
-from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -48,10 +59,31 @@ class Project(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_utc, onupdate=now_utc
     )
+    job: Mapped[ProjectJob | None] = relationship(
+        back_populates="project", cascade="all, delete-orphan", uselist=False
+    )
     stages: Mapped[list[StageRun]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
     clips: Mapped[list[Clip]] = relationship(back_populates="project", cascade="all, delete-orphan")
+
+
+class ProjectJob(Base):
+    """One durable processing request per project; retries reuse its saved inputs."""
+
+    __tablename__ = "project_jobs"
+
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    status: Mapped[str] = mapped_column(String(24), default="queued", index=True)
+    phase: Mapped[str] = mapped_column(String(64), default="Waiting to start")
+    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    language: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    clip_types: Mapped[list[str]] = mapped_column(JSON, default=list)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    enqueued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    project: Mapped[Project] = relationship(back_populates="job")
 
 
 class RuntimeSetting(Base):
@@ -207,6 +239,14 @@ class Publication(Base):
         back_populates="publication", cascade="all, delete-orphan", uselist=False
     )
 
+    failure: Mapped[PublicationFailure | None] = relationship(
+        back_populates="publication", cascade="all, delete-orphan", uselist=False
+    )
+
+    @property
+    def error(self) -> str | None:
+        return self.failure.message if self.failure else None
+
     @property
     def social_account_id(self) -> str | None:
         return self.account_link.social_account_id if self.account_link else None
@@ -222,6 +262,33 @@ class Publication(Base):
     @property
     def provider_publication_id(self) -> str | None:
         return self.provider_reference.external_id if self.provider_reference else None
+
+
+class PublicationDestination(Base):
+    """Reserve a clip/account pair while queued, processing, or published."""
+
+    __tablename__ = "publication_destinations"
+    __table_args__ = (UniqueConstraint("clip_id", "social_account_id"),)
+    publication_id: Mapped[str] = mapped_column(
+        ForeignKey("publications.id", ondelete="CASCADE"), primary_key=True
+    )
+    clip_id: Mapped[str] = mapped_column(ForeignKey("clips.id", ondelete="CASCADE"))
+    social_account_id: Mapped[str] = mapped_column(
+        ForeignKey("social_accounts.id", ondelete="CASCADE")
+    )
+
+
+class PublicationFailure(Base):
+    """Keep safe provider diagnostics without altering existing publication columns."""
+
+    __tablename__ = "publication_failures"
+
+    publication_id: Mapped[str] = mapped_column(
+        ForeignKey("publications.id", ondelete="CASCADE"), primary_key=True
+    )
+    message: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    publication: Mapped[Publication] = relationship(back_populates="failure")
 
 
 class MetricSnapshot(Base):
@@ -262,7 +329,68 @@ class SocialAccount(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_utc, onupdate=now_utc
     )
+    identity: Mapped[SocialAccountIdentity | None] = relationship(
+        back_populates="account", cascade="all, delete-orphan", uselist=False
+    )
+
+    @property
+    def external_account_id(self) -> str | None:
+        return self.identity.external_account_id if self.identity else None
+
+    @property
+    def parent_page_name(self) -> str | None:
+        return self.identity.parent_page_name if self.identity else None
+
     publication_links: Mapped[list[PublicationAccountLink]] = relationship(back_populates="account")
+
+
+class SocialAccountGroup(Base):
+    __tablename__ = "social_account_groups"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    name: Mapped[str] = mapped_column(String(100))
+    name_key: Mapped[str] = mapped_column(String(100), unique=True)
+    description: Mapped[str] = mapped_column(String(500), default="")
+    members: Mapped[list[SocialAccountGroupMember]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+
+    @property
+    def account_ids(self) -> list[str]:
+        return sorted(member.account_id for member in self.members)
+
+
+class SocialAccountGroupMember(Base):
+    __tablename__ = "social_account_group_members"
+
+    group_id: Mapped[str] = mapped_column(
+        ForeignKey("social_account_groups.id", ondelete="CASCADE"), primary_key=True
+    )
+    account_id: Mapped[str] = mapped_column(
+        ForeignKey("social_accounts.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
+class SocialAccountIdentity(Base):
+    __tablename__ = "social_account_identities"
+    __table_args__ = (UniqueConstraint("platform", "external_account_id"),)
+
+    account_id: Mapped[str] = mapped_column(
+        ForeignKey("social_accounts.id", ondelete="CASCADE"), primary_key=True
+    )
+    platform: Mapped[str] = mapped_column(String(32))
+    external_account_id: Mapped[str] = mapped_column(String(200))
+    parent_page_id: Mapped[str] = mapped_column(String(200), default="")
+    parent_page_name: Mapped[str] = mapped_column(String(200), default="")
+    account: Mapped[SocialAccount] = relationship(back_populates="identity")
+
+
+class OAuthAccountSelection(Base):
+    __tablename__ = "oauth_account_selections"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    encrypted_payload: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 
 class PublicationAccountLink(Base):

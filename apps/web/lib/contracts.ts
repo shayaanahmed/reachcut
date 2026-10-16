@@ -227,6 +227,7 @@ const metricSnapshot = z.object({
 });
 
 const publication = z.object({
+  error: z.string().nullable().optional(),
   id: z.string(),
   platform: socialPlatformSchema,
   status: z.enum(["ready", "queued", "processing", "published", "failed"]),
@@ -243,6 +244,8 @@ const publication = z.object({
 });
 
 export const socialAccountSchema = z.object({
+  external_account_id: z.string().nullable().optional(),
+  parent_page_name: z.string().nullable().optional(),
   id: z.string(),
   platform: socialPlatformSchema,
   label: z.string(),
@@ -259,6 +262,27 @@ export const socialAccountSchema = z.object({
   updated_at: z.string(),
 });
 
+export const socialAccountGroupSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string(),
+  account_ids: z.array(z.string()),
+});
+export type SocialAccountGroup = z.infer<typeof socialAccountGroupSchema>;
+
+export const oauthAccountSelectionSchema = z.object({
+  platform: socialPlatformSchema,
+  candidates: z.array(
+    z.object({
+      external_account_id: z.string(),
+      display_name: z.string(),
+      username: z.string(),
+      parent_page_name: z.string(),
+      already_connected: z.boolean(),
+    }),
+  ),
+});
+
 export const accountConnectionReadinessSchema = z.object({
   account_id: z.string(),
   platform: socialPlatformSchema,
@@ -269,6 +293,16 @@ export const accountConnectionReadinessSchema = z.object({
 });
 
 export const projectSchema = z.object({
+  job: z
+    .object({
+      status: z.string(),
+      phase: z.string(),
+      source_url: z.string().nullable(),
+      error: z.string().nullable(),
+      enqueued_at: z.string(),
+    })
+    .nullable()
+    .optional(),
   id: z.string(),
   title: z.string(),
   original_filename: z.string(),

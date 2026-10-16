@@ -22,8 +22,13 @@ import type {
   ClipTypeSuggestion,
   Project,
   SocialAccount,
+  SocialAccountGroup,
 } from "../../lib/contracts";
 import {
+  approveClipBatch,
+  publishProjectBatch,
+  listAccountGroups,
+  socialAccountReadiness,
   addMetricSnapshot,
   createPublicationBatch,
   deletePublication,
@@ -35,6 +40,7 @@ import {
 } from "../publishing/api";
 import {
   stopProject,
+  retryProject,
   deleteProject,
   getClipTypeSuggestions,
   getProject,
@@ -189,6 +195,10 @@ export function useProjectWorkbench(
   const loadAccounts = options.loadAccounts ?? false;
   const [projects, setProjects] = useState<Project[]>([]);
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
+  const [groups, setGroups] = useState<SocialAccountGroup[]>([]);
+  const [metricsWarnings, setMetricsWarnings] = useState<
+    Record<string, string>
+  >({});
   const [operations, setOperations] = useState<Record<string, OperationState>>(
     {},
   );
@@ -202,7 +212,9 @@ export function useProjectWorkbench(
   const renderQueue = useRef<Promise<void>>(Promise.resolve());
   const busy = Object.keys(operations).length > 0;
   const hasProcessingProjects = projects.some((project) =>
-    ["processing", "cancel_requested"].includes(project.status),
+    ["queued", "downloading", "processing", "cancel_requested"].includes(
+      project.status,
+    ),
   );
   const processingPublicationKey = projects
     .flatMap((project) =>
@@ -234,7 +246,10 @@ export function useProjectWorkbench(
               ) &&
               publication.social_account_id,
           )
-          .map((publication) => publication.id),
+          .map(
+            (publication) =>
+              `${publication.id}@${publication.social_account_id}`,
+          ),
       ),
     )
     .join(",");
@@ -267,8 +282,11 @@ export function useProjectWorkbench(
 
   useEffect(() => {
     if (!loadAccounts) return;
-    void listSocialAccounts()
-      .then(setAccounts)
+    void Promise.all([listSocialAccounts(), listAccountGroups()])
+      .then(([items, collections]) => {
+        setAccounts(items);
+        setGroups(collections);
+      })
       .catch((caught: Error) => setError(caught.message));
   }, [loadAccounts]);
 
@@ -300,19 +318,30 @@ export function useProjectWorkbench(
     let active = true;
     const publicationIds = processingPublicationKey.split(",");
     const refresh = () => {
-      void Promise.all(publicationIds.map(refreshPublication))
-        .then((updatedProjects) => {
+      void Promise.allSettled(publicationIds.map(refreshPublication)).then(
+        (results) => {
           if (!active) return;
+          const successful = results.flatMap((result) =>
+            result.status === "fulfilled" ? [result.value] : [],
+          );
           const latest = new Map(
-            updatedProjects.map((project) => [project.id, project]),
+            successful.map((project) => [project.id, project]),
           );
           setProjects((items) =>
             items.map((project) => latest.get(project.id) ?? project),
           );
-        })
-        .catch((caught: Error) => {
-          if (active) setError(caught.message);
-        });
+          const failed: Record<string, string> = {};
+          results.forEach((result, index) => {
+            if (result.status === "rejected")
+              failed[publicationIds[index]] =
+                result.reason instanceof Error
+                  ? result.reason.message
+                  : "Could not refresh post status";
+          });
+          if (Object.keys(failed).length)
+            setMetricsWarnings((current) => ({ ...current, ...failed }));
+        },
+      );
     };
     refresh();
     const timer = window.setInterval(refresh, 5000);
@@ -323,14 +352,20 @@ export function useProjectWorkbench(
   }, [processingPublicationKey]);
 
   useEffect(() => {
-    if (!queuedPublicationKey || !projectId) return;
+    if (!queuedPublicationKey) return;
     let active = true;
     const refresh = () => {
-      void getProject(projectId)
+      void (
+        projectId
+          ? getProject(projectId).then((item) => [item])
+          : listProjects()
+      )
         .then((updated) => {
           if (active)
             setProjects((items) =>
-              items.map((item) => (item.id === updated.id ? updated : item)),
+              items.map(
+                (item) => updated.find((p) => p.id === item.id) ?? item,
+              ),
             );
         })
         .catch((caught: Error) => {
@@ -348,26 +383,54 @@ export function useProjectWorkbench(
   useEffect(() => {
     if (!metricsPublicationKey) return;
     let active = true;
-    const publicationIds = metricsPublicationKey.split(",");
+    const destinations = new Map(
+      metricsPublicationKey.split(",").map((entry) => {
+        const [id, accountId] = entry.split("@");
+        return [id, accountId];
+      }),
+    );
+    const publicationIds = [...destinations.keys()];
+    let syncing = false;
     const sync = () => {
+      if (syncing) return;
+      syncing = true;
       void (async () => {
-        const updatedProjects: Project[] = [];
+        const states = await socialAccountReadiness();
+        const ready = new Set(
+          states
+            .filter((state) => state.publishing_ready)
+            .map((state) => state.account_id),
+        );
+        const warnings: Record<string, string> = {};
+        // Keep each failure local so other accounts and projects can still refresh.
         for (const publicationId of publicationIds) {
-          updatedProjects.push(await syncMetricSnapshot(publicationId));
-        }
-        return updatedProjects;
-      })()
-        .then((updatedProjects) => {
           if (!active) return;
-          const latest = new Map(
-            updatedProjects.map((project) => [project.id, project]),
-          );
-          setProjects((items) =>
-            items.map((project) => latest.get(project.id) ?? project),
-          );
-        })
+          const accountId = destinations.get(publicationId);
+          if (!accountId || !ready.has(accountId)) {
+            warnings[publicationId] =
+              "Reconnect the original publishing account in Settings → Accounts to resume insights. Saved metrics are preserved.";
+            continue;
+          }
+          try {
+            const updated = await syncMetricSnapshot(publicationId);
+            if (active)
+              setProjects((items) =>
+                items.map((item) => (item.id === updated.id ? updated : item)),
+              );
+          } catch (caught) {
+            warnings[publicationId] =
+              caught instanceof Error
+                ? caught.message
+                : "Metrics refresh failed";
+          }
+        }
+        if (active) setMetricsWarnings(warnings);
+      })()
         .catch((caught: Error) => {
-          if (active) setError(caught.message);
+          if (active) setMetricsWarnings({ accounts: caught.message });
+        })
+        .finally(() => {
+          syncing = false;
         });
     };
     sync();
@@ -463,16 +526,22 @@ export function useProjectWorkbench(
       "Could not stop project",
     );
 
+  const retry = (id: string) =>
+    withOperation(
+      `project:${id}:retry`,
+      async () => {
+        await retryProject(id);
+        replaceProject(await getProject(id));
+      },
+      "Could not retry project",
+    );
+
   const process = (id: string) =>
     withOperation(
       `project:${id}:process`,
       async () => {
         await processProject(id, languages[id], clipTypes[id] ?? []);
-        setProjects((items) =>
-          items.map((item) =>
-            item.id === id ? { ...item, status: "processing" } : item,
-          ),
-        );
+        replaceProject(await getProject(id));
       },
       "Processing failed",
     );
@@ -677,6 +746,29 @@ export function useProjectWorkbench(
 
   return {
     accounts,
+    groups,
+    metricsWarnings,
+    replaceProject,
+    bulkApprove: (id: string, ids: string[] | null) =>
+      withOperation(
+        `project:${id}:bulk`,
+        async () => {
+          const updated = await approveClipBatch(id, ids);
+          replaceProject(updated);
+          return updated;
+        },
+        "Could not approve selected clips",
+      ),
+    bulkPublish: (id: string, ids: string[], destinations: string[]) =>
+      withOperation(
+        `project:${id}:bulk`,
+        async () => {
+          const result = await publishProjectBatch(id, ids, destinations);
+          replaceProject(result.project);
+          return result;
+        },
+        "Could not publish selected clips",
+      ),
     approve,
     busy,
     error,
@@ -710,5 +802,6 @@ export function useProjectWorkbench(
     setLanguages,
     setClipTypes,
     upload,
+    retry,
   };
 }

@@ -23,7 +23,38 @@ export async function getProject(projectId: string): Promise<Project> {
   return projectSchema.parse(await response.json());
 }
 
-export async function uploadProject(data: FormData): Promise<Project> {
+export async function uploadProject(
+  data: FormData,
+  onProgress?: (percent: number) => void,
+): Promise<Project> {
+  if (onProgress) {
+    return new Promise((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      request.open("POST", `${UPLOAD_API_URL}/projects/upload`);
+      request.upload.onprogress = (event) => {
+        if (event.lengthComputable)
+          onProgress(Math.round((event.loaded / event.total) * 100));
+      };
+      request.onerror = () =>
+        reject(new Error("Upload failed. Check your connection and retry."));
+      request.onload = () => {
+        try {
+          const payload = JSON.parse(request.responseText);
+          if (request.status < 200 || request.status >= 300) {
+            throw new Error(
+              typeof payload.detail === "string"
+                ? payload.detail
+                : "Upload failed",
+            );
+          }
+          resolve(projectSchema.parse(payload));
+        } catch (error) {
+          reject(error);
+        }
+      };
+      request.send(data);
+    });
+  }
   const response = await fetch(`${UPLOAD_API_URL}/projects/upload`, {
     method: "POST",
     body: data,
@@ -33,6 +64,7 @@ export async function uploadProject(data: FormData): Promise<Project> {
 }
 
 export type UrlImportRequest = {
+  language?: string | null;
   title: string;
   url: string;
   authorization_confirmed: boolean;
@@ -102,4 +134,12 @@ export async function stopProject(projectId: string): Promise<void> {
   });
   if (!response.ok)
     throw await responseError(response, "Could not stop project");
+}
+
+export async function retryProject(projectId: string): Promise<void> {
+  const response = await fetch(`${API_URL}/projects/${projectId}/retry`, {
+    method: "POST",
+  });
+  if (!response.ok)
+    throw await responseError(response, "Could not retry project");
 }

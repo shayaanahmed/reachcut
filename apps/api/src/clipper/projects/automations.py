@@ -20,6 +20,7 @@ from clipper.persistence import (
 )
 from clipper.projects.clips import ClipService
 from clipper.projects.publications import AutomaticPublicationCreate, PublicationService
+from clipper.projects.queue import ProjectQueue
 from clipper.publishing import CredentialStore, PublishingAdapter
 
 
@@ -77,6 +78,9 @@ class AutomationService:
         session.add(pipeline)
         session.commit()
         session.refresh(pipeline)
+        project = session.get(Project, request.project_id)
+        if project and project.status == "created":
+            ProjectQueue().enqueue(session, project, clip_types=request.clip_types)
         return pipeline
 
     def delete(self, session: Session, pipeline_id: str) -> None:
@@ -126,7 +130,7 @@ class AutomationService:
             query = query.where(AutomationPipeline.next_run_at <= now)
         completed_ids: list[str] = []
         for pipeline in session.scalars(query):
-            self._execute_one(
+            if self._execute_one(
                 session,
                 pipeline,
                 clip_service,
@@ -134,8 +138,8 @@ class AutomationService:
                 adapters,
                 credentials,
                 analyze_project,
-            )
-            completed_ids.append(pipeline.id)
+            ):
+                completed_ids.append(pipeline.id)
         return completed_ids
 
     def _execute_one(
@@ -147,21 +151,32 @@ class AutomationService:
         adapters: Mapping[str, PublishingAdapter],
         credentials: CredentialStore,
         analyze_project: Callable[[str, tuple[ClipType, ...]], None] | None,
-    ) -> None:
-        pipeline.status = "running"
-        pipeline.last_error = None
-        session.commit()
+    ) -> bool:
         try:
             project = session.get(Project, pipeline.project_id)
             if not project:
                 raise AutomationStateError("project is unavailable")
             selected_clip_types = tuple(ClipType(item) for item in pipeline.clip_types)
-            if project.status in {"created", "failed"} and analyze_project:
+            if project.status == "created" and analyze_project:
                 analyze_project(project.id, selected_clip_types)
                 session.expire_all()
                 project = session.get(Project, pipeline.project_id)
+            if project and project.status in {
+                "queued",
+                "downloading",
+                "processing",
+                "cancel_requested",
+                "created",
+            }:
+                # Remain due: the next scheduler pass continues when the source is ready.
+                return False
             if not project or project.status != "review":
-                raise AutomationStateError("project analysis is not ready")
+                raise AutomationStateError(
+                    "Project needs attention. Retry its analysis to continue."
+                )
+            pipeline.status = "running"
+            pipeline.last_error = None
+            session.commit()
             clips = list(
                 session.scalars(select(Clip).where(Clip.project_id == pipeline.project_id))
             )
@@ -233,6 +248,7 @@ class AutomationService:
             elif refreshed.schedule == "weekly":
                 refreshed.next_run_at = self._aware(refreshed.next_run_at) + timedelta(days=7)
             session.commit()
+            return True
         except Exception as error:
             session.rollback()
             failed = session.get(AutomationPipeline, pipeline.id)
@@ -241,6 +257,7 @@ class AutomationService:
                 failed.last_run_at = now_utc()
                 failed.last_error = str(error)[:1000]
                 session.commit()
+            return False
 
     @staticmethod
     def _score(clip: Clip) -> int:

@@ -101,6 +101,12 @@ export function ClipCard({
         <Link className="studio-link" href={studioUrl}>
           Open studio <span aria-hidden="true">→</span>
         </Link>
+        <Link
+          className="primary-link clip-publish-link"
+          href={`${studioUrl}/publish`}
+        >
+          {clip.final_path ? "Publish clip ↗" : "Publishing setup →"}
+        </Link>
         <div>
           <button
             type="button"

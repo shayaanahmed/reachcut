@@ -353,3 +353,46 @@ describe("publication tracker", () => {
     ).toBe(false);
   });
 });
+
+it("shows the saved provider failure and publication attempt ID", () => {
+  const view = render(
+    <PublicationTracker
+      clip={{
+        ...clip,
+        publications: [
+          {
+            id: "failed-attempt-1",
+            platform: "instagram",
+            status: "failed",
+            post_url: null,
+            title: "A useful idea",
+            description: "#Clip",
+            published_at: null,
+            created_at: "2026-10-16T10:00:00Z",
+            social_account_id: "account-1",
+            account_label: "Instagram",
+            account_username: "creator",
+            provider_publication_id: null,
+            metric_snapshots: [],
+            error:
+              "Instagram video upload failed; Meta 1363008: FILE_NOT_FOUND; bytes transferred: 0",
+          },
+        ],
+      }}
+      accounts={[account]}
+      isPending={() => false}
+      onPublish={vi.fn()}
+      onRecordMetrics={vi.fn()}
+      onRefreshPublication={vi.fn()}
+      onSyncMetrics={vi.fn()}
+      onDeletePublication={vi.fn()}
+    />,
+  );
+  const alert = view.getByRole("alert");
+  expect(alert.textContent).toContain("1363008: FILE_NOT_FOUND");
+  expect(alert.textContent).toContain("Attempt: failed-attempt-1");
+  expect(alert.textContent).not.toContain(
+    "Check the account connection and try publishing again",
+  );
+  view.unmount();
+});
