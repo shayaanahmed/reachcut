@@ -26,11 +26,9 @@ import type {
 } from "../../lib/contracts";
 import {
   approveClipBatch,
-  publishProjectBatch,
   listAccountGroups,
   socialAccountReadiness,
   addMetricSnapshot,
-  createPublicationBatch,
   deletePublication,
   listSocialAccounts,
   refreshPublication,
@@ -38,6 +36,10 @@ import {
   type MetricCreate,
   type PublicationCreate,
 } from "../publishing/api";
+import {
+  savePublishingDestinations,
+  publishAndUpdateProject,
+} from "../publishing/post-management-api";
 import {
   stopProject,
   retryProject,
@@ -49,6 +51,7 @@ import {
   processProject,
   updateProject,
   uploadProject,
+  uploadPublishingVideo,
   type UrlImportRequest,
 } from "./api";
 
@@ -157,6 +160,15 @@ function styleUpdate(form: HTMLFormElement, clip: Clip): ClipStyleUpdate {
     >["style"],
     effects,
     audio_track_index: Number(data.get("audio_track_index")),
+    original_audio_volume: Number(data.get("original_audio_volume") ?? 1),
+    watermark: {
+      text: String(data.get("watermark_text") ?? "").trim(),
+      position: data.get(
+        "watermark_position",
+      ) as Clip["plan"]["watermark"]["position"],
+      opacity: Number(data.get("watermark_opacity")),
+      font_size: Number(data.get("watermark_font_size")),
+    },
     caption_config: {
       preset: data.get(
         "caption_preset",
@@ -483,6 +495,17 @@ export function useProjectWorkbench(
       "Upload failed",
     );
 
+  const uploadForPublishing = (data: FormData) =>
+    withOperation(
+      "project:publishing-upload",
+      async () => {
+        const created = await uploadPublishingVideo(data);
+        setProjects((current) => [created, ...current]);
+        return created;
+      },
+      "Video upload failed",
+    );
+
   const importUrl = (request: UrlImportRequest) =>
     withOperation(
       "project:create",
@@ -502,7 +525,7 @@ export function useProjectWorkbench(
         replaceProject(updated);
         return updated;
       },
-      "Project update failed",
+      "Source video update failed",
     );
 
   const remove = (id: string) =>
@@ -513,7 +536,7 @@ export function useProjectWorkbench(
         setProjects((items) => items.filter((item) => item.id !== id));
         return true;
       },
-      "Project deletion failed",
+      "Source video deletion failed",
     );
 
   const stop = (id: string) =>
@@ -523,7 +546,7 @@ export function useProjectWorkbench(
         await stopProject(id);
         replaceProject(await getProject(id));
       },
-      "Could not stop project",
+      "Could not stop source video",
     );
 
   const retry = (id: string) =>
@@ -533,14 +556,14 @@ export function useProjectWorkbench(
         await retryProject(id);
         replaceProject(await getProject(id));
       },
-      "Could not retry project",
+      "Could not retry source video",
     );
 
-  const process = (id: string) =>
+  const process = (id: string, mode: "clips" | "metadata" = "clips") =>
     withOperation(
       `project:${id}:process`,
       async () => {
-        await processProject(id, languages[id], clipTypes[id] ?? []);
+        await processProject(id, languages[id], clipTypes[id] ?? [], mode);
         replaceProject(await getProject(id));
       },
       "Processing failed",
@@ -693,9 +716,12 @@ export function useProjectWorkbench(
     withOperation(
       `clip:${clipId}:publish-batch`,
       async () => {
-        const updated = await createPublicationBatch(clipId, data);
-        replaceProject(updated);
-        return updated;
+        const clip = projects
+          .flatMap((project) => project.clips)
+          .find((item) => item.id === clipId);
+        if (!clip)
+          throw new Error("Clip is no longer available; refresh the project");
+        return savePublishingDestinations(clip, data, replaceProject);
       },
       "Could not save publication",
     );
@@ -763,9 +789,7 @@ export function useProjectWorkbench(
       withOperation(
         `project:${id}:bulk`,
         async () => {
-          const result = await publishProjectBatch(id, ids, destinations);
-          replaceProject(result.project);
-          return result;
+          return publishAndUpdateProject(id, ids, destinations, replaceProject);
         },
         "Could not publish selected clips",
       ),
@@ -802,6 +826,17 @@ export function useProjectWorkbench(
     setLanguages,
     setClipTypes,
     upload,
+    uploadForPublishing,
     retry,
+    reload: () =>
+      withOperation(
+        "projects:reload",
+        async () => {
+          setProjects(
+            projectId ? [await getProject(projectId)] : await listProjects(),
+          );
+        },
+        "Could not reload project",
+      ),
   };
 }

@@ -121,6 +121,7 @@ class AutomationService:
         *,
         pipeline_id: str | None = None,
         analyze_project: Callable[[str, tuple[ClipType, ...]], None] | None = None,
+        prepare_growth: Callable[[Session, Clip], bool] | None = None,
     ) -> list[str]:
         now = now_utc()
         query = select(AutomationPipeline).where(AutomationPipeline.status == "active")
@@ -138,6 +139,7 @@ class AutomationService:
                 adapters,
                 credentials,
                 analyze_project,
+                prepare_growth,
             ):
                 completed_ids.append(pipeline.id)
         return completed_ids
@@ -151,6 +153,7 @@ class AutomationService:
         adapters: Mapping[str, PublishingAdapter],
         credentials: CredentialStore,
         analyze_project: Callable[[str, tuple[ClipType, ...]], None] | None,
+        prepare_growth: Callable[[Session, Clip], bool] | None = None,
     ) -> bool:
         try:
             project = session.get(Project, pipeline.project_id)
@@ -196,6 +199,10 @@ class AutomationService:
             if any(account is None or not account.is_active for account in accounts):
                 raise AutomationStateError("a selected publishing account is unavailable")
             for clip in clips:
+                if prepare_growth and not prepare_growth(session, clip):
+                    pipeline.status = "active"
+                    session.commit()
+                    return False
                 if pipeline.auto_approve and clip.approval_status != "approved":
                     clip_service.set_approval(session, clip.id, True)
                 if not clip.final_path:

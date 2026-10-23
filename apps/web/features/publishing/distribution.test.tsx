@@ -10,7 +10,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { socialAccountSchema, projectSchema } from "../../lib/contracts";
 import { DestinationSelector } from "./destination-selector";
 import { BulkClipActions } from "./bulk-clip-actions";
-import { insightPosts, summarizeInsights, viewsTimeline } from "./insight-data";
+import {
+  groupInsightPosts,
+  insightPosts,
+  summarizeInsights,
+  viewsTimeline,
+} from "./insight-data";
 
 const date = "2026-10-10T10:00:00Z";
 const account = socialAccountSchema.parse({
@@ -194,5 +199,29 @@ describe("insight calculations", () => {
     const rows = insightPosts([project, second]);
     expect(rows).toHaveLength(2);
     expect(summarizeInsights(rows).revenue).toEqual({ EUR: 5, USD: 8 });
+  });
+});
+
+describe("clip grouping", () => {
+  it("combines destinations by clip ID, keeps repeated titles separate, and uses latest metrics", () => {
+    const source = structuredClone(project);
+    const first = source.clips[0];
+    first.publications.push({
+      ...first.publications[0],
+      id: "youtube-post",
+      platform: "youtube",
+      metric_snapshots: [
+        { ...first.publications[0].metric_snapshots[0], views: 300 },
+      ],
+    });
+    source.clips[1].publications = [
+      { ...first.publications[0], id: "other-clip-post" },
+    ];
+    const groups = groupInsightPosts(insightPosts([source]));
+    expect(groups).toHaveLength(2);
+    const combined = groups.find((group) => group.rows[0].clipId === first.id)!;
+    expect(combined.rows).toHaveLength(2);
+    expect(combined.totals.views).toBe(450);
+    expect(combined.totals.tracked).toBe(2);
   });
 });

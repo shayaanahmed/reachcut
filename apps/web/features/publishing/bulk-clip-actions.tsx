@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
+import { ActionLink } from "../../components/action-link";
 import type {
   Project,
   SocialAccount,
@@ -42,7 +43,20 @@ export function BulkClipActions({
   const needsRender = selected.filter(
     (c) => c.approval_status === "approved" && !c.final_path,
   );
-  const disabled = pending || working;
+  const preparing = [
+    "queued",
+    "downloading",
+    "processing",
+    "cancel_requested",
+  ].includes(project.status);
+  const disabled = pending || working || preparing;
+  const hasExisting = ready.some((clip) =>
+    clip.publications.some(
+      (post) =>
+        post.status === "published" &&
+        destinations.includes(post.social_account_id ?? ""),
+    ),
+  );
   const allReady = project.clips.filter(
     (c) => c.approval_status === "approved" && c.final_path,
   );
@@ -75,8 +89,16 @@ export function BulkClipActions({
             your channels.
           </p>
         </div>
-        <Link href="/settings/accounts">Manage accounts & groups →</Link>
+        <ActionLink href="/settings/accounts" icon="⚙">
+          Accounts & groups
+        </ActionLink>
       </div>
+      {preparing && (
+        <p role="status">
+          The project pipeline is preparing publishing copy. Wait for it to
+          finish before publishing or updating posts.
+        </p>
+      )}
       <div className="bulk-clip-list">
         <label className="bulk-select-all">
           <input
@@ -161,7 +183,8 @@ export function BulkClipActions({
       <div className="bulk-publish-footer">
         <p>
           Public posts · Suggested clip titles, hashtags, and each account’s
-          defaults. Already queued or published destinations are skipped.
+          defaults. Existing posts receive the latest pipeline copy where
+          editing is supported. Uploads already in progress are skipped.
           Unapproved clips and missing exports are skipped with a reason.
         </p>
         <button
@@ -179,8 +202,8 @@ export function BulkClipActions({
           }}
         >
           {pending
-            ? "Queuing…"
-            : `Publish selected · ${ready.length} clips × ${destinations.length} destinations`}
+            ? "Saving posts…"
+            : `${hasExisting ? "Publish & update selected" : "Publish selected"} · ${ready.length} clips × ${destinations.length} destinations`}
         </button>
         <button
           disabled={disabled || !allReady.length || !destinations.length}
@@ -193,7 +216,8 @@ export function BulkClipActions({
       {result && (
         <div className="bulk-result" role="status">
           <strong>
-            {result.queued} posts queued · {result.skipped.length} skipped
+            {result.queued} posts queued · {result.updated ?? 0} existing posts
+            updated · {result.skipped.length} skipped
           </strong>
           <p>
             Uploads run in the background. Open a clip’s publishing page to

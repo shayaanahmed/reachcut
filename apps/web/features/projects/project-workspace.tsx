@@ -3,29 +3,30 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { BulkClipActions } from "../publishing/bulk-clip-actions";
+import { SourceWorkflows } from "./source-workflows";
+import { QualityReviewDetails } from "./quality-review";
 import { ProjectCard } from "./project-card";
 import { useProjectWorkbench } from "./use-project-workbench";
 
 export function ProjectWorkspace({ projectId }: { projectId: string }) {
-  const workbench = useProjectWorkbench(projectId, { loadAccounts: true });
+  const workbench = useProjectWorkbench(projectId);
   const router = useRouter();
   const project = workbench.projects.find((item) => item.id === projectId);
 
   if (workbench.loading)
     return (
       <main className="page">
-        <div className="loading-card">Loading project…</div>
+        <div className="loading-card">Loading source video…</div>
       </main>
     );
   if (!project)
     return (
       <main className="page">
         <div className="empty-state">
-          <h1>Project not found</h1>
+          <h1>Source video not found</h1>
           <p>It may have been removed from this workspace.</p>
           <Link className="primary-link" href="/projects">
-            Back to projects
+            Back to source videos
           </Link>
         </div>
       </main>
@@ -34,7 +35,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   return (
     <main className="page">
       <div className="breadcrumbs">
-        <Link href="/projects">Projects</Link>
+        <Link href="/projects">Source videos</Link>
         <span>/</span>
         <span>{project.title}</span>
       </div>
@@ -43,18 +44,15 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           {workbench.error}
         </p>
       )}
-      {project.clips.length > 0 && (
-        <BulkClipActions
-          project={project}
-          accounts={workbench.accounts}
-          groups={workbench.groups}
-          pending={workbench.isPending(`project:${project.id}:bulk`)}
-          onApprove={workbench.bulkApprove}
-          onRender={workbench.render}
-          onPublish={workbench.bulkPublish}
-        />
+      {project.status === "review" && (
+        <QualityReviewDetails projectId={project.id} />
       )}
+      <SourceWorkflows
+        project={project}
+        onChanged={() => void workbench.reload()}
+      />
       <ProjectCard
+        showProcessingControls={false}
         project={project}
         language={workbench.languages[project.id] ?? ""}
         selectedClipTypes={workbench.clipTypes[project.id] ?? []}

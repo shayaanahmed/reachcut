@@ -16,7 +16,23 @@ class ProbeResult:
     payload: dict[str, object]
 
     def as_artifact(self) -> dict[str, object]:
-        return {"duration_seconds": self.duration_seconds, "probe": self.payload}
+        streams = self.payload.get("streams", [])
+        streams = streams if isinstance(streams, list) else []
+        video = next(
+            (s for s in streams if isinstance(s, dict) and s.get("codec_type") == "video"), {}
+        )
+        width, height = int(video.get("width", 0)), int(video.get("height", 0))
+        return {
+            "duration_seconds": self.duration_seconds,
+            "probe": self.payload,
+            "inspection_version": "1",
+            "width": width,
+            "height": height,
+            "orientation": "portrait" if height > width else "landscape",
+            "has_audio": any(
+                isinstance(s, dict) and s.get("codec_type") == "audio" for s in streams
+            ),
+        }
 
 
 class MediaProbe:
@@ -36,7 +52,13 @@ class MediaProbe:
             "json",
             str(path),
         ]
-        result = self._runner(command, check=False, capture_output=True, text=True, timeout=120)
+        try:
+            result = self._runner(command, check=False, capture_output=True, text=True, timeout=120)
+        except OSError:
+            from clipper.media.metadata import media_metadata
+
+            fallback_payload = media_metadata(path)
+            result = subprocess.CompletedProcess(command, 0, json.dumps(fallback_payload), "")
         if result.returncode != 0:
             raise MediaError(f"ffprobe rejected media: {result.stderr[-500:]}")
         payload: dict[str, object] = json.loads(result.stdout)

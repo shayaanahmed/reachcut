@@ -20,6 +20,37 @@ describe("media upload transport", () => {
       expect.objectContaining({ method: "POST" }),
     );
   });
+
+  it.each([
+    [
+      422,
+      JSON.stringify({
+        detail: [{ loc: ["body", "title"], msg: "Field required" }],
+      }),
+      "title: Field required",
+    ],
+    [502, "Bad gateway", "Upload failed (502)"],
+  ])(
+    "explains failed progress uploads (%s)",
+    async (status, responseText, message) => {
+      vi.stubGlobal(
+        "XMLHttpRequest",
+        class {
+          upload = { onprogress: null };
+          status = status;
+          responseText = responseText;
+          onload: (() => void) | null = null;
+          open() {}
+          send() {
+            this.onload?.();
+          }
+        },
+      );
+      await expect(uploadProject(new FormData(), vi.fn())).rejects.toThrow(
+        message,
+      );
+    },
+  );
 });
 
 describe("URL import transport", () => {

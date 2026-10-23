@@ -20,6 +20,8 @@ export type ClipStyleUpdate = {
   cta_style?: NonNullable<Project["clips"][number]["plan"]["cta"]>["style"];
   effects: Project["clips"][number]["plan"]["effects"];
   audio_track_index: number;
+  original_audio_volume: number;
+  watermark: Project["clips"][number]["plan"]["watermark"];
 };
 
 export type ThumbnailTemplate =

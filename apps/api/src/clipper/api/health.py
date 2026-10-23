@@ -17,6 +17,6 @@ def health(session: Session = Depends(get_session)) -> HealthResponse:
         status="ok",
         ffmpeg=shutil.which("ffmpeg") is not None,
         ffprobe=shutil.which("ffprobe") is not None,
-        editorial_provider=f"ollama:{runtime.editorial_model}",
+        editorial_provider=f"ollama:{runtime.model_for('clip_selection')}",
         transcription_provider=transcription_provider.identity,
     )

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Faceless frame library, vol. 4: tech tricks</title>
+<style>
+:root{box-sizing:border-box;--pb:#101114;--pf:#eceef2;--pm:#9aa0ad;--pc:#181a20;--pl:#2a2d36;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:light){:root:not([data-theme=dark]){--pb:#f5f6f9;--pf:#14161c;--pm:#5d6472;--pc:#fff;--pl:#d9dde6}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--pb);color:var(--pf);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;padding:24px 18px 60px;max-width:1180px;margin-inline:auto}
+h1{font-size:30px;margin:0 0 6px;letter-spacing:-.02em}
+p.l{color:var(--pm);max-width:72ch;margin:0 0 18px}
+.bar{margin-bottom:22px}
+button{font:inherit;border:1px solid var(--pl);background:var(--pc);color:var(--pf);padding:7px 14px;border-radius:99px;cursor:pointer}
+main{display:grid;grid-template-columns:repeat(auto-fill,minmax(216px,1fr));gap:22px}
+figure{margin:0;container-type:inline-size}
+figcaption{margin-top:8px;font-size:13px;color:var(--pm)}
+figcaption b{display:block;color:var(--pf);font-size:14px}
+.st{position:relative;aspect-ratio:9/16;border-radius:16px;overflow:hidden;background:var(--bg);color:var(--fg);cursor:pointer;font-size:4.6cqw;line-height:1.3;border:1px solid var(--pl)}
+.a{position:absolute}.ctr{text-align:center}.mut{opacity:.6}
+.mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+.cp{position:absolute;left:6%;right:6%;bottom:11%;text-align:center;font-weight:800;font-size:1.5em;line-height:1.15}
+.w{display:inline-block;opacity:0}.k{color:var(--hl)}
+.bar2{height:.7em;border-radius:.4em;background:rgba(127,127,127,.3);overflow:hidden}
+.sx{display:block;height:100%;background:var(--ac);transform-origin:left;transform:scaleX(0)}
+.bar2 .sx{width:100%}
+.type{overflow:hidden;white-space:nowrap;width:0}
+.dr{stroke-dasharray:100;stroke-dashoffset:100}
+.grow{transform:scaleY(0);transform-origin:top}
+.wipe{clip-path:inset(0 100% 0 0)}
+.st:not(.play) :is(.pop,.rot,.slam,.flip,.sl){opacity:0}
+.play .pop{animation:pop .5s both;animation-delay:var(--d,0s)}
+.play .sl{animation:sl .5s both;animation-delay:var(--d,0s)}
+.play .rot{animation:pr .55s cubic-bezier(.3,1.6,.5,1) both;animation-delay:var(--d,0s)}
+.play .slam{animation:sm .35s cubic-bezier(.2,1.4,.4,1) both;animation-delay:var(--d,0s)}
+.play .flip{animation:fp .8s cubic-bezier(.2,1.2,.4,1) both;animation-delay:var(--d,0s)}
+.play .w{animation:up .35s both}
+.play .type{animation:type .9s steps(20) both;animation-delay:var(--d)}
+.play .dr{animation:draw 1.2s ease-out var(--d,.3s) forwards}
+.play .grow{animation:gr .8s both;animation-delay:var(--d)}
+.play .sx{animation:fl 1s both;animation-delay:var(--d)}
+.play .wipe{animation:wp .8s ease-out both;animation-delay:var(--d)}
+.dots i{display:inline-block;width:.5em;height:.5em;border-radius:50%;background:#8e8e93;margin:0 .1em;animation:bl 1s infinite}
+.dots i:nth-child(2){animation-delay:.2s}.dots i:nth-child(3){animation-delay:.4s}
+.cur{display:inline-block;width:.6em;height:1em;background:currentColor;vertical-align:-.15em;animation:bk 1s steps(1) infinite}
+.zig{height:.8em;background:linear-gradient(135deg,#fffdf5 25%,transparent 25%) -.4em 0,linear-gradient(225deg,#fffdf5 25%,transparent 25%) -.4em 0;background-size:.8em .8em}
+@keyframes pop{from{opacity:0;transform:translateY(8px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes sl{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes pr{from{opacity:0;transform:scale(.3) rotate(calc(var(--r)*3))}to{opacity:1;transform:rotate(var(--r))}}
+@keyframes sm{from{opacity:0;transform:scale(2.4)}to{opacity:1;transform:none}}
+@keyframes fp{from{opacity:0;transform:perspective(500px) rotateY(90deg)}to{opacity:1;transform:none}}
+@keyframes up{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes type{to{width:var(--w)}}
+@keyframes gr{to{transform:none}}
+@keyframes fl{to{transform:none}}
+@keyframes wp{to{clip-path:inset(0)}}
+@keyframes bl{50%{opacity:.25}}
+@keyframes bk{50%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.st *{animation-duration:.01s!important}}
+.key{display:flex;align-items:center;justify-content:center;font-size:2.2em;font-weight:700;width:1.5em;height:1.5em;background:linear-gradient(#444853,#262930);border-radius:.25em;box-shadow:0 .12em 0 #0a0b0e,inset 0 .04em 0 rgba(255,255,255,.18)}
+.play .kp{animation:kp .35s ease-out both;animation-delay:var(--d)}
+.tg{display:block;width:2.6em;height:1.5em;border-radius:1em;background:#d1d1d6;position:relative;flex:none}
+.tg::after{content:"";position:absolute;left:.15em;top:.15em;width:1.2em;height:1.2em;border-radius:50%;background:#fff;box-shadow:0 .1em .3em rgba(0,0,0,.3)}
+.play .tg.on{animation:tb .3s both;animation-delay:var(--d)}
+.play .tg.on::after{animation:tk .3s both;animation-delay:var(--d)}
+.play .sk{animation:sk .5s .2s both}
+.mq{display:inline-block;white-space:nowrap;animation:mq 9s linear infinite}
+.play .fo{animation:fo .2s both;animation-delay:var(--d)}
+@keyframes kp{to{transform:translateY(.12em);box-shadow:0 .02em 0 #0a0b0e,0 0 .8em rgba(124,200,255,.7);color:#9be3ff}}
+@keyframes tb{to{background:#34c759}}
+@keyframes tk{to{transform:translateX(1.1em)}}
+@keyframes sk{0%,100%{transform:none}20%,60%{transform:translateX(-.4em)}40%,80%{transform:translateX(.4em)}}
+@keyframes mq{to{transform:translateX(-50%)}}
+@keyframes fo{to{opacity:0}}
+@media (prefers-reduced-motion:reduce){.st *{animation-iteration-count:1!important}}
+</style>
+</head>
+<body>
+<h1>Faceless frame library, vol. 4</h1>
+<p class="l">Twelve more designs, built for tech tips and tricks as well as repo reveals: shortcut keycaps, a command palette, error-to-fix, settings toggles, a sticky-note pro tip, a hand-drawn sketch, a stock ticker, a game HUD, TikTok comments, do vs. don’t, a browser window and a copy-this-command block. Click a frame to replay it. Highlighted caption words are the ones you stress with your voice. All names and numbers are placeholders.</p>
+<div class="bar"><button id="re">▶ Replay all</button></div>
+<main id="grid"></main>
+<script>
+const F=[
+{n:"Shortcut keycaps",u:"Teach a keyboard shortcut",s:"background:radial-gradient(circle at 50% 25%,#2a2f3d,#0e1015);--fg:#fff;--hl:#7cc8ff;font-family:system-ui,sans-serif",c:"Press this [shortcut]",
+ g:`<div class="a" style="left:0;right:0;top:11%;display:flex;justify-content:center;align-items:center;gap:.8em"><div class="key kp" style="--d:.5s">⌘</div><span class="mut" style="font-size:1.6em">+</span><div class="key kp" style="--d:1s">K</div></div><div class="a ctr pop" style="--d:1.5s;left:0;right:0;top:34%;font-weight:700;font-size:1.2em">Jump to anything</div><div class="a ctr mut pop" style="--d:1.8s;left:0;right:0;top:41%;font-size:.8em">Ctrl on Windows</div>`},
+{n:"Command palette",u:"Show a search-and-run trick",s:"background:linear-gradient(150deg,#6d4aff,#00b8ff);--fg:#fff;--hl:#fff7a8;font-family:system-ui,sans-serif",c:"Type it. [Run it]",
+ g:`<div class="a" style="left:7%;right:7%;top:8%;background:rgba(255,255,255,.2);backdrop-filter:blur(1em);-webkit-backdrop-filter:blur(1em);border:1px solid rgba(255,255,255,.4);border-radius:1.2em;overflow:hidden"><div style="display:flex;gap:.5em;padding:.8em 1em;font-size:1.1em;border-bottom:1px solid rgba(255,255,255,.3)"><span>🔍</span><div class="type" style="--w:13ch;--d:.3s">deploy my app</div></div><div class="pop" style="--d:1.3s;padding:.6em 1em;background:rgba(255,255,255,.28);display:flex;justify-content:space-between"><span>🚀 Deploy to production</span><span>↵</span></div><div class="pop" style="--d:1.6s;padding:.6em 1em">📦 Build project</div><div class="pop" style="--d:1.9s;padding:.6em 1em">⚙️ Settings</div></div>`},
+{n:"Error to fix",u:"Show a problem and the one-line fix",s:"--bg:#0c0c12;--fg:#fff;--hl:#4ade80;font-family:system-ui,sans-serif",c:"Fixed in [one line]",
+ g:`<div class="a mono" style="left:6%;right:6%;top:8%;display:flex;flex-direction:column;gap:.7em;font-size:.85em"><div class="sk" style="background:#2a0f14;border:1px solid #ef4444;color:#f87171;border-radius:.7em;padding:.8em">✗ Error: port 3000 is already in use</div><div style="background:#161620;border-radius:.7em;padding:.8em"><div class="type" style="--w:20ch;--d:1s">$ npx kill-port 3000</div></div><div class="pop" style="--d:2.2s;background:#0f2a1a;border:1px solid #4ade80;color:#4ade80;border-radius:.7em;padding:.8em">✓ Port freed. Server running.</div></div>`},
+{n:"Settings toggles",u:"Show which switches to flip",s:"--bg:#f2f2f7;--fg:#111;--hl:#0a84ff;font-family:system-ui,-apple-system,sans-serif",c:"Turn these [on now]",
+ g:`<div class="a" style="left:7%;top:5%;font-size:1.5em;font-weight:800">Settings</div><div class="a" style="left:6%;right:6%;top:15%;background:#fff;border-radius:.9em;font-size:.95em"><div style="display:flex;justify-content:space-between;align-items:center;padding:.8em 1em;border-bottom:1px solid #eee">Dark mode<i class="tg on" style="--d:.6s"></i></div><div style="display:flex;justify-content:space-between;align-items:center;padding:.8em 1em;border-bottom:1px solid #eee">Auto-save<i class="tg on" style="--d:1.3s"></i></div><div style="display:flex;justify-content:space-between;align-items:center;padding:.8em 1em">Send telemetry<i class="tg"></i></div></div>`},
+{n:"Sticky-note pro tip",u:"A handwritten tip pinned to a board",s:"background:#8a5a2e radial-gradient(rgba(0,0,0,.15) .1em,transparent .11em) 0 0/.8em .8em;--fg:#fff;--hl:#ffe66d;font-family:system-ui,sans-serif",c:"Save this [pro tip]",
+ g:`<div class="a rot" style="--r:-3deg;left:10%;right:10%;top:8%;background:#fff176;color:#3a3200;padding:1.6em 1em 1em;box-shadow:.2em .4em 1em rgba(0,0,0,.4);font-family:'Segoe Print','Bradley Hand','Comic Sans MS',cursive;font-size:1.05em"><i style="position:absolute;left:50%;top:-.6em;width:5em;height:1.4em;background:rgba(255,255,255,.55);transform:translateX(-50%) rotate(2deg)"></i><div class="pop" style="--d:.5s;font-size:1.5em;font-weight:800;border-bottom:.15em solid #e63946;display:inline-block">PRO TIP</div><div class="pop" style="--d:1s;margin:.6em 0">Search your shell history instantly:</div><div class="pop mono" style="--d:1.5s;background:#222;color:#fff176;display:inline-block;padding:.3em .7em;border-radius:.4em">Ctrl + R</div></div>`},
+{n:"Hand-drawn sketch",u:"Explain a process like a whiteboard",s:"background:#fbfaf5 repeating-linear-gradient(transparent 0 1.5em,#bcd3f0 1.5em calc(1.5em + 1px));--fg:#222;--hl:#e63946;font-family:'Segoe Print','Bradley Hand','Comic Sans MS',cursive",c:"From idea to [shipped]",
+ g:`<svg class="a" style="left:8%;width:84%;top:5%" viewBox="0 0 100 92" fill="none" stroke="#222" stroke-width="1.2" stroke-linecap="round"><g class="dr-g"><path class="dr" pathLength="100" style="--d:.2s" d="M10 5C35 3 65 7 90 5L91 22C65 24 35 20 9 23Z"/><path class="dr" pathLength="100" style="--d:.9s" d="M50 25C48 29 52 32 50 36M46 32L50 37L54 32"/><path class="dr" pathLength="100" style="--d:1.3s" d="M10 38C35 36 65 40 90 38L91 55C65 57 35 53 9 56Z"/><path class="dr" pathLength="100" style="--d:2s" d="M50 58C48 62 52 65 50 69M46 65L50 70L54 65"/><path class="dr" pathLength="100" style="--d:2.4s;stroke:#e63946" d="M10 71C35 69 65 73 90 71L91 88C65 90 35 86 9 89Z"/></g><g fill="#222" stroke="none" font-size="9" text-anchor="middle"><text x="50" y="19">idea 💡</text><text x="50" y="52">code ⌨️</text><text x="50" y="85" fill="#e63946">ship 🚀</text></g></svg>`},
+{n:"Stock ticker",u:"Treat repo growth like a market",s:"--bg:#06120c;--fg:#e8fff2;--hl:#2bff88;--ac:#2bff88;font-family:ui-monospace,Menlo,monospace",c:"This one is [mooning]",
+ g:`<div class="a" style="left:0;right:0;top:0;background:#0c2a1a;overflow:hidden;padding:.5em 0;font-size:.8em"><div class="mq"><span>$REPO ▲12.4%&nbsp;&nbsp;&nbsp;$AGENT ▲8.1%&nbsp;&nbsp;&nbsp;$CLI ▼1.2%&nbsp;&nbsp;&nbsp;</span><span>$REPO ▲12.4%&nbsp;&nbsp;&nbsp;$AGENT ▲8.1%&nbsp;&nbsp;&nbsp;$CLI ▼1.2%&nbsp;&nbsp;&nbsp;</span></div></div><div class="a" style="left:7%;right:7%;top:11%"><div style="font-size:1.3em;font-weight:800">$REPO</div><div style="font-size:3em;font-weight:800;color:#2bff88;line-height:1.1"><span data-to="12400">0</span></div><div class="pop" style="--d:1.2s;color:#2bff88;font-size:.95em">▲ +842% this week</div></div><svg class="a" style="left:7%;width:86%;top:36%" viewBox="0 0 100 40" fill="none"><path class="dr" pathLength="100" style="--d:.4s" d="M2 38C20 37 35 33 50 26S80 8 98 3" stroke="#2bff88" stroke-width="2" stroke-linecap="round"/></svg>`},
+{n:"Game HUD",u:"Level-up and achievement moment",s:"background:#1a1033 linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px) 0 0/1em 1em,linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px) 0 0/1em 1em;--fg:#fff;--hl:#ffd400;font-family:'Courier New',ui-monospace,monospace;font-weight:700",c:"Achievement [unlocked]",
+ g:`<div class="a" style="left:6%;right:6%;top:4%;display:flex;justify-content:space-between;font-size:.85em"><span style="color:#ff4d6d">❤ ❤ ❤</span><span>SCORE 12400</span></div><div class="a ctr slam" style="--d:.3s;left:0;right:0;top:12%;font-size:2.9em;color:#ffd400;text-shadow:.07em .07em 0 #ff4d6d;line-height:1">LEVEL<br>UP!</div><div class="a" style="left:7%;right:7%;top:33%"><div style="border:.2em solid #fff;padding:.2em"><i class="sx" style="--d:.9s;height:1em;background:repeating-linear-gradient(90deg,#00e5ff 0 .6em,transparent .6em .7em)"></i></div><div class="ctr" style="font-size:.75em;margin-top:.3em">XP 9,999 / 10,000</div></div><div class="a sl" style="--d:1.8s;left:6%;right:6%;top:44%;background:#2d1b69;border:.2em solid #ffd400;padding:.6em .8em;font-size:.85em"><div style="color:#ffd400">🏆 ACHIEVEMENT UNLOCKED</div><div>Shipped to prod</div></div>`},
+{n:"Comment section",u:"Social proof in TikTok-style comments",s:"--bg:#121212;--fg:#fff;--hl:#fe2c55;font-family:system-ui,sans-serif",c:"Everyone wants the [link]",
+ g:`<div class="a ctr" style="left:0;right:0;top:3%;font-size:.85em;font-weight:700">1,248 comments</div><div class="a" style="left:5%;right:5%;top:9%;display:flex;flex-direction:column;gap:.9em;font-size:.9em"><div class="sl" style="--d:.3s;display:flex;gap:.6em"><i style="flex:none;width:2.2em;height:2.2em;border-radius:50%;background:linear-gradient(135deg,#ff9a9e,#a18cd1)"></i><div style="flex:1"><div class="mut" style="font-size:.8em;font-weight:700"><span style="color:#fe2c55">📌 Pinned</span> · dev_anna</div>wait this is actually insane</div><span class="mut" style="font-size:.8em">♡ 2.4K</span></div><div class="sl" style="--d:.9s;display:flex;gap:.6em"><i style="flex:none;width:2.2em;height:2.2em;border-radius:50%;background:linear-gradient(135deg,#84fab0,#8fd3f4)"></i><div style="flex:1"><div class="mut" style="font-size:.8em;font-weight:700">kimchi_codes</div>link??? need this today</div><span class="mut" style="font-size:.8em">♡ 981</span></div><div class="sl" style="--d:1.5s;display:flex;gap:.6em;margin-left:2em"><i style="flex:none;width:1.8em;height:1.8em;border-radius:50%;background:#fe2c55"></i><div style="flex:1"><div style="font-size:.8em;font-weight:700">you <span style="background:#fe2c55;border-radius:.3em;padding:0 .4em">Creator</span></div>check the pinned one 👆</div></div></div>`},
+{n:"Do vs. don’t",u:"Stop-doing-this contrast",s:"--bg:#fff;--fg:#111;--hl:#16a34a;font-family:system-ui,sans-serif",c:"Do this [instead]",
+ g:`<div class="a" style="left:0;right:0;top:0;height:50%;background:#ffe3e3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.8em"><span class="pop" style="background:#dc2626;color:#fff;font-weight:800;padding:.2em .8em;border-radius:99px">✗ DON’T</span><div class="pop mono" style="--d:.5s;text-decoration:line-through;font-size:.95em;opacity:.7">npm i -g everything</div></div><div class="a" style="left:0;right:0;top:50%;height:50%;background:#dcfce7;display:flex;flex-direction:column;align-items:center;padding-top:2.2em;gap:.8em"><span class="pop" style="--d:1.2s;background:#16a34a;color:#fff;font-weight:800;padding:.2em .8em;border-radius:99px">✓ DO</span><div class="type mono" style="--w:15ch;--d:1.7s;font-size:.95em;font-weight:700">npx tool setup</div></div>`},
+{n:"Browser window",u:"Walk to a URL and hit a button",s:"background:linear-gradient(160deg,#dfe7ff,#f7e1ff);--fg:#1a1a2e;--hl:#6c47ff;font-family:system-ui,sans-serif",c:"Go to the [repo]",
+ g:`<div class="a" style="left:5%;right:5%;top:7%;background:#fff;border-radius:.8em;box-shadow:0 .8em 1.8em rgba(40,30,90,.2);overflow:hidden"><div style="background:#e8e8ef;padding:.5em .6em;display:flex;gap:.4em;align-items:center;font-size:.8em"><i style="width:.7em;height:.7em;border-radius:50%;background:#ff5f57"></i><i style="width:.7em;height:.7em;border-radius:50%;background:#febc2e"></i><i style="width:.7em;height:.7em;border-radius:50%;background:#28c840"></i><span style="background:#fff;border-radius:.4em .4em 0 0;padding:.2em .8em;margin-left:.5em">owner/repo</span></div><div style="padding:.5em .6em;border-bottom:1px solid #eee"><div class="mono" style="background:#f0f0f5;border-radius:1em;padding:.3em .8em;font-size:.8em;display:flex;gap:.4em"><span>🔒</span><div class="type" style="--w:22ch;--d:.3s">github.com/owner/repo</div></div></div><div style="padding:.9em"><div class="pop" style="--d:1.3s;font-size:1.2em;font-weight:800">owner / repo-name</div><div class="wipe" style="--d:1.6s;height:.5em;background:#ddd;margin:.6em 0"></div><div class="wipe" style="--d:1.8s;height:.5em;background:#ddd;width:70%"></div><div class="pop" style="--d:2.2s;display:inline-block;margin-top:.8em;border:1px solid #ccc;border-radius:.5em;padding:.3em .8em;font-weight:700;font-size:.9em"><span style="color:#ffb400">★</span> Star 12.4K</div></div></div>`},
+{n:"Copy this command",u:"Give a one-liner worth saving",s:"--bg:#0b0f14;--fg:#e8eef2;--hl:#58a6ff;font-family:system-ui,sans-serif",c:"Copy this [one-liner]",
+ g:`<div class="a badge" style="left:6%;top:7%;background:#58a6ff;color:#0b0f14;font-weight:800;font-size:.75em;padding:.3em .8em;border-radius:.4em">LINUX TIP</div><div class="a mono" style="left:6%;right:6%;top:14%;background:#161b22;border:1px solid #30363d;border-radius:.7em;padding:.8em;font-size:.85em;display:flex;justify-content:space-between;align-items:center;gap:.6em"><div class="type" style="--w:23ch;--d:.3s">docker system prune -af</div><div style="position:relative;flex:none;width:4.6em;height:1.9em"><div class="fo" style="--d:2.4s;position:absolute;inset:0;background:#21262d;border:1px solid #30363d;border-radius:.4em;display:flex;align-items:center;justify-content:center;font-family:system-ui">Copy</div><div class="pop" style="--d:2.5s;position:absolute;inset:0;background:#238636;border-radius:.4em;display:flex;align-items:center;justify-content:center;font-family:system-ui;font-weight:700">Copied ✓</div></div></div><div class="a pop" style="--d:1.4s;left:7%;top:28%;font-size:.9em"><span class="mut">↳</span> Frees up disk space</div><div class="a pop" style="--d:1.8s;left:7%;top:33%;font-size:.9em"><span class="mut">↳</span> Removes unused images</div>`}
+];
+function cap(t){let i=0;return t.replace(/\[([^\]]+)\]|(\S+)/g,(m,a,b)=>(a||b).split(" ").map(w=>`<span class="w${a?" k":""}" style="animation-delay:${(.3+i++*.22).toFixed(2)}s">${w}</span>`).join(" ")+" ")}
+const fmt=(v,s)=>(v>=1000?(v/1000).toFixed(1)+"K":Math.round(v))+(s||"");
+function count(n){const to=+n.dataset.to,sf=n.dataset.sf,t0=performance.now();(function s(t){const p=Math.min(1,(t-t0)/1400);n.textContent=fmt(to*(1-Math.pow(1-p,3)),sf);if(p<1)requestAnimationFrame(s)})(t0)}
+function play(el){el.classList.remove("play");void el.offsetWidth;el.classList.add("play");el.querySelectorAll("[data-to]").forEach(count)}
+const grid=document.getElementById("grid");
+grid.innerHTML=F.map(f=>`<figure><div class="st" style="${f.s}">${f.g}<div class="cp">${cap(f.c)}</div></div><figcaption><b>${f.n}</b>${f.u}</figcaption></figure>`).join("");
+const all=()=>grid.querySelectorAll(".st").forEach(play);
+grid.querySelectorAll(".st").forEach(s=>s.addEventListener("click",()=>play(s)));
+document.getElementById("re").onclick=all;
+all();
+</script>
+</body>
+</html>

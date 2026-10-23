@@ -84,13 +84,13 @@ test("adds a URL source and configures an automation while its project waits", a
     .getByLabel("Public video URL")
     .fill("https://youtube.com/watch?v=abc");
   await page
-    .getByLabel("Project name", { exact: true })
+    .getByLabel("Source video name", { exact: true })
     .fill("Founder interview");
   await page.getByRole("checkbox").check();
-  await page
-    .getByRole("button", { name: "Create project & add to queue" })
-    .click();
-  await expect(page.getByLabel("Source project")).toHaveValue(queuedProject.id);
+  await page.getByRole("button", { name: "Add source video to queue" }).click();
+  await expect(
+    page.getByRole("combobox", { name: "Source video", exact: true }),
+  ).toHaveValue(queuedProject.id);
   await expect(page.getByLabel("Queue position 1")).toBeVisible();
   await page.getByRole("button", { name: "Continue →" }).click();
   await page.getByRole("button", { name: /All matches/ }).click();
@@ -113,7 +113,9 @@ test("adds a URL source and configures an automation while its project waits", a
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Upload video", exact: true }).click();
-  await expect(page.getByLabel("Source video")).toBeVisible();
+  await expect(
+    page.getByLabel("Source video file", { exact: true }),
+  ).toBeVisible();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,

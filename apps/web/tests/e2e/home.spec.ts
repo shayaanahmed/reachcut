@@ -11,7 +11,9 @@ test("shows the tool dashboard and local project workflow", async ({
   await expect(
     page.getByRole("link", { name: "ReachCut dashboard" }),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: "New project" })).toBeVisible();
+  await expect(
+    page.getByRole("main").getByRole("link", { name: "Clip a video" }),
+  ).toBeVisible();
   await expect(page.getByText("Local processing")).toBeVisible();
 });
 
@@ -81,6 +83,23 @@ test("moves a finished clip from the core studio into publishing", async ({
           updated_at: "2026-10-02T10:00:00Z",
         },
       ],
+    }),
+  );
+
+  await page.route("**/api/clips/clip-1/publishing-copy", (route) =>
+    route.fulfill({
+      json: {
+        packages: [
+          {
+            platform: "youtube",
+            title: "The advice every creator needs",
+            caption: "A clear hook with a useful payoff. #CreatorTips",
+            cover_text: "Creator advice",
+            hashtags: ["#CreatorTips"],
+          },
+        ],
+        hashtag_notice: null,
+      },
     }),
   );
 

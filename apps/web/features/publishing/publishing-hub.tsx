@@ -1,10 +1,13 @@
 "use client";
-import Link from "next/link";
+import { ActionLink } from "../../components/action-link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useProjectWorkbench } from "../projects/use-project-workbench";
 import { BulkClipActions } from "./bulk-clip-actions";
+import { PublishingVideoUpload } from "./video-upload";
 
 export function PublishingHub() {
+  const router = useRouter();
   const workbench = useProjectWorkbench(undefined, { loadAccounts: true });
   const [projectId, setProjectId] = useState("");
   const [query, setQuery] = useState("");
@@ -24,48 +27,63 @@ export function PublishingHub() {
           <p>Review clips, choose channels, and publish from one workspace.</p>
         </div>
         <div className="inline-actions">
-          <Link href="/settings/accounts">Accounts & groups</Link>
-          <Link href="/insights">View insights →</Link>
+          <ActionLink href="/studio" icon="✂">
+            Upload & edit in Studio
+          </ActionLink>
+          <ActionLink href="/settings/accounts" icon="⚙">
+            Accounts & groups
+          </ActionLink>
+          <ActionLink href="/insights" icon="▥">
+            View insights
+          </ActionLink>
         </div>
       </header>
-      <div className="stats-grid">
-        <article>
-          <span>Ready to publish</span>
-          <strong>
-            {
-              clips.filter(
-                (c) => c.approval_status === "approved" && c.final_path,
-              ).length
-            }
-          </strong>
-        </article>
-        <article>
-          <span>In progress</span>
-          <strong>{activePosts.length}</strong>
-        </article>
-        <article>
-          <span>Published posts</span>
-          <strong>
-            {posts.filter((p) => p.status === "published").length}
-          </strong>
-        </article>
-        <article>
-          <span>Failed posts</span>
-          <strong>{posts.filter((p) => p.status === "failed").length}</strong>
-        </article>
-      </div>
+      <nav className="workspace-switcher" aria-label="Publishing views">
+        <span aria-current="page">Publish clips</span>
+        <ActionLink
+          href="/publishing/posts"
+          icon="⚙"
+          description="Edit existing posts & manage deletions"
+        >
+          Manage social posts
+        </ActionLink>
+        <span className="workspace-counts">
+          {posts.filter((p) => p.status === "published").length} published ·{" "}
+          {activePosts.length} in progress
+        </span>
+      </nav>
       {workbench.error && (
         <p className="error" role="alert">
           {workbench.error}
         </p>
       )}
+      <details className="upload-disclosure">
+        <summary>
+          <span aria-hidden="true">＋</span> Upload a finished video{" "}
+          <small>Skip clipping and prepare a publishing master</small>
+        </summary>
+        <PublishingVideoUpload
+          busy={workbench.isPending("project:publishing-upload")}
+          onUpload={workbench.uploadForPublishing}
+          onCreated={(created) => {
+            router.push(
+              `/projects/${created.id}/clips/${created.clips[0].id}/publish`,
+            );
+          }}
+        />
+      </details>
       {workbench.loading ? (
         <p className="loading-card">Loading publishing workspace…</p>
       ) : !projects.length ? (
         <div className="empty-state">
           <h2>No clips to publish yet</h2>
-          <p>Create a project and generate clips to get started.</p>
-          <Link href="/projects/new">Create project →</Link>
+          <p>
+            Upload a finished video above, or create a project to generate
+            clips.
+          </p>
+          <ActionLink href="/projects/new" icon="＋">
+            Clip a video
+          </ActionLink>
         </div>
       ) : (
         <>
@@ -111,48 +129,15 @@ export function PublishingHub() {
                 onRender={workbench.render}
                 onPublish={workbench.bulkPublish}
               />
-              <section className="section-block">
-                <h2>Publishing activity</h2>
+              <div className="publishing-footer">
                 <p>
-                  Current status for this project. Open a post to review details
-                  or retry a failure.
+                  Already posted this clip? Update its existing destinations
+                  from the social post board.
                 </p>
-                <div className="distribution-posts">
-                  {project.clips.flatMap((clip) =>
-                    clip.publications.map((post) => (
-                      <article key={post.id}>
-                        <span className={`status ${post.status}`}>
-                          {post.status}
-                        </span>
-                        <div>
-                          <strong>{post.title}</strong>
-                          <small>
-                            {post.account_label} · {post.platform}
-                          </small>
-                          {post.error && <p className="error">{post.error}</p>}
-                        </div>
-                        <Link
-                          href={`/projects/${project.id}/clips/${clip.id}/publish`}
-                        >
-                          Open publishing →
-                        </Link>
-                        {post.post_url && (
-                          <a
-                            href={post.post_url}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            View post ↗
-                          </a>
-                        )}
-                      </article>
-                    )),
-                  )}
-                  {!project.clips.some((c) => c.publications.length) && (
-                    <p>No posts yet. Select clips and destinations above.</p>
-                  )}
-                </div>
-              </section>
+                <ActionLink href="/publishing/posts" icon="⚙">
+                  Manage existing posts
+                </ActionLink>
+              </div>
             </>
           )}
         </>

@@ -17,6 +17,7 @@ from clipper.domain.editing_plan import (
     TransitionStyle,
     TranslationMode,
     VideoTemplate,
+    WatermarkConfig,
 )
 from clipper.editorial import PublishRecommendation, recommend_for_publishing
 from clipper.generation import (
@@ -25,6 +26,7 @@ from clipper.generation import (
     StoryPlan,
     VideoTemplateId,
 )
+from clipper.projects.runtime_settings import ModelTask
 from clipper.projects.storage import project_storage_bytes
 from clipper.publishing import PublishingPlatform
 
@@ -38,6 +40,8 @@ class StageResponse(BaseModel):
     progress: float
     attempts: int
     error: dict[str, object] | None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
 
 
 class MetricSnapshotResponse(BaseModel):
@@ -49,6 +53,12 @@ class MetricSnapshotResponse(BaseModel):
     comments: int
     shares: int
     watch_time_seconds: float | None
+    reach: int | None = None
+    sends: int | None = None
+    average_watch_seconds: float | None = None
+    opening_retention_percent: float | None = None
+    completion_rate_percent: float | None = None
+    search_views: int | None = None
     followers_gained: int
     affiliate_clicks: int
     conversions: int
@@ -98,6 +108,7 @@ class ProjectJobResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     status: str
     phase: str
+    processing_mode: Literal["clips", "metadata", "language"] = "clips"
     source_url: str | None
     error: str | None
     enqueued_at: datetime
@@ -225,6 +236,7 @@ class StoryVideoResponse(BaseModel):
     target_duration_seconds: int
     status: str
     phase: str
+    processing_mode: Literal["clips", "metadata"] = "clips"
     progress: float
     plan: StoryPlan
     provider: str
@@ -281,7 +293,8 @@ class StoryReferenceResponse(BaseModel):
 
 
 class ProcessRequest(BaseModel):
-    language: str | None = Field(default=None, pattern=r"^[a-z]{2}$")
+    processing_mode: Literal["clips", "metadata"] = "clips"
+    language: str | None = Field(default=None, pattern=r"^(?:[a-z]{2}|ur-en)$")
     clip_types: list[ClipType] = Field(default_factory=list, max_length=9)
 
 
@@ -293,12 +306,13 @@ class ClipTypeSuggestionResponse(BaseModel):
 
 
 class ProjectUpdateRequest(BaseModel):
-    title: str = Field(min_length=1, max_length=200)
+    title: str = Field(min_length=1, max_length=200, pattern=r"\S")
 
 
 class UrlImportRequest(BaseModel):
-    language: str | None = Field(default=None, pattern=r"^[a-z]{2}$")
-    title: str = Field(min_length=1, max_length=200)
+    preset_id: str | None = Field(default=None, max_length=36)
+    language: str | None = Field(default=None, pattern=r"^(?:[a-z]{2}|ur-en)$")
+    title: str = Field(min_length=1, max_length=200, pattern=r"\S")
     url: str = Field(min_length=1, max_length=2_048)
     authorization_confirmed: bool
 
@@ -322,6 +336,8 @@ class ClipStyleRequest(BaseModel):
     cta_style: Literal["follow", "comment", "part_two", "profile", "product", "campaign"] = "follow"
     effects: list[Effect] | None = Field(default=None, max_length=40)
     audio_track_index: int = Field(default=0, ge=0, le=32)
+    original_audio_volume: float = Field(default=1, ge=0, le=1)
+    watermark: WatermarkConfig | None = None
 
 
 class ClipTemplateRequest(BaseModel):
@@ -365,6 +381,12 @@ class MetricCreateRequest(BaseModel):
     comments: int = Field(default=0, ge=0)
     shares: int = Field(default=0, ge=0)
     watch_time_seconds: float | None = Field(default=None, ge=0)
+    reach: int | None = Field(default=None, ge=0)
+    sends: int | None = Field(default=None, ge=0)
+    average_watch_seconds: float | None = Field(default=None, ge=0)
+    opening_retention_percent: float | None = Field(default=None, ge=0, le=100)
+    completion_rate_percent: float | None = Field(default=None, ge=0, le=100)
+    search_views: int | None = Field(default=None, ge=0)
     followers_gained: int = Field(default=0, ge=0)
     affiliate_clicks: int = Field(default=0, ge=0)
     conversions: int = Field(default=0, ge=0)
@@ -373,6 +395,7 @@ class MetricCreateRequest(BaseModel):
 
 
 class SocialAccountResponse(BaseModel):
+    health_issue: str | None = None
     external_account_id: str | None = None
     parent_page_name: str | None = None
     model_config = ConfigDict(from_attributes=True)
@@ -412,7 +435,7 @@ class OAuthAccountSelectionRequest(BaseModel):
 
 
 class SocialAccountUpdateRequest(BaseModel):
-    label: str = Field(min_length=1, max_length=100)
+    label: str = Field(min_length=1, max_length=100, pattern=r"\S")
     default_hashtags: list[str] = Field(default_factory=list, max_length=30)
     default_cta: str = Field(default="", max_length=500)
     default_campaign_url: str | None = Field(default=None, max_length=2_048, pattern=r"^https://")
@@ -455,12 +478,18 @@ class RuntimeSettingsResponse(BaseModel):
     ollama_base_url: str
     editorial_model: str
     thumbnail_model: str
+    task_models: dict[ModelTask, str] = Field(default_factory=dict)
+    transcription_model: str = "large-v3-turbo"
+    automatic_growth: bool = True
 
 
 class RuntimeSettingsUpdateRequest(BaseModel):
     ollama_base_url: str = Field(min_length=8, max_length=2_048)
     editorial_model: str = Field(min_length=1, max_length=200)
     thumbnail_model: str = Field(min_length=1, max_length=200)
+    task_models: dict[ModelTask, str] | None = None
+    transcription_model: str | None = None
+    automatic_growth: bool | None = None
 
 
 class OllamaModelsResponse(BaseModel):

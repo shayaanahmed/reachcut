@@ -5,6 +5,7 @@ import json
 import math
 import re
 import shutil
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
@@ -74,7 +75,14 @@ class StoryVideoService:
             raise StoryVideoNotFoundError("story video not found")
         return video
 
-    def create(self, session: Session, request: StoryVideoCreate) -> StoryVideo:
+    def create(
+        self,
+        session: Session,
+        request: StoryVideoCreate,
+        *,
+        on_created: Callable[[StoryVideo], None] | None = None,
+    ) -> StoryVideo:
+        """Create a job and optionally link its parent within the same transaction."""
         with self._creation_lock:
             self._ensure_idle(session)
             draft = None
@@ -85,6 +93,8 @@ class StoryVideoService:
             video = self._create(session, request)
             if draft:
                 session.delete(draft)
+            if on_created:
+                on_created(video)
             session.commit()
             return self.get(session, video.id)
 

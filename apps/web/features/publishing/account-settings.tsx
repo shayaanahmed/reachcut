@@ -395,7 +395,11 @@ export function AccountSettings() {
                       <span
                         className={`connection-badge ${ready ? "connected" : ""}`}
                       >
-                        {ready ? "● Ready to publish" : "○ Action required"}
+                        {account.health_issue
+                          ? "! Check account"
+                          : ready
+                            ? "● Ready to publish"
+                            : "○ Action required"}
                       </span>
                     </div>
                     <span className={`account-platform ${account.platform}`}>
@@ -414,6 +418,17 @@ export function AccountSettings() {
                     )}
                     {account.parent_page_name && (
                       <p>Facebook Page: {account.parent_page_name}</p>
+                    )}
+                    {account.health_issue && (
+                      <div className="account-health-issue" role="alert">
+                        <strong>This account needs attention</strong>
+                        <p>{account.health_issue}</p>
+                        <small>
+                          Use Reconnect below to refresh authorization. Missing
+                          permissions may also need enabling in the provider app
+                          settings.
+                        </small>
+                      </div>
                     )}
                     <div
                       className="account-readiness"

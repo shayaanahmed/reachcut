@@ -274,31 +274,80 @@ STORY:
         return any(item.get("name") == self.model for item in models)
 
     def _generate(self, prompt: str, schema: type[BaseModel]) -> dict[str, object]:
-        response = httpx.post(
-            f"{self.base_url}/api/generate",
-            json={
-                "model": self.model,
-                "prompt": prompt,
-                "stream": False,
-                "think": False,
-                "format": _ollama_schema(schema.model_json_schema()),
-                "options": {
-                    "temperature": 0.35,
-                    "num_ctx": 16_384,
-                    "num_predict": 5_000,
-                    "seed": 71,
-                },
+        # Reasoning models use message-based templates and separate answer channels.
+        # Use chat to preserve the user task and schema instructions in those templates.
+        model_name = self.model.split(":")[0].rsplit("/", 1)[-1]
+        gpt_oss = model_name.endswith("gpt-oss")
+        chat = gpt_oss or model_name.startswith("qwen3")
+        validation_schema = schema.model_json_schema()
+        output_schema = _ollama_schema(
+            validation_schema,
+            preserve_bounds=bool(getattr(schema, "_ollama_bounds", False)),
+            preserve_patterns=bool(getattr(schema, "_ollama_patterns", True)),
+            preserve_string_bounds=bool(getattr(schema, "_ollama_string_bounds", True)),
+        )
+        body: dict[str, object] = {
+            "model": self.model,
+            "stream": False,
+            "think": "low" if gpt_oss else False,
+            "format": output_schema,
+            "options": {
+                "temperature": 0.35,
+                "num_ctx": 16_384,
+                "num_predict": 5_000,
+                "seed": 71,
             },
+        }
+        instructions = (
+            "Return only a valid JSON object matching the supplied JSON schema. "
+            "No Markdown or code fences. Respect every minLength, maxLength and list "
+            "bound in this validation schema; the format grammar omits string bounds "
+            "to avoid cutting sentences off. JSON schema: " + json.dumps(validation_schema)
+        )
+        if chat:
+            body["messages"] = [
+                {
+                    "role": "system",
+                    "content": instructions,
+                },
+                {"role": "user", "content": prompt},
+            ]
+        else:
+            body["prompt"] = prompt
+            body["system"] = instructions
+        response = httpx.post(
+            f"{self.base_url}/api/{'chat' if chat else 'generate'}",
+            json=body,
             timeout=self.timeout_seconds,
         )
         response.raise_for_status()
         payload = response.json()
-        if not isinstance(payload, dict) or not isinstance(payload.get("response"), str):
-            raise ValueError("Ollama returned no generated text")
-        parsed = json.loads(payload["response"])
+        if not isinstance(payload, dict):
+            raise ValueError("Ollama returned an invalid response envelope")
+        if payload.get("error"):
+            raise ValueError("Ollama generation failed: " + str(payload["error"])[:300])
+        message = payload.get("message")
+        content = message.get("content") if chat and isinstance(message, dict) else None
+        if not chat:
+            content = payload.get("response")
+        if payload.get("done_reason") == "length":
+            raise ValueError("Ollama reached the generation token limit before completing its JSON")
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("Ollama returned an empty answer instead of JSON")
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError as error:
+            raise ValueError(
+                f"Ollama returned invalid JSON at line {error.lineno}, column {error.colno}"
+            ) from error
         if not isinstance(parsed, dict):
             raise ValueError("Ollama returned a non-object JSON response")
         return parsed
+
+
+def prompt_json(value: object) -> str:
+    """Preserve source languages without wasting context on Unicode escapes."""
+    return json.dumps(value, ensure_ascii=False)
 
 
 _GRAMMAR_KEYS = {
@@ -314,18 +363,47 @@ _GRAMMAR_KEYS = {
 }
 
 
-def _ollama_schema(value: object, *, preserve_keys: bool = False) -> object:
+def _ollama_schema(
+    value: object,
+    *,
+    preserve_keys: bool = False,
+    preserve_bounds: bool = False,
+    preserve_patterns: bool = True,
+    preserve_string_bounds: bool = True,
+) -> object:
     """Keep the JSON Schema subset accepted by Ollama's local grammar parser."""
 
     if isinstance(value, list):
-        return [_ollama_schema(item) for item in value]
+        return [
+            _ollama_schema(
+                item,
+                preserve_bounds=preserve_bounds,
+                preserve_patterns=preserve_patterns,
+                preserve_string_bounds=preserve_string_bounds,
+            )
+            for item in value
+        ]
     if not isinstance(value, dict):
         return value
     result: dict[str, object] = {}
     for key, item in value.items():
-        if preserve_keys or key in _GRAMMAR_KEYS:
+        if key in {"minLength", "maxLength"} and not preserve_keys and not preserve_string_bounds:
+            continue
+        if key == "pattern" and not preserve_keys and not preserve_patterns:
+            continue
+        if (
+            preserve_keys
+            or key in _GRAMMAR_KEYS
+            or (
+                preserve_bounds
+                and key in {"minLength", "maxLength", "minItems", "maxItems", "pattern"}
+            )
+        ):
             result[key] = _ollama_schema(
                 item,
                 preserve_keys=key in {"$defs", "properties"},
+                preserve_bounds=preserve_bounds,
+                preserve_patterns=preserve_patterns,
+                preserve_string_bounds=preserve_string_bounds,
             )
     return result

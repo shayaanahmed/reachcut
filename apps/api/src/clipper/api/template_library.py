@@ -59,7 +59,7 @@ def select_template(
     runtime = runtime_settings_service.get(session)
     try:
         return match_template(
-            OllamaStoryDirector(runtime.ollama_base_url, runtime.editorial_model),
+            OllamaStoryDirector(runtime.ollama_base_url, runtime.model_for("scripting")),
             request.prompt,
             library.list(),
         )
@@ -76,7 +76,8 @@ def classify_template(
     runtime = runtime_settings_service.get(session)
     try:
         return library.classify(
-            template_id, OllamaTemplateClassifier(runtime.ollama_base_url, runtime.thumbnail_model)
+            template_id,
+            OllamaTemplateClassifier(runtime.ollama_base_url, runtime.model_for("visual_review")),
         )
     except MediaError as error:
         raise HTTPException(404, detail=str(error)) from error

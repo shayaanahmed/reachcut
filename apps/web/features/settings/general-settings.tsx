@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
+import { useEffect, useState, type ReactNode } from "react";
 import type { RuntimeSettings } from "../../lib/contracts";
 import {
   getRuntimeSettings,
@@ -9,7 +8,92 @@ import {
   saveRuntimeSettings,
 } from "./api";
 
-export function GeneralSettings() {
+const MODEL_ROLES = [
+  {
+    key: "clip_selection",
+    label: "Clip selection & editorial",
+    hint: "Suggested: qwen3:14b; compare qwen3:32b when memory permits.",
+  },
+  {
+    key: "research",
+    label: "Source analysis & ideas",
+    hint: "Suggested: qwen3:14b for synthesizing sources. The model does not measure search demand.",
+  },
+  {
+    key: "scripting",
+    label: "Scripts & storyboards",
+    hint: "Suggested: qwen3:14b; compare qwen3:32b for longer planning and revisions.",
+  },
+  {
+    key: "growth",
+    label: "Audience, SEO & performance learning",
+    hint: "Suggested: qwen3:14b for audience inference, openings and publishing copy.",
+  },
+  {
+    key: "metadata",
+    label: "Titles, captions & hashtags",
+    hint: "Suggested: qwen3:8b for responsive structured writing.",
+  },
+  {
+    key: "translation",
+    label: "Caption translation",
+    hint: "Suggested: qwen3:8b; compare qwen3:14b using your actual languages.",
+  },
+  {
+    key: "visual_review",
+    label: "Artwork & final video review",
+    hint: "Suggested: qwen3-vl:8b. Requires image input support.",
+  },
+  {
+    key: "image_generation",
+    label: "Illustration generation",
+    hint: "Suggested: x/flux2-klein:4b when installed. Requires image generation capability on a supported Ollama macOS host.",
+  },
+] as const;
+
+export function applyModelPreset(
+  settings: RuntimeSettings,
+  installed: string[],
+  preset: "Fast" | "Balanced" | "Quality",
+): RuntimeSettings {
+  const find = (names: string[]) =>
+    names
+      .map((name) =>
+        installed.find(
+          (model) => model === name || model.startsWith(name + "-"),
+        ),
+      )
+      .find(Boolean);
+  const text = find(
+    preset === "Quality"
+      ? ["qwen3:32b", "qwen3:14b", "qwen3:8b"]
+      : preset === "Fast"
+        ? ["qwen3:8b", "qwen3:4b"]
+        : ["qwen3:14b", "qwen3:8b"],
+  );
+  const light = find(["qwen3:8b", "qwen3:4b"]) ?? text;
+  const vision = find(["qwen3-vl:8b", "qwen3-vl:4b", "gemma3:12b"]);
+  return {
+    ...settings,
+    task_models: {
+      ...settings.task_models,
+      ...Object.fromEntries(
+        MODEL_ROLES.flatMap((role) => {
+          if (role.key === "image_generation") return [];
+          const model =
+            role.key === "visual_review"
+              ? vision
+              : ["metadata", "translation"].includes(role.key)
+                ? light
+                : text;
+          return model ? [[role.key, model]] : [];
+        }),
+      ),
+    },
+  };
+}
+
+export function GeneralSettings({ children }: { children?: ReactNode }) {
   const [settings, setSettings] = useState<RuntimeSettings | null>(null);
   const [models, setModels] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -18,13 +102,11 @@ export function GeneralSettings() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
   useEffect(() => {
-    void getRuntimeSettings()
+    getRuntimeSettings()
       .then(setSettings)
-      .catch((caught: Error) => setError(caught.message));
+      .catch((e) => setError(e.message));
   }, []);
-
   useEffect(() => {
     const baseUrl = settings?.ollama_base_url.trim();
     if (!baseUrl) return;
@@ -32,34 +114,15 @@ export function GeneralSettings() {
     const timer = window.setTimeout(() => {
       setLoadingModels(true);
       setModelError(null);
-      void listOllamaModels(baseUrl)
+      listOllamaModels(baseUrl)
         .then((available) => {
-          if (!active) return;
-          setModels(available);
-          setSettings((current) => {
-            if (!current || current.ollama_base_url.trim() !== baseUrl)
-              return current;
-            if (available.length === 0) return current;
-            const editorialModel = available.includes(current.editorial_model)
-              ? current.editorial_model
-              : available[0];
-            const visionModel = available.find((model) =>
-              /(?:vl|vision|gemma3|mistral-small3)/i.test(model),
-            );
-            const thumbnailModel = available.includes(current.thumbnail_model)
-              ? current.thumbnail_model
-              : (visionModel ?? available[0]);
-            return {
-              ...current,
-              editorial_model: editorialModel,
-              thumbnail_model: thumbnailModel,
-            };
-          });
+          if (active) setModels(available);
         })
-        .catch((caught: Error) => {
-          if (!active) return;
-          setModels([]);
-          setModelError(caught.message);
+        .catch((e) => {
+          if (active) {
+            setModels([]);
+            setModelError(e.message);
+          }
         })
         .finally(() => {
           if (active) setLoadingModels(false);
@@ -70,58 +133,70 @@ export function GeneralSettings() {
       window.clearTimeout(timer);
     };
   }, [settings?.ollama_base_url, refreshKey]);
-
   if (!settings)
     return (
       <main className="page">
-        <div className="loading-card">Loading configuration…</div>
+        <div className="loading-card">
+          {error ? <p role="alert">{error}</p> : "Loading configuration…"}
+        </div>
       </main>
     );
 
+  function choices(current: string, allowDefault = false, vision = false) {
+    return (
+      <>
+        {allowDefault && (
+          <option value="">
+            Use {vision ? "thumbnail vision" : "main LLM"} model
+          </option>
+        )}
+        {current && !models.includes(current) && (
+          <option value={current}>{current} (not installed)</option>
+        )}
+        {models.map((model) => (
+          <option key={model} value={model}>
+            {model}
+          </option>
+        ))}
+      </>
+    );
+  }
   return (
     <main className="page settings-page">
-      <div className="topbar">
+      <header className="topbar">
         <div>
           <span className="eyebrow">LOCAL AI</span>
           <h1>ReachCut settings</h1>
           <p>
-            Choose the Ollama models used for clip selection and thumbnail
-            design.
+            Let AI prepare clips automatically and choose a model for each task.
           </p>
         </div>
-      </div>
+      </header>
       {error && (
         <p className="error" role="alert">
           {error}
         </p>
       )}
-      {message && (
-        <p className="success" role="status">
-          {message}
-        </p>
-      )}
+      {message && <p role="status">{message}</p>}
       <form
         className="settings-card"
         onSubmit={(event) => {
           event.preventDefault();
           setSaving(true);
           setError(null);
-          void saveRuntimeSettings(settings)
+          setMessage(null);
+          saveRuntimeSettings(settings)
             .then((saved) => {
               setSettings(saved);
-              setMessage("Settings saved. New analyses will use this model.");
+              setMessage(
+                "Settings saved. New AI tasks will use these choices.",
+              );
             })
-            .catch((caught: Error) => setError(caught.message))
+            .catch((e) => setError(e.message))
             .finally(() => setSaving(false));
         }}
       >
-        <div className="settings-card-heading">
-          <div>
-            <span className="eyebrow">EDITORIAL ENGINE</span>
-            <h2>Ollama connection</h2>
-          </div>
-          <span className="local-badge">Runs locally</span>
-        </div>
+        <h2>Ollama connection</h2>
         <label>
           Ollama URL
           <input
@@ -131,10 +206,9 @@ export function GeneralSettings() {
             onChange={(event) =>
               setSettings({ ...settings, ollama_base_url: event.target.value })
             }
-            placeholder="http://127.0.0.1:11434"
           />
           <small>
-            Use the mini-PC LAN address when Ollama runs on another machine.
+            Use the LAN address when Ollama runs on another machine.
           </small>
         </label>
         <label>
@@ -142,29 +216,18 @@ export function GeneralSettings() {
           <select
             required
             value={settings.editorial_model}
+            disabled={loadingModels || !models.length}
             onChange={(event) =>
               setSettings({ ...settings, editorial_model: event.target.value })
             }
-            disabled={loadingModels || models.length === 0}
           >
-            {loadingModels && <option value="">Loading models…</option>}
-            {!loadingModels && models.length === 0 && (
-              <option value={settings.editorial_model}>
-                {modelError ? "Ollama is unavailable" : "No models installed"}
-              </option>
-            )}
-            {models.map((model) => (
-              <option key={model} value={model}>
-                {model}
-              </option>
-            ))}
+            {choices(settings.editorial_model)}
           </select>
           <small aria-live="polite">
             {loadingModels
-              ? "Reading installed models from this Ollama server…"
-              : modelError
-                ? modelError
-                : `${models.length} installed model${models.length === 1 ? "" : "s"} available.`}
+              ? "Reading installed models…"
+              : (modelError ??
+                `${models.length} installed model${models.length === 1 ? "" : "s"} available.`)}
           </small>
         </label>
         <label>
@@ -172,45 +235,187 @@ export function GeneralSettings() {
           <select
             required
             value={settings.thumbnail_model}
+            disabled={loadingModels || !models.length}
             onChange={(event) =>
               setSettings({ ...settings, thumbnail_model: event.target.value })
             }
-            disabled={loadingModels || models.length === 0}
           >
-            {loadingModels && <option value="">Loading models…</option>}
-            {!loadingModels && models.length === 0 && (
-              <option value={settings.thumbnail_model}>
-                {modelError ? "Ollama is unavailable" : "No models installed"}
-              </option>
-            )}
-            {models.map((model) => (
-              <option key={model} value={model}>
-                {model}
-              </option>
-            ))}
+            {choices(settings.thumbnail_model)}
           </select>
           <small>
-            Use a vision model such as qwen3-vl. It reviews sampled frames;
-            ReachCut renders the final design locally.
+            Suggested: qwen3-vl:8b. Reviews frames; ReachCut renders the design
+            locally.
           </small>
         </label>
+        <section aria-label="Automatic growth">
+          <h2>Automatic growth</h2>
+          <label className="automatic-growth-toggle">
+            <input
+              type="checkbox"
+              checked={settings.automatic_growth ?? true}
+              onChange={(event) =>
+                setSettings({
+                  ...settings,
+                  automatic_growth: event.target.checked,
+                })
+              }
+            />
+            Automatically optimize new clips
+          </label>
+          <p>
+            AI fills the audience and search brief, learns from saved account
+            results, chooses an opening, and prepares publishing copy.
+            Unrendered clips receive an opening overlay and cover headline
+            automatically. Finished exports keep their existing video.
+          </p>
+        </section>
+        <section aria-label="Models by task">
+          <h2>Models by task</h2>
+          <p>
+            Use a shared default or choose a model per task. ReachCut never
+            downloads models automatically.
+          </p>
+          <div
+            className="model-presets"
+            role="group"
+            aria-label="Model presets"
+          >
+            {(["Fast", "Balanced", "Quality"] as const).map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                className="model-preset-card"
+                aria-label={`Use ${preset.toLowerCase()} installed choices`}
+                disabled={!models.length || saving}
+                onClick={() =>
+                  setSettings(applyModelPreset(settings, models, preset))
+                }
+              >
+                <span className="preset-glyph" aria-hidden="true">
+                  {preset === "Fast" ? "ϟ" : preset === "Balanced" ? "◈" : "✦"}
+                </span>
+                <strong>{preset}</strong>
+                <small>
+                  {preset === "Fast"
+                    ? "Shorter waits · lighter models"
+                    : preset === "Balanced"
+                      ? "A practical everyday starting point"
+                      : "Larger installed models for comparison"}
+                </small>
+              </button>
+            ))}
+          </div>
+          <details className="advanced-models">
+            <summary>Customize models by task</summary>
+            {MODEL_ROLES.map((role) => (
+              <label key={role.key}>
+                {role.label}
+                <select
+                  value={settings.task_models?.[role.key] ?? ""}
+                  disabled={loadingModels || !models.length}
+                  onChange={(event) =>
+                    setSettings({
+                      ...settings,
+                      task_models: {
+                        ...settings.task_models,
+                        [role.key]: event.target.value,
+                      },
+                    })
+                  }
+                >
+                  {role.key === "image_generation" ? (
+                    <>
+                      <option value="">Use content series image model</option>
+                      {choices(settings.task_models?.[role.key] ?? "")}
+                    </>
+                  ) : (
+                    choices(
+                      settings.task_models?.[role.key] ?? "",
+                      true,
+                      role.key === "visual_review",
+                    )
+                  )}
+                </select>
+                <small>{role.hint}</small>
+              </label>
+            ))}
+          </details>
+          <label>
+            Speech transcription
+            <select
+              value={settings.transcription_model ?? "large-v3-turbo"}
+              onChange={(event) =>
+                setSettings({
+                  ...settings,
+                  transcription_model: event.target.value,
+                })
+              }
+            >
+              {[
+                "tiny",
+                "base",
+                "small",
+                "medium",
+                "large-v3",
+                "large-v3-turbo",
+              ].map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
+            <small>
+              large-v3-turbo is the balanced default. Compare large-v3 for
+              accuracy, or small for faster processing. Models must already be
+              cached locally.
+            </small>
+          </label>
+          <p>
+            These are starting recommendations for this workflow, not benchmarks
+            on your hardware. Larger models need more memory and can take
+            longer. Image generation uses the content series choice unless
+            overridden here; voice models are in Narration settings below.
+          </p>
+          <p>
+            <a
+              href="https://ollama.com/library/qwen3"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Qwen3 models ↗
+            </a>{" "}
+            ·{" "}
+            <a
+              href="https://ollama.com/library/qwen3-vl"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Qwen3 vision models ↗
+            </a>{" "}
+            ·{" "}
+            <a
+              href="https://github.com/SYSTRAN/faster-whisper"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Whisper runtime ↗
+            </a>
+          </p>
+        </section>
         <div className="settings-actions">
           <button
             type="button"
-            className="secondary"
             disabled={loadingModels || saving}
-            onClick={() => setRefreshKey((current) => current + 1)}
+            onClick={() => setRefreshKey((value) => value + 1)}
           >
             {loadingModels ? "Refreshing…" : "Refresh models"}
           </button>
-          <button
-            className="primary-button"
-            disabled={saving || loadingModels || models.length === 0}
-          >
+          <button disabled={saving || loadingModels}>
             {saving ? "Saving…" : "Save settings"}
           </button>
         </div>
       </form>
+      {children}
     </main>
   );
 }

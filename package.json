@@ -18,6 +18,7 @@
     "check": "pnpm check:api && pnpm --dir apps/web check",
     "check:api": "uv run --project apps/api ruff check apps/api && uv run --project apps/api ruff format --check apps/api && uv run --project apps/api mypy apps/api/src",
     "test": "pnpm test:api && pnpm --dir apps/web test",
+    "test:isolated": "node scripts/test-isolated.mjs",
     "test:api": "uv run --project apps/api pytest apps/api/tests",
     "templates:import": "uv run --project apps/api python scripts/import_reference_templates.py"
   },

@@ -51,7 +51,24 @@ describe("pipeline controls", () => {
   it("starts a new pipeline", () => {
     const actions = setup("created");
     fireEvent.click(screen.getByRole("button", { name: "Start pipeline" }));
-    expect(actions.onProcess).toHaveBeenCalledWith("project-1");
+    expect(actions.onProcess).toHaveBeenCalledWith("project-1", "clips");
+  });
+  it("lets an uploaded video refresh publishing details without clipping", () => {
+    const actions = setup("complete");
+    expect(
+      (
+        screen.getByRole("radio", {
+          name: /Publishing details only/,
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(true);
+    expect(screen.queryByText("Moments to find")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Run pipeline again" }));
+    expect(actions.onProcess).toHaveBeenCalledWith("project-1", "metadata");
+    fireEvent.click(screen.getByRole("radio", { name: /Generate clips/ }));
+    expect(screen.getByText("Moments to find")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Run pipeline again" }));
+    expect(actions.onProcess).toHaveBeenLastCalledWith("project-1", "clips");
   });
   it("pauses active work", () => {
     const actions = setup("processing");

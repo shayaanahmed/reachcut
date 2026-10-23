@@ -1,0 +1,122 @@
+[
+  {
+    "id": "html-d189115ff61aab9d",
+    "name": "Chat Reveal (repo)",
+    "description": "Repo niche. A friend asks, you reveal the repo, they react, you offer the link.",
+    "background": "#101114",
+    "accent": "#0a84ff",
+    "secondary": "#eceef2",
+    "font": "Space Grotesk",
+    "frames": [
+      "html-d189115ff61aab9d-1",
+      "html-d189115ff61aab9d-2",
+      "html-d189115ff61aab9d-3",
+      "html-d189115ff61aab9d-4",
+      "html-d189115ff61aab9d-5"
+    ],
+    "durations": [
+      4.0,
+      5.0,
+      5.0,
+      4.5,
+      4.5
+    ],
+    "theme": "neon"
+  },
+  {
+    "id": "html-cc1ac8aff0f5f4a5",
+    "name": "PR Merge Hype (repo)",
+    "description": "Repo niche. Shows a real-looking pull request going from opened to merged to proof of growth.",
+    "background": "#101114",
+    "accent": "#0a84ff",
+    "secondary": "#eceef2",
+    "font": "Space Grotesk",
+    "frames": [
+      "html-cc1ac8aff0f5f4a5-1",
+      "html-cc1ac8aff0f5f4a5-2",
+      "html-cc1ac8aff0f5f4a5-3",
+      "html-cc1ac8aff0f5f4a5-4",
+      "html-cc1ac8aff0f5f4a5-5"
+    ],
+    "durations": [
+      4.5,
+      5.0,
+      4.5,
+      5.0,
+      4.5
+    ],
+    "theme": "neon"
+  },
+  {
+    "id": "html-74067e79f786d77b",
+    "name": "Breaking News (history)",
+    "description": "History niche. A story told like a front page: headline, dateline, timeline, twist, follow.",
+    "background": "#101114",
+    "accent": "#0a84ff",
+    "secondary": "#eceef2",
+    "font": "Space Grotesk",
+    "frames": [
+      "html-74067e79f786d77b-1",
+      "html-74067e79f786d77b-2",
+      "html-74067e79f786d77b-3",
+      "html-74067e79f786d77b-4",
+      "html-74067e79f786d77b-5"
+    ],
+    "durations": [
+      4.5,
+      5.0,
+      5.5,
+      5.0,
+      4.5
+    ],
+    "theme": "neon"
+  },
+  {
+    "id": "html-1013b7b90ba56bb1",
+    "name": "Keycap Shortcut (tech trick)",
+    "description": "Tech-trick niche. Teaches one keyboard shortcut: slow way, keys, palette, result, save.",
+    "background": "#101114",
+    "accent": "#0a84ff",
+    "secondary": "#eceef2",
+    "font": "Space Grotesk",
+    "frames": [
+      "html-1013b7b90ba56bb1-1",
+      "html-1013b7b90ba56bb1-2",
+      "html-1013b7b90ba56bb1-3",
+      "html-1013b7b90ba56bb1-4",
+      "html-1013b7b90ba56bb1-5"
+    ],
+    "durations": [
+      4.0,
+      5.0,
+      5.0,
+      4.5,
+      4.5
+    ],
+    "theme": "neon"
+  },
+  {
+    "id": "html-ce27dec85f4083ef",
+    "name": "Bug \u2192 Fix (tech trick)",
+    "description": "Tech-trick niche. Shows a scary error, the cause, the one-line fix, and a command worth saving.",
+    "background": "#101114",
+    "accent": "#0a84ff",
+    "secondary": "#eceef2",
+    "font": "Space Grotesk",
+    "frames": [
+      "html-ce27dec85f4083ef-1",
+      "html-ce27dec85f4083ef-2",
+      "html-ce27dec85f4083ef-3",
+      "html-ce27dec85f4083ef-4",
+      "html-ce27dec85f4083ef-5"
+    ],
+    "durations": [
+      4.5,
+      5.0,
+      5.0,
+      4.0,
+      4.5
+    ],
+    "theme": "neon"
+  }
+]

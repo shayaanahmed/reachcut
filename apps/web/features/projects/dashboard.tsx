@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { ActionLink } from "../../components/action-link";
 
 import { insightPosts, summarizeInsights } from "../publishing/insight-data";
 import type { Project } from "../../lib/contracts";
@@ -84,14 +84,16 @@ export function Dashboard({ workbench }: { workbench: Workbench }) {
           </p>
         </div>
         <div className="inline-actions">
-          <Link className="primary-link" href="/publishing">
-            Publish clips ↗
-          </Link>
-          <Link href="/insights">View insights</Link>
+          <ActionLink href="/publishing" icon="↗">
+            Publish clips
+          </ActionLink>
+          <ActionLink href="/insights" icon="▥">
+            View insights
+          </ActionLink>
         </div>
-        <Link className="primary-link" href="/projects/new">
-          ＋ New project
-        </Link>
+        <ActionLink primary href="/projects/new" icon="＋">
+          Clip a video
+        </ActionLink>
       </div>
       <section
         className="stats-grid dashboard-stats"
@@ -105,7 +107,7 @@ export function Dashboard({ workbench }: { workbench: Workbench }) {
         <article>
           <span>Awaiting review</span>
           <strong>{pendingClips.length.toLocaleString()}</strong>
-          <small>across {reviewProjects.length} projects</small>
+          <small>across {reviewProjects.length} source videos</small>
         </article>
         <article>
           <span>Ready to render</span>
@@ -118,68 +120,39 @@ export function Dashboard({ workbench }: { workbench: Workbench }) {
           <small>{summary.engagementRate.toFixed(1)}% engagement rate</small>
         </article>
       </section>
-      <section
-        className="dashboard-focus"
-        aria-labelledby="next-actions-heading"
-      >
-        <div className="dashboard-focus-heading">
+      {(failedProjects.length > 0 || pendingClips.length > 0) && (
+        <section className="dashboard-attention" aria-label="Needs attention">
           <div>
-            <span className="eyebrow">NEXT ACTIONS</span>
-            <h2 id="next-actions-heading">Keep production moving</h2>
+            <span className="eyebrow">NEXT UP</span>
+            <h2>Ready for your attention</h2>
+            <p>
+              {processingProjects.length
+                ? `${processingProjects.length} projects are processing in the background.`
+                : "Pick up the next useful action."}
+            </p>
           </div>
-          <small>
-            {processingProjects.length
-              ? `${processingProjects.length} processing now`
-              : "Local pipeline is available"}
-          </small>
-        </div>
-        <div className="dashboard-focus-grid">
-          <article className={pendingClips.length ? "priority" : ""}>
-            <span className="focus-icon">✓</span>
-            <div>
-              <strong>Review candidates</strong>
-              <p>
-                {pendingClips.length
-                  ? `${pendingClips.length} clips need a decision.`
-                  : "Your review queue is clear."}
-              </p>
-            </div>
-            <Link
-              href={
-                pendingClips[0]
-                  ? `/projects/${pendingClips[0].project.id}`
-                  : "/projects"
-              }
-            >
-              {pendingClips.length ? "Start review" : "View library"} →
-            </Link>
-          </article>
-          <article className={readyToRender ? "priority" : ""}>
-            <span className="focus-icon">↗</span>
-            <div>
-              <strong>Finish approved clips</strong>
-              <p>
-                {readyToRender
-                  ? `${readyToRender} approved clips are waiting for final render.`
-                  : "No render backlog right now."}
-              </p>
-            </div>
-            <Link href="/projects">Open projects →</Link>
-          </article>
-          <article className={failedProjects.length ? "warning" : ""}>
-            <span className="focus-icon">!</span>
-            <div>
-              <strong>Pipeline health</strong>
-              <p>
-                {failedProjects.length
-                  ? `${failedProjects.length} projects need attention.`
-                  : `${processingProjects.length} active · no failures.`}
-              </p>
-            </div>
-            <Link href="/projects">Inspect pipeline →</Link>
-          </article>
-        </div>
-      </section>
+          <div className="inline-actions">
+            {pendingClips[0] && (
+              <ActionLink
+                href={`/projects/${pendingClips[0].project.id}`}
+                icon="✓"
+                description={`${pendingClips.length} clips ready for a decision`}
+              >
+                Review clips
+              </ActionLink>
+            )}
+            {failedProjects[0] && (
+              <ActionLink
+                href={`/projects/${failedProjects[0].id}`}
+                icon="!"
+                description={`${failedProjects.length} projects need a retry`}
+              >
+                Resolve pipeline issues
+              </ActionLink>
+            )}
+          </div>
+        </section>
+      )}
       <section className="dashboard-actions" aria-label="Quick actions">
         <div>
           <strong>What do you want to make next?</strong>
@@ -187,8 +160,12 @@ export function Dashboard({ workbench }: { workbench: Workbench }) {
             Start with your own media or schedule a publishing flow.
           </small>
         </div>
-        <Link href="/projects/new">Import media</Link>
-        <Link href="/automations">Build automation</Link>
+        <ActionLink href="/projects/new" icon="＋">
+          Import media
+        </ActionLink>
+        <ActionLink href="/automations" icon="↻">
+          Build automation
+        </ActionLink>
       </section>
       {workbench.error && (
         <p role="alert" className="error">
@@ -199,12 +176,14 @@ export function Dashboard({ workbench }: { workbench: Workbench }) {
         <div className="section-heading">
           <div>
             <span className="eyebrow">PICK UP WHERE YOU LEFT OFF</span>
-            <h2 id="recent-projects">Recent projects</h2>
+            <h2 id="recent-projects">Recent source videos</h2>
           </div>
-          <Link href="/projects">See all projects →</Link>
+          <ActionLink href="/projects" icon="▤">
+            All source videos
+          </ActionLink>
         </div>
         {workbench.loading ? (
-          <div className="loading-card">Loading projects…</div>
+          <div className="loading-card">Loading source videos…</div>
         ) : (
           <ProjectList
             projects={workbench.projects.slice(0, 4)}

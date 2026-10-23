@@ -1,0 +1,308 @@
+[
+  {
+    "id": "curiosity",
+    "name": "The curiosity cut",
+    "description": "A question, a look underneath, a reveal and a useful example. The approved REA sample format.",
+    "background": "#FFF6E8",
+    "accent": "#244FF5",
+    "secondary": "#FF567E",
+    "font": "Bricolage Grotesque",
+    "frames": [
+      "photo",
+      "layers",
+      "reveal",
+      "demo",
+      "steps",
+      "poll"
+    ],
+    "durations": [
+      3.0,
+      4.0,
+      4.0,
+      7.0,
+      7.0,
+      5.0
+    ]
+  },
+  {
+    "id": "contrast",
+    "name": "The better-way cut",
+    "description": "Open with a familiar frustration. Reveal an alternative, explain it and end with a choice.",
+    "background": "#F3F1FF",
+    "accent": "#713DDB",
+    "secondary": "#E45128",
+    "font": "Syne",
+    "frames": [
+      "comparison",
+      "reveal",
+      "layers",
+      "demo",
+      "steps",
+      "poll"
+    ],
+    "durations": [
+      3.0,
+      4.0,
+      4.0,
+      7.0,
+      7.0,
+      5.0
+    ]
+  },
+  {
+    "id": "quick-win",
+    "name": "The quick-win cut",
+    "description": "Lead with a practical possibility, show the difference and walk through the steps.",
+    "background": "#F1FAF1",
+    "accent": "#17654E",
+    "secondary": "#D33E70",
+    "font": "Space Grotesk",
+    "frames": [
+      "payoff",
+      "comparison",
+      "reveal",
+      "steps",
+      "demo",
+      "poll"
+    ],
+    "durations": [
+      3.0,
+      4.0,
+      4.0,
+      7.0,
+      7.0,
+      5.0
+    ]
+  },
+  {
+    "id": "signal",
+    "name": "signal",
+    "description": "Archived sequence",
+    "frames": [
+      "headline",
+      "flow",
+      "reveal",
+      "terminal",
+      "steps",
+      "poll"
+    ],
+    "durations": [
+      3,
+      5,
+      3,
+      8,
+      7,
+      4
+    ],
+    "background": "#F3F5F3",
+    "accent": "#17654E",
+    "secondary": "#3564DC",
+    "font": "Space Grotesk"
+  },
+  {
+    "id": "paper-demo",
+    "name": "paper-demo",
+    "description": "Archived sequence",
+    "frames": [
+      "headline",
+      "layers",
+      "flow",
+      "demo",
+      "comparison",
+      "poll"
+    ],
+    "durations": [
+      3,
+      4,
+      5,
+      8,
+      6,
+      4
+    ],
+    "background": "#F4F7FC",
+    "accent": "#244FF5",
+    "secondary": "#7848CC",
+    "font": "Bricolage Grotesque"
+  },
+  {
+    "id": "proof",
+    "name": "proof",
+    "description": "Archived sequence",
+    "frames": [
+      "headline",
+      "terminal",
+      "flow",
+      "comparison",
+      "payoff",
+      "poll"
+    ],
+    "durations": [
+      3,
+      7,
+      5,
+      6,
+      5,
+      4
+    ],
+    "background": "#FFF8E9",
+    "accent": "#7042B5",
+    "secondary": "#C84732",
+    "font": "Syne"
+  },
+  {
+    "id": "vol4-tricks",
+    "name": "Vol. 4 \u00b7 Tech tricks",
+    "description": "Keycaps, palette, fixes, toggles, a sticky note and a command.",
+    "background": "#0b1220",
+    "accent": "#22d3ee",
+    "secondary": "#ff3b5c",
+    "font": "Space Grotesk",
+    "frames": [
+      "shortcut-keycaps",
+      "command-palette",
+      "error-to-fix",
+      "settings-toggles",
+      "sticky-note",
+      "copy-command"
+    ],
+    "durations": [
+      3.0,
+      4.0,
+      4.0,
+      7.0,
+      7.0,
+      5.0
+    ],
+    "theme": "neon"
+  },
+  {
+    "id": "vol4-reveals",
+    "name": "Vol. 4 \u00b7 Repo reveals",
+    "description": "A sketch, ticker, game HUD, comments, contrast and a browser.",
+    "background": "#0b1220",
+    "accent": "#22d3ee",
+    "secondary": "#ff3b5c",
+    "font": "Space Grotesk",
+    "frames": [
+      "hand-drawn",
+      "stock-ticker",
+      "game-hud",
+      "comment-section",
+      "do-dont",
+      "browser-window"
+    ],
+    "durations": [
+      3.0,
+      4.0,
+      4.0,
+      7.0,
+      7.0,
+      5.0
+    ],
+    "theme": "neon"
+  },
+  {
+    "id": "vol3-editorial",
+    "name": "Vol. 3 \u00b7 Editorial",
+    "description": "Poster, newspaper, conversation, receipt, stickers and a story poll.",
+    "background": "#0b1220",
+    "accent": "#22d3ee",
+    "secondary": "#ff3b5c",
+    "font": "Space Grotesk",
+    "frames": [
+      "kinetic-poster",
+      "newspaper",
+      "chat-thread",
+      "receipt",
+      "sticker-pack",
+      "story-poll"
+    ],
+    "durations": [
+      3.0,
+      4.0,
+      4.0,
+      7.0,
+      7.0,
+      5.0
+    ],
+    "theme": "neon"
+  },
+  {
+    "id": "vol3-technical",
+    "name": "Vol. 3 \u00b7 Developer",
+    "description": "Code editor, CRT, blueprint, pull request, trading card and bento stats.",
+    "background": "#0b1220",
+    "accent": "#22d3ee",
+    "secondary": "#ff3b5c",
+    "font": "Space Grotesk",
+    "frames": [
+      "code-editor",
+      "retro-crt",
+      "blueprint",
+      "pull-request",
+      "trading-card",
+      "bento-stats"
+    ],
+    "durations": [
+      3.0,
+      4.0,
+      4.0,
+      7.0,
+      7.0,
+      5.0
+    ],
+    "theme": "mono"
+  },
+  {
+    "id": "vol2-explainer",
+    "name": "Vol. 2 \u00b7 Explain the change",
+    "description": "Before and after, versus, a code diff, languages, progress and a file tree.",
+    "background": "#0b1220",
+    "accent": "#22d3ee",
+    "secondary": "#ff3b5c",
+    "font": "Space Grotesk",
+    "frames": [
+      "before-after",
+      "versus",
+      "code-diff",
+      "language-bar",
+      "build-progress",
+      "file-tree"
+    ],
+    "durations": [
+      3.0,
+      4.0,
+      4.0,
+      7.0,
+      7.0,
+      5.0
+    ],
+    "theme": "cyan"
+  },
+  {
+    "id": "vol2-community",
+    "name": "Vol. 2 \u00b7 Community",
+    "description": "A hot take, ranking, notifications, contributors, timeline and speed dial.",
+    "background": "#0b1220",
+    "accent": "#22d3ee",
+    "secondary": "#ff3b5c",
+    "font": "Space Grotesk",
+    "frames": [
+      "hot-take",
+      "leaderboard",
+      "notifications",
+      "contributors",
+      "timeline",
+      "speed-dial"
+    ],
+    "durations": [
+      3.0,
+      4.0,
+      4.0,
+      7.0,
+      7.0,
+      5.0
+    ],
+    "theme": "neon"
+  }
+]

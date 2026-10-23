@@ -49,13 +49,13 @@ describe("automation source", () => {
     fireEvent.change(screen.getByLabelText("Public video URL"), {
       target: { value: "https://youtube.com/watch?v=123" },
     });
-    fireEvent.change(screen.getByLabelText("Project name"), {
+    fireEvent.change(screen.getByLabelText("Source video name"), {
       target: { value: "Interview" },
     });
     fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.submit(
       screen
-        .getByRole("button", { name: "Create project & add to queue" })
+        .getByRole("button", { name: "Add source video to queue" })
         .closest("form")!,
     );
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(project));
@@ -85,19 +85,19 @@ describe("automation source", () => {
     fireEvent.change(screen.getByLabelText("Public video URL"), {
       target: { value: "https://example.com/video" },
     });
-    fireEvent.change(screen.getByLabelText("Project name"), {
+    fireEvent.change(screen.getByLabelText("Source video name"), {
       target: { value: "Interview" },
     });
     fireEvent.submit(
       screen
-        .getByRole("button", { name: "Create project & add to queue" })
+        .getByRole("button", { name: "Add source video to queue" })
         .closest("form")!,
     );
     expect((await screen.findByRole("alert")).textContent).toContain(
       "Unsupported video host",
     );
     expect(
-      (screen.getByLabelText("Project name") as HTMLInputElement).value,
+      (screen.getByLabelText("Source video name") as HTMLInputElement).value,
     ).toBe("Interview");
   });
 
@@ -116,7 +116,7 @@ describe("automation source", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Upload video" }));
-    fireEvent.change(screen.getByLabelText(/Source video/), {
+    fireEvent.change(screen.getByLabelText("Source video file"), {
       target: {
         files: [new File(["media"], "interview.mp4", { type: "video/mp4" })],
       },
@@ -124,7 +124,7 @@ describe("automation source", () => {
     fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.submit(
       screen
-        .getByRole("button", { name: "Create project & add to queue" })
+        .getByRole("button", { name: "Add source video to queue" })
         .closest("form")!,
     );
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(project));

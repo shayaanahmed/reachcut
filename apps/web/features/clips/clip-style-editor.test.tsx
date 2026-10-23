@@ -89,6 +89,61 @@ describe("clip style editor", () => {
     );
   });
 
+  it("previews a watermark and exposes voice-over and original audio controls", () => {
+    const onPreviewChange = vi.fn();
+    render(
+      <ClipStyleEditor
+        clip={clip}
+        saving={false}
+        templateBusy={false}
+        translating={false}
+        tracking={false}
+        assetBusy={false}
+        mutationBusy={false}
+        onSave={vi.fn()}
+        onApplyTemplate={vi.fn()}
+        onTranslate={vi.fn()}
+        onTrack={vi.fn()}
+        onUploadAsset={vi.fn()}
+        onRemoveAsset={vi.fn()}
+        onPreviewChange={onPreviewChange}
+        onDirtyChange={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Motion/ }));
+    fireEvent.change(screen.getByLabelText("Watermark text"), {
+      target: { value: "@MyBrand" },
+    });
+    fireEvent.change(screen.getByLabelText("Watermark position"), {
+      target: { value: "top_left" },
+    });
+    expect(onPreviewChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        watermark: {
+          text: "@MyBrand",
+          position: "top_left",
+          opacity: 0.7,
+          font_size: 32,
+        },
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Layout/ }));
+    expect(
+      (screen.getByLabelText(/Original audio volume/) as HTMLInputElement)
+        .value,
+    ).toBe("1");
+    fireEvent.click(screen.getByRole("button", { name: /Assets/ }));
+    expect(
+      (screen.getByLabelText("Asset type") as HTMLSelectElement).value,
+    ).toBe("voiceover");
+    expect(
+      (screen.getByLabelText("Placement") as HTMLSelectElement).value,
+    ).toBe("audio");
+    expect(
+      (screen.getByLabelText(/Audio volume/) as HTMLInputElement).value,
+    ).toBe("0");
+  });
+
   it("replaces the settings form with Assets instead of creating an empty grid row", () => {
     const { container } = render(
       <ClipStyleEditor

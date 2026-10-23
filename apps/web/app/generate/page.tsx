@@ -1,5 +1,4 @@
-import { ShortsStudio } from "../../features/generation/shorts-studio";
-
-export default function GeneratePage() {
-  return <ShortsStudio />;
+import { redirect } from "next/navigation";
+export default function Page() {
+  redirect("/create");
 }

@@ -155,7 +155,7 @@ def delete_draft(draft_id: str, session: Session = Depends(get_session)) -> None
 @router.get("/readiness", response_model=LocalVideoReadinessResponse)
 def readiness(session: Session = Depends(get_session)) -> LocalVideoReadinessResponse:
     runtime = runtime_settings_service.get(session)
-    director = OllamaStoryDirector(runtime.ollama_base_url, runtime.editorial_model)
+    director = OllamaStoryDirector(runtime.ollama_base_url, runtime.model_for("scripting"))
     ollama_connected = False
     ollama_model_ready = False
     try:
@@ -163,7 +163,7 @@ def readiness(session: Session = Depends(get_session)) -> LocalVideoReadinessRes
         response.raise_for_status()
         ollama_connected = True
         ollama_model_ready = any(
-            item.get("name") == runtime.editorial_model
+            item.get("name") == runtime.model_for("scripting")
             for item in response.json().get("models", [])
         )
     except httpx.HTTPError:
@@ -204,7 +204,7 @@ def readiness(session: Session = Depends(get_session)) -> LocalVideoReadinessRes
     elif not ollama_connected:
         detail = "Start Ollama to create storyboards."
     else:
-        detail = f"Pull the configured Ollama model: {runtime.editorial_model}."
+        detail = f"Pull the configured Ollama model: {runtime.model_for('scripting')}."
     return LocalVideoReadinessResponse(
         ready=ready,
         ollama_connected=ollama_connected,
@@ -506,7 +506,7 @@ def _director(session: Session) -> OllamaStoryDirector:
     runtime = runtime_settings_service.get(session)
     return OllamaStoryDirector(
         runtime.ollama_base_url,
-        runtime.editorial_model,
+        runtime.model_for("scripting"),
         timeout_seconds=min(settings.editorial_timeout_seconds, 600),
     )
 

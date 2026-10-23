@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Faceless frame library, vol. 2</title>
+<style>
+:root{box-sizing:border-box;--pb:#101114;--pf:#eceef2;--pm:#9aa0ad;--pc:#181a20;--pl:#2a2d36;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:light){:root:not([data-theme=dark]){--pb:#f5f6f9;--pf:#14161c;--pm:#5d6472;--pc:#fff;--pl:#d9dde6}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--pb);color:var(--pf);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;padding:24px 18px 60px;max-width:1180px;margin-inline:auto}
+h1{font-size:30px;margin:0 0 6px;letter-spacing:-.02em}
+p.l{color:var(--pm);max-width:72ch;margin:0 0 18px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px}
+button{font:inherit;border:1px solid var(--pl);background:var(--pc);color:var(--pf);padding:7px 14px;border-radius:99px;cursor:pointer}
+button.on{background:var(--pf);color:var(--pb)}
+main{display:grid;grid-template-columns:repeat(auto-fill,minmax(216px,1fr));gap:22px}
+figure{margin:0}
+figcaption{margin-top:8px;font-size:13px;color:var(--pm)}
+figcaption b{display:block;color:var(--pf);font-size:14px}
+main[data-t=cyan]{--bg:#0b1220;--card:#131c2e;--bd:#22304a;--fg:#e6edf3;--mut:#8aa0bd;--ac:#22d3ee;--hl:#ff3b5c;--sh:none;--ff:system-ui,-apple-system,"Segoe UI",sans-serif}
+main[data-t=amber]{--bg:#0a0d10;--card:#12161b;--bd:#2a313a;--fg:#f2f2f2;--mut:#8b94a0;--ac:#fbbf24;--hl:#fbbf24;--sh:none;--ff:system-ui,-apple-system,"Segoe UI",sans-serif}
+main[data-t=glass]{--bg:#f4f6fb;--card:#fff;--bd:#e3e8f2;--fg:#0f172a;--mut:#64748b;--ac:#2563eb;--hl:#2563eb;--sh:0 6px 20px rgba(30,60,120,.12);--ff:system-ui,-apple-system,"Segoe UI",sans-serif}
+main[data-t=mono]{--bg:#0f1419;--card:#151c24;--bd:#26323d;--fg:#e8eef2;--mut:#7e8d99;--ac:#2dd4bf;--hl:#2dd4bf;--sh:none;--ff:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+main[data-t=neon]{--bg:#0c0614;--card:#170c26;--bd:#3b1f63;--fg:#f4eaff;--mut:#a68bd0;--ac:#e879f9;--hl:#a3e635;--sh:0 0 18px rgba(232,121,249,.25);--ff:system-ui,-apple-system,"Segoe UI",sans-serif}
+main[data-t=paper]{--bg:#fff6d6;--card:#fff;--bd:#17120a;--fg:#17120a;--mut:#6b6048;--ac:#ff5a36;--hl:#ff5a36;--sh:4px 4px 0 #17120a;--ff:Georgia,"Times New Roman",serif}
+main[data-t=sunset]{--bg:#1b0f2e;--card:rgba(255,255,255,.08);--bd:rgba(255,255,255,.18);--fg:#fff3ea;--mut:#e0b9c8;--ac:#ffb347;--hl:#ff6f91;--sh:none;--ff:system-ui,-apple-system,"Segoe UI",sans-serif}
+main[data-t=sunset] .st{background:linear-gradient(170deg,#2a1248,#8a2d6b 60%,#e8604c)}
+main[data-t=paper] .card,main[data-t=paper] .row,main[data-t=paper] .node{border-width:2px}
+.st{position:relative;aspect-ratio:9/16;border-radius:16px;overflow:hidden;background:var(--bg);color:var(--fg);cursor:pointer;font-family:var(--ff);border:1px solid var(--pl)}
+.a{position:absolute}
+.sm{font-size:10.5px}.big{font-size:40px;font-weight:800;line-height:1.05}.ctr{text-align:center}
+.mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:11px}
+.mut{color:var(--mut)}.ac{color:var(--ac)}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;box-shadow:var(--sh)}
+.chip{display:inline-block;border:1px solid var(--bd);border-radius:99px;padding:2px 8px;font-size:10px;color:var(--mut);background:var(--card)}
+.badge{background:var(--ac);color:var(--bg);font-weight:800;font-size:10px;padding:3px 8px;border-radius:6px}
+.rows{display:flex;flex-direction:column;gap:8px}
+.row{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:9px 10px;font-weight:700;font-size:12px;box-shadow:var(--sh)}
+.row span{color:var(--ac)}
+.bar2{height:7px;border-radius:4px;background:var(--bd);overflow:hidden;flex:1}
+.bar2 i,.sx{display:block;height:100%;background:var(--ac);transform-origin:left;transform:scaleX(0)}
+.seg{display:flex;height:16px;border-radius:8px;overflow:hidden;gap:2px}
+.seg .sx{height:100%}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--ac);flex:none}
+.av{width:38px;height:38px;border-radius:50%;border:2px solid var(--bg);font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;color:#111}
+.mark{background:var(--hl);color:var(--bg);padding:0 6px;border-radius:4px}
+.add{background:rgba(34,197,94,.18);color:#4ade80}.del{background:rgba(239,68,68,.18);color:#f87171}
+main[data-t=glass] .add,main[data-t=paper] .add{color:#15803d}main[data-t=glass] .del,main[data-t=paper] .del{color:#b91c1c}
+.cp{position:absolute;left:6%;right:6%;bottom:12%;text-align:center;font-weight:800;font-size:15px;line-height:1.15}
+.w{display:inline-block;opacity:0}.k{color:var(--hl)}
+main[data-t=mono] .k,main[data-t=paper] .k{color:inherit;border-bottom:2px solid var(--hl)}
+.st:not(.play) .pop{opacity:0}
+.play .pop{animation:pop .5s both;animation-delay:var(--d,0s)}
+.play .sl{animation:sl .5s both;animation-delay:var(--d,0s)}
+.st:not(.play) .sl{opacity:0}
+.play .w{animation:up .35s both}
+.dr{stroke-dasharray:100;stroke-dashoffset:100}
+.play .dr{animation:draw 1.4s ease-out var(--d,.3s) forwards}
+.type{overflow:hidden;white-space:nowrap;width:0}
+.play .type{animation:type .8s steps(18) both;animation-delay:var(--d)}
+.grow{transform:scaleY(0);transform-origin:top}
+.play .grow{animation:gr .8s both;animation-delay:var(--d)}
+.play .bar2 i,.play .sx{animation:fl .9s both;animation-delay:var(--d)}
+.wipe{clip-path:inset(0 100% 0 0)}
+.play .wipe{animation:wp .9s ease-out both;animation-delay:var(--d)}
+@keyframes pop{from{opacity:0;transform:translateY(8px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes sl{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:none}}
+@keyframes up{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes type{to{width:var(--w)}}
+@keyframes gr{to{transform:none}}
+@keyframes fl{to{transform:none}}
+@keyframes wp{to{clip-path:inset(0)}}
+@media (prefers-reduced-motion:reduce){.st *{animation-duration:.01s!important}}
+</style>
+</head>
+<body>
+<h1>Faceless frame library, vol. 2</h1>
+<p class="l">Twelve more animated 9:16 frames and seven themes (four from vol. 1, three new). Pick a theme, click a frame to replay it. Highlighted caption words are the ones you stress with your voice. All names and numbers are placeholders.</p>
+<div class="bar" id="bar"></div>
+<main id="grid" data-t="neon"></main>
+<script>
+const T=[["neon","Neon Violet"],["paper","Paper Pop"],["sunset","Sunset Gradient"],["cyan","Terminal Cyan"],["amber","Amber Cards"],["glass","Glass Light"],["mono","Mono Teal"]];
+const hues=[190,320,50,140,260,20];
+const av=hues.map((h,i)=>`<div class="av pop" style="--d:${(.2+i*.15).toFixed(2)}s;background:hsl(${h} 85% 65%);margin-left:${i?-8:0}px">${"ABCDEF"[i]}</div>`).join("");
+const F=[
+{n:"Before / after",u:"Show what changed with a split",c:"Before. Then [after]",
+ g:`<div class="a card" style="left:7%;right:7%;top:8%;overflow:hidden"><div style="padding:10px 12px"><div class="mut sm">BEFORE</div><div style="font-weight:800;margin-top:4px">45 min setup</div></div><div style="height:2px;background:var(--ac)"></div><div class="wipe" style="--d:.8s;padding:10px 12px;background:var(--ac);color:var(--bg)"><div class="sm" style="opacity:.8">AFTER</div><div style="font-weight:800;margin-top:4px">45 sec setup</div></div></div>`},
+{n:"Versus",u:"Pit the new repo against the incumbent",c:"Why switch? [Look at this]",
+ g:`<div class="a card pop" style="left:7%;right:7%;top:6%;padding:10px"><div class="mut sm">OLD WAY</div><div style="font-weight:800">Heavy tool</div><div class="mut sm">3 files, slow</div></div><div class="a badge pop" style="--d:.5s;left:50%;top:21%;transform:translateX(-50%);font-size:12px;padding:4px 12px;border-radius:99px">VS</div><div class="a card pop" style="--d:.9s;left:7%;right:7%;top:27%;padding:10px;border-color:var(--ac)"><div class="ac sm">THIS REPO</div><div style="font-weight:800">Tiny tool</div><div class="mut sm">1 file, fast</div></div>`},
+{n:"Leaderboard",u:"Rank repos or tools, #1 on top",c:"It beats [everything] else",
+ g:`<div class="a mut sm" style="left:8%;top:6%">TOP BY STARS</div><div class="a rows" style="left:8%;right:8%;top:12%"><div class="row pop" style="--d:.2s;border-color:var(--ac)"><span>1</span>repo-name<div class="bar2" style="--d:.5s"><i style="--d:.5s"></i></div></div><div class="row pop" style="--d:.6s"><span>2</span>other-tool<div class="bar2" style="width:70%"><i class="mut" style="--d:.9s;background:var(--mut);width:70%"></i></div></div><div class="row pop" style="--d:1s"><span>3</span>third-one<div class="bar2"><i style="--d:1.3s;background:var(--mut);width:40%"></i></div></div></div>`},
+{n:"Code diff",u:"Show the one-line change",c:"Change [one line]",
+ g:`<div class="a card mono" style="left:7%;right:7%;top:8%;padding:8px 0;overflow:hidden"><div class="mut sm" style="padding:0 10px 6px">config.ts</div><div class="del type" style="--w:100%;--d:.3s;padding:3px 10px">- mode: "slow"</div><div class="add type" style="--w:100%;--d:1.2s;padding:3px 10px">+ mode: "fast"</div></div><div class="a pop badge" style="--d:2.2s;left:7%;top:30%">+1 −1</div>`},
+{n:"Language bar",u:"What the repo is built with",c:"Built in [pure TypeScript]",
+ g:`<div class="a card" style="left:7%;right:7%;top:8%;padding:10px"><div class="mut sm" style="margin-bottom:8px">LANGUAGES</div><div class="seg"><i class="sx" style="--d:.3s;flex:68"></i><i class="sx" style="--d:.7s;flex:22;background:var(--hl)"></i><i class="sx" style="--d:1.1s;flex:10;background:var(--mut)"></i></div><div class="pop" style="--d:1.5s;display:flex;gap:10px;margin-top:10px;font-size:10px"><span><b class="ac">●</b> TS 68%</span><span><b style="color:var(--hl)">●</b> Rust 22%</span><span class="mut">● Other</span></div></div>`},
+{n:"Notification toasts",u:"Social proof piling up",c:"People are [losing it]",
+ g:`<div class="a rows" style="left:6%;right:6%;top:8%"><div class="card sl" style="--d:.2s;padding:9px 10px;font-size:12px"><b class="ac">★</b> <b>@dev_anna</b> starred this repo</div><div class="card sl" style="--d:.9s;padding:9px 10px;font-size:12px"><b class="ac">⑂</b> <b>@kimchi</b> forked it</div><div class="card sl" style="--d:1.6s;padding:9px 10px;font-size:12px"><b class="ac">✓</b> PR #212 merged</div></div>`},
+{n:"Contributors",u:"Community strength",c:"Built by [248 people]",
+ g:`<div class="a ctr" style="left:0;right:0;top:10%"><div style="display:flex;justify-content:center">${av}<div class="av pop" style="--d:1.2s;margin-left:-8px;background:var(--ac);color:var(--bg)">+242</div></div><div class="mut sm pop" style="--d:1.5s;margin-top:12px">CONTRIBUTORS</div></div>`},
+{n:"Timeline",u:"How fast the repo moved",c:"All in [one week]",
+ g:`<div class="a mut sm" style="left:8%;top:6%">LAST 7 DAYS</div><div class="a" style="left:10%;right:8%;top:13%"><div class="grow" style="--d:.2s;position:absolute;left:4px;top:6px;bottom:6px;width:2px;background:var(--ac);height:132px"></div><div class="rows" style="gap:14px;padding-left:0"><div class="pop" style="--d:.3s;display:flex;gap:10px;align-items:center"><i class="dot"></i><span class="sm"><b>Day 1</b> <span class="mut">first commit</span></span></div><div class="pop" style="--d:.9s;display:flex;gap:10px;align-items:center"><i class="dot"></i><span class="sm"><b>Day 3</b> <span class="mut">hits 1K ★</span></span></div><div class="pop" style="--d:1.5s;display:flex;gap:10px;align-items:center"><i class="dot" style="background:var(--hl)"></i><span class="sm"><b>Day 7</b> <span class="mut">#1 trending</span></span></div></div></div>`},
+{n:"Hot take",u:"Bold opinion to stop the scroll",c:"Hot take: [read the code]",
+ g:`<div class="a ctr" style="left:8%;right:8%;top:11%"><span class="badge pop">HOT TAKE</span><div class="pop" style="--d:.4s;font-size:25px;font-weight:800;line-height:1.2;margin-top:12px">Most tutorials are <span class="mark">obsolete</span> in a year.</div></div>`},
+{n:"Build progress",u:"Loading bar that finishes with a win",c:"Watch it [build itself]",
+ g:`<div class="a card" style="left:7%;right:7%;top:8%;padding:10px"><div style="display:flex;justify-content:space-between;font-size:11px;font-weight:700"><span>Building…</span><span class="ac"><span data-to="100" data-sf="%">0%</span></span></div><div class="bar2" style="margin:8px 0;display:block"><i class="ac2" style="--d:.2s;animation-duration:1.4s!important"></i></div><div class="pop mono" style="--d:1.7s;color:var(--ac)">✓ Done in 2.1s</div></div>`},
+{n:"File tree",u:"Show how the project is laid out",c:"The [whole thing] is tiny",
+ g:`<div class="a card mono" style="left:7%;right:7%;top:8%;padding:10px;line-height:1.7"><div class="type" style="--w:9ch;--d:.2s">📁 repo/</div><div class="type" style="--w:14ch;--d:.8s;padding-left:14px">📄 index.ts</div><div class="type ac" style="--w:15ch;--d:1.4s;padding-left:14px">📄 agent.ts</div><div class="type" style="--w:15ch;--d:2s;padding-left:14px">📄 README.md</div></div><div class="a pop badge" style="--d:2.7s;right:7%;top:30%">3 files</div>`},
+{n:"Speed dial",u:"One big speed or score number",c:"Ten times [faster]",
+ g:`<div class="a ctr" style="left:8%;right:8%;top:9%"><svg viewBox="0 0 100 58" style="width:100%"><path d="M10 54A40 40 0 0 1 90 54" fill="none" stroke="var(--bd)" stroke-width="7" stroke-linecap="round"/><path class="dr" pathLength="100" style="--d:.3s" d="M10 54A40 40 0 0 1 90 54" fill="none" stroke="var(--ac)" stroke-width="7" stroke-linecap="round"/></svg><div class="big ac" style="margin-top:-22px"><span data-to="10" data-sf="x">0x</span></div><div class="mut sm pop" style="--d:1.2s">FASTER THAN BEFORE</div></div>`}
+];
+function cap(t){let i=0;return t.replace(/\[([^\]]+)\]|(\S+)/g,(m,a,b)=>(a||b).split(" ").map(w=>`<span class="w${a?" k":""}" style="animation-delay:${(.3+i++*.22).toFixed(2)}s">${w}</span>`).join(" ")+" ")}
+const fmt=(v,s)=>(v>=1000?(v/1000).toFixed(1)+"K":Math.round(v))+(s||"");
+function count(n){const to=+n.dataset.to,sf=n.dataset.sf,t0=performance.now();(function s(t){const p=Math.min(1,(t-t0)/1400);n.textContent=fmt(to*(1-Math.pow(1-p,3)),sf);if(p<1)requestAnimationFrame(s)})(t0)}
+function play(el){el.classList.remove("play");void el.offsetWidth;el.classList.add("play");el.querySelectorAll("[data-to]").forEach(count)}
+const grid=document.getElementById("grid"),bar=document.getElementById("bar");
+grid.innerHTML=F.map(f=>`<figure><div class="st">${f.g}<div class="cp">${cap(f.c)}</div></div><figcaption><b>${f.n}</b>${f.u}</figcaption></figure>`).join("");
+const all=()=>grid.querySelectorAll(".st").forEach(play);
+grid.querySelectorAll(".st").forEach(s=>s.addEventListener("click",()=>play(s)));
+bar.innerHTML=T.map(([k,n],i)=>`<button data-k="${k}" class="${i?"":"on"}">${n}</button>`).join("")+`<button id="re">▶ Replay all</button>`;
+bar.addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;if(b.id==="re")return all();grid.dataset.t=b.dataset.k;bar.querySelectorAll("[data-k]").forEach(x=>x.classList.toggle("on",x===b));all()});
+all();
+</script>
+</body>
+</html>

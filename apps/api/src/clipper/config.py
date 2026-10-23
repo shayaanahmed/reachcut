@@ -30,6 +30,15 @@ class Settings(BaseSettings):
     local_video_engine_root: Path = API_ROOT / "data" / "local-video" / "LTX-Desktop"
     local_video_engine_data_dir: Path = API_ROOT / "data" / "local-video" / "ltx-data"
     local_video_timeout_seconds: float = Field(default=7_200, gt=0)
+    voicebox_base_url: str = "http://127.0.0.1:17600"
+    voicebox_timeout_seconds: float = Field(default=600, gt=0)
+    research_search_url: str = ""
+    agent_reach_command: str = "agent-reach"
+    agent_reach_search_command: str = "yt-dlp"
+    research_allowed_hosts: str = (
+        "docs.python.org,openai.com,learn.microsoft.com,support.google.com,"
+        "ncbi.nlm.nih.gov,pmc.ncbi.nlm.nih.gov,loc.gov,archives.gov,si.edu"
+    )
     tracking_provider: Literal["opencv", "disabled"] = "opencv"
     tracking_sample_interval_seconds: float = Field(default=0.5, ge=0.1, le=5)
     max_upload_bytes: int = Field(default=8 * 1024**3, ge=1)

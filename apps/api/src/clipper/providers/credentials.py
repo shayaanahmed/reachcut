@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import fcntl
 import json
 import os
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import asdict
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -23,6 +26,10 @@ class EncryptedCredentialStore:
         self._key_path = data_dir / "credentials.key"
 
     def save(self, account_id: str, connection: OAuthConnection) -> None:
+        with self._locked(account_id):
+            self._save(account_id, connection)
+
+    def _save(self, account_id: str, connection: OAuthConnection) -> None:
         self._directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         payload = json.dumps(asdict(connection)).encode()
         target = self._directory / f"{account_id}.token"
@@ -35,6 +42,16 @@ class EncryptedCredentialStore:
         finally:
             temporary_path.unlink(missing_ok=True)
 
+    def save_if_present(
+        self, account_id: str, connection: OAuthConnection, expected: OAuthConnection
+    ) -> bool:
+        """Persist upload results without undoing a disconnect made during upload."""
+        with self._locked(account_id):
+            if self.load(account_id) != expected:
+                return False
+            self._save(account_id, connection)
+            return True
+
     def load(self, account_id: str) -> OAuthConnection | None:
         target = self._directory / f"{account_id}.token"
         if not target.exists():
@@ -43,6 +60,7 @@ class EncryptedCredentialStore:
             payload = json.loads(self._cipher().decrypt(target.read_bytes()))
             return OAuthConnection(
                 refresh_token=str(payload.get("refresh_token", "")),
+                management_access_token=str(payload.get("management_access_token", "")),
                 access_token=str(payload.get("access_token", "")),
                 external_account_id=str(payload.get("external_account_id", "")),
                 display_name=str(payload.get("display_name", "")),
@@ -50,14 +68,40 @@ class EncryptedCredentialStore:
                 profile_url=str(payload.get("profile_url", "")),
                 parent_page_id=str(payload.get("parent_page_id", "")),
                 parent_page_name=str(payload.get("parent_page_name", "")),
+                granted_scopes=tuple(payload["granted_scopes"])
+                if isinstance(payload.get("granted_scopes"), list)
+                else None,
+                access_token_expires_at=(
+                    float(payload["access_token_expires_at"])
+                    if payload.get("access_token_expires_at") is not None
+                    else None
+                ),
             )
         except (InvalidToken, KeyError, ValueError, json.JSONDecodeError) as error:
             raise CredentialStoreError("stored publishing credentials could not be read") from error
 
+    def refresh(
+        self, account_id: str, renew: Callable[[OAuthConnection], OAuthConnection]
+    ) -> OAuthConnection:
+        """Serialize rotation across workers and save before returning credentials."""
+        with self._locked(account_id):
+            connection = self.load(account_id)
+            if connection is None:
+                raise CredentialStoreError("publishing account is no longer connected")
+            updated = renew(connection)
+            self._save(account_id, updated)
+            return updated
+
     def delete(self, account_id: str) -> None:
-        target = self._directory / f"{account_id}.token"
-        if target.exists():
-            target.unlink()
+        with self._locked(account_id):
+            (self._directory / f"{account_id}.token").unlink(missing_ok=True)
+
+    @contextmanager
+    def _locked(self, account_id: str) -> Iterator[None]:
+        self._directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        with (self._directory / f"{account_id}.lock").open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            yield
 
     def seal_state(self, account_id: str) -> str:
         return self._cipher().encrypt(account_id.encode()).decode()

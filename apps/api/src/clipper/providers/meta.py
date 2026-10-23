@@ -13,11 +13,14 @@ from clipper.media.errors import MediaError
 from clipper.media.instagram import encode_instagram_video
 from clipper.providers.publishing_http import (
     ProviderApiError,
+    ProviderPublishingPermissionError,
+    ProviderUploadRejected,
     PublishingHttpClient,
     local_video_size,
     trusted_upload_url,
 )
 from clipper.publishing import OAuthConnection, ProviderMetrics, PublishedPost, PublishRequest
+from clipper.publishing.permissions import instagram_deletion_issue, instagram_publishing_issue
 
 
 class _InstagramUploadRejected(ProviderApiError):
@@ -43,7 +46,7 @@ class InstagramPublishingAdapter(PublishingHttpClient):
             return self._publish(request, connection)
         except _InstagramUploadRejected as error:
             if not error.compatibility_retry or self._compatibility_encoder is None:
-                raise
+                raise ProviderUploadRejected(str(error)) from error
         # A rejected container cannot be reused. Only retry before media_publish,
         # with a new container and a temporary encoding; never retry publishing.
         with TemporaryDirectory(prefix="reachcut-instagram-") as directory:
@@ -51,24 +54,53 @@ class InstagramPublishingAdapter(PublishingHttpClient):
             try:
                 self._compatibility_encoder(request.media_path, compatible)
             except MediaError as error:
-                raise ProviderApiError(str(error)) from error
+                raise ProviderUploadRejected(str(error)) from error
             try:
                 return self._publish(replace(request, media_path=compatible), connection)
-            except ProviderApiError as error:
-                raise ProviderApiError(
+            except (ProviderUploadRejected, _InstagramUploadRejected) as error:
+                if isinstance(error, ProviderPublishingPermissionError):
+                    raise
+                raise ProviderUploadRejected(
                     f"Instagram compatibility upload also failed: {error}"
                 ) from error
+            except ProviderApiError:
+                raise
 
     def _publish(self, request: PublishRequest, connection: OAuthConnection) -> PublishedPost:
         if connection.refresh_token and connection.refresh_token == connection.access_token:
-            raise ProviderApiError(
+            raise ProviderPublishingPermissionError(
                 "Instagram is connected with the old direct-login credentials. Reconnect the "
                 "account through Facebook Login to enable local video upload."
             )
         account_id, token = _meta_credentials(connection, "Instagram")
+        issue = instagram_publishing_issue(connection)
+        if issue:
+            raise ProviderPublishingPermissionError(issue)
         size = local_video_size(request.media_path, "Instagram")
+        stage = "checking the linked account"
+        publish_attempted = False
+        container_id = None
+        media_id = None
         try:
             with self.client_session() as client:
+                if connection.parent_page_id:
+                    linked = client.get(
+                        f"{self._base}/{connection.parent_page_id}",
+                        params={"fields": "instagram_business_account"},
+                        headers={"Authorization": f"Bearer {token}"},
+                    )
+                    linked.raise_for_status()
+                    account = linked.json().get("instagram_business_account")
+                    if not isinstance(account, dict) or str(account.get("id")) != account_id:
+                        raise ProviderPublishingPermissionError(
+                            "Instagram publishing authorization does not match "
+                            "the selected account. "
+                            "The saved Facebook Page no longer exposes this Instagram account. "
+                            "In Meta Business Suite, link the intended Instagram professional "
+                            "account to the correct Page, then reconnect that account in Accounts "
+                            "and grant publishing access to it. No video was uploaded."
+                        )
+                stage = "creating the upload container"
                 created = client.post(
                     f"{self._base}/{account_id}/media",
                     params={
@@ -89,6 +121,7 @@ class InstagramPublishingAdapter(PublishingHttpClient):
                     provider="Instagram",
                     allowed_host_suffixes=("facebook.com",),
                 )
+                stage = "transferring video to the container"
                 with request.media_path.open("rb") as media:
                     uploaded = client.post(
                         upload_uri,
@@ -107,7 +140,10 @@ class InstagramPublishingAdapter(PublishingHttpClient):
                         raise _instagram_upload_error(
                             client, self._base, str(container_id), token, error
                         ) from error
+                stage = "processing the upload container"
                 _wait_for_instagram_container(client, self._base, str(container_id), token)
+                stage = "publishing the Reel"
+                publish_attempted = True
                 published = client.post(
                     f"{self._base}/{account_id}/media_publish",
                     params={"creation_id": container_id, "access_token": token},
@@ -116,17 +152,50 @@ class InstagramPublishingAdapter(PublishingHttpClient):
                 media_id = published.json().get("id")
                 if not media_id:
                     raise ProviderApiError("Instagram did not return a media ID")
+                if request.on_upload_started:
+                    request.on_upload_started(str(media_id))
+                stage = "loading the published Reel link"
                 details = client.get(
                     f"{self._base}/{media_id}",
                     params={"fields": "permalink", "access_token": token},
                 )
                 details.raise_for_status()
                 permalink = details.json().get("permalink")
+        except _InstagramUploadRejected:
+            raise  # Preserve the existing safe encoding retry before media_publish.
+        except ProviderPublishingPermissionError:
+            raise
         except httpx.HTTPError as error:
-            raise self.raise_error("Instagram Reel publishing failed", error) from error
-        if not permalink:
-            raise ProviderApiError("Instagram published the Reel without returning a permalink")
-        return PublishedPost(post_url=str(permalink), external_id=str(media_id))
+            if media_id:
+                return PublishedPost(post_url=None, external_id=str(media_id), status="processing")
+            if isinstance(error, httpx.HTTPStatusError) and _is_permission_error(error.response):
+                raise ProviderPublishingPermissionError(
+                    f"Instagram publishing authorization was denied while {stage} "
+                    "(Meta code 10/200). "
+                    "Reconnect the intended Instagram account and its linked Facebook Page in "
+                    "Accounts. Grant instagram_basic, instagram_content_publish and "
+                    "pages_read_engagement for that account in the Meta login configuration. "
+                    "The app may also need the appropriate Meta access level. "
+                    "No post was published by this rejected request."
+                ) from error
+            message = str(self.raise_error(f"Instagram failed while {stage}", error))
+            if not publish_attempted:
+                raise ProviderUploadRejected(message + ". No publish request was sent.") from error
+            raise ProviderApiError(
+                f"{message}. Publish outcome needs verification; container {container_id}. "
+                "Do not upload again until the destination has been checked."
+            ) from error
+        except ProviderApiError as error:
+            if not publish_attempted:
+                raise ProviderUploadRejected(
+                    str(error) + ". No publish request was sent."
+                ) from error
+            raise
+        return PublishedPost(
+            post_url=str(permalink) if permalink else None,
+            external_id=str(media_id),
+            status="published" if permalink else "processing",
+        )
 
     def refresh(
         self,
@@ -145,7 +214,22 @@ class InstagramPublishingAdapter(PublishingHttpClient):
                 response.raise_for_status()
         except httpx.HTTPError as error:
             raise self.raise_error("Instagram status check failed", error) from error
-        return PublishedPost(post_url=response.json().get("permalink"), external_id=external_id)
+        permalink = response.json().get("permalink")
+        return PublishedPost(
+            post_url=permalink,
+            external_id=external_id,
+            status="published" if permalink else "processing",
+        )
+
+    def delete_post(
+        self, external_id: str | None, post_url: str | None, connection: OAuthConnection
+    ) -> None:
+        if not external_id:
+            raise ProviderApiError("Instagram deletion requires the original published media ID")
+        issue = instagram_deletion_issue(connection)
+        if issue:
+            raise ProviderApiError(issue)
+        _delete_meta_media(self, self._base, external_id, connection.management_access_token)
 
     def metrics(
         self,
@@ -215,6 +299,8 @@ class FacebookPublishingAdapter(PublishingHttpClient):
                     provider="Facebook",
                     allowed_host_suffixes=("facebook.com",),
                 )
+                if request.on_upload_started:
+                    request.on_upload_started(str(video_id))
                 with request.media_path.open("rb") as media:
                     uploaded = client.post(
                         upload_url,
@@ -240,18 +326,13 @@ class FacebookPublishingAdapter(PublishingHttpClient):
                     },
                 )
                 finished.raise_for_status()
-                details = client.get(
-                    f"{self._base}/{video_id}",
-                    params={"fields": "permalink_url", "access_token": token},
-                )
-                details.raise_for_status()
-                permalink = details.json().get("permalink_url")
+                if finished.json().get("success") is not True:
+                    raise ProviderApiError("Facebook did not accept the Reel publish request")
         except httpx.HTTPError as error:
             raise self.raise_error("Facebook Reel publishing failed", error) from error
-        return PublishedPost(
-            post_url=str(permalink or f"https://www.facebook.com/reel/{video_id}"),
-            external_id=str(video_id),
-        )
+        # Finish acknowledges the request; Facebook still processes asynchronously.
+        # Persist its ID before asking for status or a permalink, which can lag.
+        return PublishedPost(post_url=None, external_id=str(video_id), status="processing")
 
     def refresh(
         self,
@@ -259,11 +340,91 @@ class FacebookPublishingAdapter(PublishingHttpClient):
         connection: OAuthConnection,
         account_username: str,
     ) -> PublishedPost:
-        del connection, account_username
-        return PublishedPost(
-            post_url=f"https://www.facebook.com/reel/{external_id}",
-            external_id=external_id,
+        del account_username
+        _, token = _meta_credentials(connection, "Facebook")
+        try:
+            with self.client_session() as client:
+                response = client.get(
+                    f"{self._base}/{external_id}",
+                    params={"fields": "status"},
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                response.raise_for_status()
+        except httpx.HTTPError as error:
+            raise self.raise_error(
+                "Facebook status check failed; the existing upload ID is saved. "
+                "Do not upload again. If this persists, reconnect the original Page in Accounts",
+                error,
+            ) from error
+        status = response.json().get("status", {})
+        publishing = status.get("publishing_phase", {})
+        phases = [
+            status.get(name, {})
+            for name in ("uploading_phase", "processing_phase", "publishing_phase")
+        ]
+        if (
+            status.get("video_status") in {"error", "upload_failed", "expired"}
+            or any(phase.get("status") in {"error", "failed"} for phase in phases)
+            or publishing.get("publish_status") == "error"
+        ):
+            return PublishedPost(
+                post_url=None,
+                external_id=external_id,
+                status="failed",
+                error="Facebook reported that Reel uploading, processing or publishing failed. "
+                "Check the video in the original Page before trying another upload.",
+            )
+        published = publishing.get("publish_status") == "published" or (
+            status.get("video_status") == "ready" and publishing.get("status") == "complete"
         )
+        return PublishedPost(
+            post_url=f"https://www.facebook.com/reel/{external_id}" if published else None,
+            external_id=external_id,
+            status="published" if published else "processing",
+        )
+
+    def update_post(
+        self,
+        external_id: str | None,
+        post_url: str | None,
+        title: str,
+        description: str,
+        connection: OAuthConnection,
+    ) -> None:
+        del title  # Reels expose a caption; do not claim an unsupported title edit.
+        video_id = external_id or _facebook_reel_id(post_url)
+        if not video_id:
+            raise ProviderApiError("Facebook post has no recognizable video ID")
+        _, token = _meta_credentials(connection, "Facebook")
+        try:
+            with self.client_session() as client:
+                response = client.post(
+                    f"{self._base}/{video_id}",
+                    data={"description": description},
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                response.raise_for_status()
+                verified = client.get(
+                    f"{self._base}/{video_id}",
+                    params={"fields": "description"},
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                verified.raise_for_status()
+                if verified.json().get("description", "") != description:
+                    raise ProviderApiError(
+                        "Facebook did not confirm the caption change. Open the post to check it."
+                    )
+        except httpx.HTTPError as error:
+            raise self.raise_error("Facebook update failed", error) from error
+
+    def delete_post(
+        self, external_id: str | None, post_url: str | None, connection: OAuthConnection
+    ) -> None:
+        video_id = external_id or _facebook_reel_id(post_url)
+        if not video_id:
+            raise ProviderApiError("Facebook post has no recognizable video ID")
+        _, token = _meta_credentials(connection, "Facebook")
+        _delete_meta_media(self, self._base, video_id, token)
 
     def metrics(
         self,
@@ -440,3 +601,30 @@ def _wait_for_instagram_container(
             raise ProviderApiError(f"Instagram media processing failed: {payload.get('status')}")
         time.sleep(2)
     raise ProviderApiError("Instagram media processing did not finish within two minutes")
+
+
+def _delete_meta_media(adapter: PublishingHttpClient, base: str, media_id: str, token: str) -> None:
+    try:
+        with adapter.client_session() as client:
+            response = client.delete(
+                f"{base}/{media_id}", headers={"Authorization": f"Bearer {token}"}
+            )
+            response.raise_for_status()
+            if response.json().get("success") is not True:
+                raise ProviderApiError("Meta did not confirm deletion; the local post is preserved")
+    except httpx.HTTPStatusError as error:
+        try:
+            detail = error.response.json().get("error", {})
+        except ValueError:
+            detail = {}
+        if detail.get("code") == 100 and detail.get("error_subcode") == 33:
+            raise ProviderApiError(
+                "Deletion was not confirmed. Meta cannot access this media for deletion "
+                "(code 100/33). It may be missing, belong to another account, or require "
+                "different permissions or an API version that supports deletion. "
+                "Open the original post on its platform to check it. "
+                "The local record and metrics were preserved."
+            ) from error
+        raise adapter.raise_error("Post deletion failed", error) from error
+    except httpx.HTTPError as error:
+        raise adapter.raise_error("Post deletion failed", error) from error

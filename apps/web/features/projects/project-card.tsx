@@ -1,4 +1,5 @@
-import type { Dispatch, SetStateAction } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
+import Link from "next/link";
 
 import { ClipCard } from "../clips/clip-card";
 import { ProjectPerformance } from "../publishing/project-performance";
@@ -7,6 +8,7 @@ import type {
   ClipTypeSuggestion,
   Project,
 } from "../../lib/contracts";
+import { API_URL } from "../../lib/http";
 import { formatBytes } from "../../lib/format";
 import { ProjectProgress } from "./project-progress";
 import { projectPhase } from "./project-queue";
@@ -14,6 +16,7 @@ import type { OperationState } from "./use-project-workbench";
 
 export function ProjectCard({
   project,
+  showProcessingControls = true,
   language,
   selectedClipTypes,
   clipTypeSuggestions,
@@ -31,6 +34,7 @@ export function ProjectCard({
   onDelete,
 }: {
   project: Project;
+  showProcessingControls?: boolean;
   language: string;
   selectedClipTypes: ClipType[];
   clipTypeSuggestions: ClipTypeSuggestion[];
@@ -38,7 +42,7 @@ export function ProjectCard({
   setClipTypes: Dispatch<SetStateAction<Record<string, ClipType[]>>>;
   isPending: (key: string) => boolean;
   operationState: (key: string) => OperationState | undefined;
-  onProcess: (id: string) => Promise<unknown>;
+  onProcess: (id: string, mode?: "clips" | "metadata") => Promise<unknown>;
   onStop?: (id: string) => Promise<unknown>;
   onRetry?: (id: string) => Promise<unknown>;
   onApprove: (clipId: string, approved: boolean) => Promise<unknown>;
@@ -47,6 +51,12 @@ export function ProjectCard({
   onRename: (id: string, title: string) => Promise<unknown>;
   onDelete: (id: string) => Promise<unknown>;
 }) {
+  const [mode, setMode] = useState<"clips" | "metadata">(
+    (project.job?.processing_mode === "language"
+      ? "metadata"
+      : project.job?.processing_mode) ??
+      (project.status === "complete" ? "metadata" : "clips"),
+  );
   const processing = isPending(`project:${project.id}:process`);
   const retrying = isPending(`project:${project.id}:retry`);
   const pausing = isPending(`project:${project.id}:stop`);
@@ -103,7 +113,7 @@ export function ProjectCard({
                 defaultValue={project.title}
                 required
                 maxLength={200}
-                aria-label="Project name"
+                aria-label="Source video name"
               />
               <button disabled={renaming}>
                 {renaming ? "Saving…" : "Save"}
@@ -131,158 +141,240 @@ export function ProjectCard({
                 void onDelete(project.id);
             }}
           >
-            Delete project
+            Delete source video
           </button>
         </div>
       </div>
-      <section className="analysis-bar" aria-label="Project pipeline">
-        <div className="pipeline-control-heading">
-          <div>
-            <span className="eyebrow">PROJECT PIPELINE</span>
-            <h2>{paused ? "Pipeline paused" : projectPhase(project)}</h2>
-            <p aria-live="polite">
-              {pausingRequested
-                ? "Waiting for the current operation to stop safely. Completed stages are saved."
-                : active
-                  ? "Processing in the background. You can pause and return later."
-                  : retryable
-                    ? "Resume with your saved settings. Completed stages are reused; interrupted work runs again."
-                    : project.status === "review"
-                      ? "Your clips are ready below. Run the pipeline again to regenerate clips."
-                      : "Choose your settings, then start transcription and highlight selection."}
-            </p>
-          </div>
-          {active ? (
-            <button
-              type="button"
-              className="pipeline-pause"
-              disabled={pausing || pausingRequested || !onStop}
-              onClick={() => void onStop?.(project.id)}
-            >
-              {pausing || pausingRequested ? "Pausing…" : "Pause pipeline"}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="pipeline-start"
-              disabled={starting}
-              onClick={() =>
-                void (retryable && onRetry
-                  ? onRetry(project.id)
-                  : onProcess(project.id))
-              }
-            >
-              {starting
-                ? "Starting…"
-                : paused
-                  ? "Resume pipeline"
-                  : project.status === "failed"
-                    ? "Retry pipeline"
-                    : project.status === "review"
-                      ? "Run pipeline again"
-                      : "Start pipeline"}
-            </button>
-          )}
+      <section
+        className="project-source-panel"
+        aria-labelledby="project-source-title"
+      >
+        <div className="project-source-player">
+          <video
+            controls
+            playsInline
+            preload="metadata"
+            aria-label="Source video preview"
+            src={`${API_URL}/projects/${project.id}/source`}
+          />
         </div>
-        {!active && !retryable && (
-          <div className="analysis-controls">
-            <label>
-              Spoken language
-              <select
-                value={language}
-                onChange={(event) =>
-                  setLanguages((current) => ({
-                    ...current,
-                    [project.id]: event.target.value,
-                  }))
+        <div className="project-source-info">
+          <span className="eyebrow">ORIGINAL MEDIA</span>
+          <h2 id="project-source-title">Source video</h2>
+          <p>Preview your original upload before choosing what to create.</p>
+          <dl>
+            <div>
+              <dt>File</dt>
+              <dd>{project.original_filename}</dd>
+            </div>
+            <div>
+              <dt>Duration</dt>
+              <dd>
+                {project.duration_seconds
+                  ? `${Math.floor(project.duration_seconds / 60)}:${String(Math.floor(project.duration_seconds % 60)).padStart(2, "0")}`
+                  : "Available after inspection"}
+              </dd>
+            </div>
+            <div>
+              <dt>Storage</dt>
+              <dd>{formatBytes(project.storage_bytes)}</dd>
+            </div>
+          </dl>
+          <Link href="/publishing">Open Publishing →</Link>
+        </div>
+      </section>
+      {(showProcessingControls || active || retryable) && (
+        <section className="analysis-bar" aria-label="Processing settings">
+          <div className="pipeline-control-heading">
+            <div>
+              <span className="eyebrow">PROCESSING</span>
+              <h2>{paused ? "Pipeline paused" : projectPhase(project)}</h2>
+              <p aria-live="polite">
+                {pausingRequested
+                  ? "Waiting for the current operation to stop safely. Completed stages are saved."
+                  : active
+                    ? "Processing in the background. You can pause and return later."
+                    : retryable
+                      ? "Resume with your saved settings. Completed stages are reused; interrupted work runs again."
+                      : mode === "metadata"
+                        ? "Generate a fresh title, description, and hashtags for your videos. Edits and video files are preserved."
+                        : "Transcribe your source, generate clips, and write titles, descriptions, and hashtags."}
+              </p>
+            </div>
+            {active ? (
+              <button
+                type="button"
+                className="pipeline-pause"
+                disabled={pausing || pausingRequested || !onStop}
+                onClick={() => void onStop?.(project.id)}
+              >
+                {pausing || pausingRequested ? "Pausing…" : "Pause pipeline"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="pipeline-start"
+                disabled={starting}
+                onClick={() =>
+                  void (retryable && onRetry
+                    ? onRetry(project.id)
+                    : onProcess(project.id, mode))
                 }
               >
-                <option value="">Auto-detect</option>
-                <option value="ur">Urdu (اردو)</option>
-                <option value="en">English</option>
-                <option value="hi">Hindi (हिन्दी)</option>
-                <option value="ar">Arabic (العربية)</option>
-                <option value="de">German</option>
-                <option value="es">Spanish</option>
-                <option value="fr">French</option>
-              </select>
-            </label>
-            <fieldset className="clip-type-picker">
-              <legend>Moments to find</legend>
-              <div>
-                {clipTypeOptions.map((option) => (
-                  <label key={option.value}>
-                    <input
-                      type="checkbox"
-                      checked={selectedClipTypes.includes(option.value)}
-                      onChange={(event) =>
-                        setClipTypes((current) => {
-                          const selected = current[project.id] ?? [];
-                          return {
-                            ...current,
-                            [project.id]: event.target.checked
-                              ? [...selected, option.value]
-                              : selected.filter(
-                                  (item) => item !== option.value,
-                                ),
-                          };
-                        })
-                      }
-                    />
-                    {option.label}
-                  </label>
-                ))}
-              </div>
-              <small>Leave all unchecked for automatic discovery.</small>
-            </fieldset>
+                {starting
+                  ? "Starting…"
+                  : paused
+                    ? "Resume pipeline"
+                    : project.status === "failed"
+                      ? "Retry pipeline"
+                      : ["review", "complete"].includes(project.status)
+                        ? "Run pipeline again"
+                        : "Start pipeline"}
+              </button>
+            )}
           </div>
-        )}
-      </section>
+          {!active && !retryable && (
+            <>
+              <fieldset className="project-pipeline-modes">
+                <legend>What should the pipeline do?</legend>
+                <label className={mode === "clips" ? "selected" : ""}>
+                  <input
+                    type="radio"
+                    name={`pipeline-mode-${project.id}`}
+                    value="clips"
+                    checked={mode === "clips"}
+                    onChange={() => setMode("clips")}
+                  />
+                  <span>
+                    <strong>Generate clips</strong>
+                    <small>
+                      Find highlights, create shorter videos, and write
+                      publishing details.
+                    </small>
+                  </span>
+                </label>
+                <label className={mode === "metadata" ? "selected" : ""}>
+                  <input
+                    type="radio"
+                    name={`pipeline-mode-${project.id}`}
+                    value="metadata"
+                    checked={mode === "metadata"}
+                    onChange={() => setMode("metadata")}
+                  />
+                  <span>
+                    <strong>Publishing details only</strong>
+                    <small>
+                      Update titles, descriptions, and hashtags. Keep existing
+                      videos, or prepare the full source if there are none.
+                    </small>
+                  </span>
+                </label>
+              </fieldset>
+              <div className="analysis-controls">
+                <label>
+                  Spoken language
+                  <select
+                    value={language}
+                    onChange={(event) =>
+                      setLanguages((current) => ({
+                        ...current,
+                        [project.id]: event.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">Auto-detect</option>
+                    <option value="ur">Urdu (اردو)</option>
+                    <option value="en">English</option>
+                    <option value="hi">Hindi (हिन्दी)</option>
+                    <option value="ar">Arabic (العربية)</option>
+                    <option value="de">German</option>
+                    <option value="es">Spanish</option>
+                    <option value="fr">French</option>
+                  </select>
+                </label>
+                {mode === "clips" && (
+                  <fieldset className="clip-type-picker">
+                    <legend>Moments to find</legend>
+                    <div>
+                      {clipTypeOptions.map((option) => (
+                        <label key={option.value}>
+                          <input
+                            type="checkbox"
+                            checked={selectedClipTypes.includes(option.value)}
+                            onChange={(event) =>
+                              setClipTypes((current) => {
+                                const selected = current[project.id] ?? [];
+                                return {
+                                  ...current,
+                                  [project.id]: event.target.checked
+                                    ? [...selected, option.value]
+                                    : selected.filter(
+                                        (item) => item !== option.value,
+                                      ),
+                                };
+                              })
+                            }
+                          />
+                          {option.label}
+                        </label>
+                      ))}
+                    </div>
+                    <small>Leave all unchecked for automatic discovery.</small>
+                  </fieldset>
+                )}
+              </div>
+            </>
+          )}
+        </section>
+      )}
       {(project.stages.length > 0 || project.job) && (
         <ProjectProgress project={project} />
       )}
-      {clipTypeSuggestions.length > 0 && (
-        <section
-          className="clip-direction-panel"
-          aria-labelledby="clip-directions"
-        >
-          <div>
-            <span className="eyebrow">TRANSCRIPT SIGNALS</span>
-            <h2 id="clip-directions">Possible clip directions</h2>
-            <p>ReachCut found these themes after transcribing your video.</p>
-          </div>
-          <div className="clip-direction-list">
-            {clipTypeSuggestions.map((suggestion) => (
-              <button
-                type="button"
-                key={suggestion.clip_type}
-                className={
-                  selectedClipTypes.includes(suggestion.clip_type)
-                    ? "active"
-                    : ""
-                }
-                onClick={() =>
-                  setClipTypes((current) => ({
-                    ...current,
-                    [project.id]: selectedClipTypes.includes(
-                      suggestion.clip_type,
-                    )
-                      ? selectedClipTypes.filter(
-                          (item) => item !== suggestion.clip_type,
-                        )
-                      : [...selectedClipTypes, suggestion.clip_type],
-                  }))
-                }
-              >
-                <strong>{clipTypeLabel(suggestion.clip_type)}</strong>
-                <span>{suggestion.score}% signal</span>
-                <small>{suggestion.reason}</small>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-      <ProjectPerformance project={project} />
+      <details>
+        <summary>Advanced processing and performance</summary>
+        {clipTypeSuggestions.length > 0 && (
+          <section
+            className="clip-direction-panel"
+            aria-labelledby="clip-directions"
+          >
+            <div>
+              <span className="eyebrow">TRANSCRIPT SIGNALS</span>
+              <h2 id="clip-directions">Possible clip directions</h2>
+              <p>ReachCut found these themes after transcribing your video.</p>
+            </div>
+            <div className="clip-direction-list">
+              {clipTypeSuggestions.map((suggestion) => (
+                <button
+                  type="button"
+                  key={suggestion.clip_type}
+                  className={
+                    selectedClipTypes.includes(suggestion.clip_type)
+                      ? "active"
+                      : ""
+                  }
+                  onClick={() =>
+                    setClipTypes((current) => ({
+                      ...current,
+                      [project.id]: selectedClipTypes.includes(
+                        suggestion.clip_type,
+                      )
+                        ? selectedClipTypes.filter(
+                            (item) => item !== suggestion.clip_type,
+                          )
+                        : [...selectedClipTypes, suggestion.clip_type],
+                    }))
+                  }
+                >
+                  <strong>{clipTypeLabel(suggestion.clip_type)}</strong>
+                  <span>{suggestion.score}% signal</span>
+                  <small>{suggestion.reason}</small>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+        <ProjectPerformance project={project} />
+      </details>
       {project.clips.length > 0 && (
         <section
           className="clip-review-queue"
@@ -291,9 +383,7 @@ export function ProjectCard({
           <div className="clip-review-heading">
             <div>
               <span className="eyebrow">REVIEW QUEUE</span>
-              <h2 id="clip-review-title">
-                {project.clips.length} generated clips
-              </h2>
+              <h2 id="clip-review-title">{project.clips.length} videos</h2>
             </div>
             <p>
               Approve quickly here, or open a clip in Studio for detailed

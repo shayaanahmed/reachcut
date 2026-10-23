@@ -24,10 +24,12 @@ from clipper.domain.editing_plan import (
     TransitionStyle,
     TranslationMode,
     VideoTemplate,
+    WatermarkConfig,
 )
 from clipper.domain.transcript import Transcript
 from clipper.editorial import apply_video_template
-from clipper.media import safe_filename, store_upload
+from clipper.media import MediaError, safe_filename, store_upload
+from clipper.media.metadata import media_metadata
 from clipper.persistence import Clip, Project
 from clipper.projects.artifacts import ClipArtifactService, timeline_words
 from clipper.rendering import (
@@ -67,6 +69,8 @@ class ClipStyleUpdate:
     cta_style: Literal["follow", "comment", "part_two", "profile", "product", "campaign"] = "follow"
     effects: tuple[Effect, ...] | None = None
     audio_track_index: int = 0
+    original_audio_volume: float = 1
+    watermark: WatermarkConfig | None = None
 
 
 class ClipService:
@@ -186,6 +190,8 @@ class ClipService:
                 "transition_style": update.transition_style,
                 "transition_duration_seconds": update.transition_duration_seconds,
                 "audio_track_index": update.audio_track_index,
+                "original_audio_volume": update.original_audio_volume,
+                "watermark": (update.watermark or previous_plan.watermark).model_dump(mode="json"),
                 "caption_style": (
                     "karaoke"
                     if update.caption_config.animation == "karaoke"
@@ -203,6 +209,26 @@ class ClipService:
         plan = EditingPlanV1.model_validate(payload)
         return self._replace_plan(session, project, clip, transcript, previous_plan, plan)
 
+    def apply_language_plan(self, session: Session, clip: Clip, plan: EditingPlanV1) -> None:
+        project = clip.project
+        self._replace_plan(
+            session,
+            project,
+            clip,
+            self._transcript(project),
+            EditingPlanV1.model_validate(clip.plan),
+            plan,
+        )
+
+    def apply_growth_plan(self, session: Session, clip: Clip, plan: EditingPlanV1) -> None:
+        if clip.final_path:
+            return
+        project = session.get(Project, clip.project_id)
+        if project is None:
+            raise ClipNotFoundError("project not found")
+        previous = EditingPlanV1.model_validate(clip.plan)
+        self._replace_plan(session, project, clip, self._transcript(project), previous, plan)
+
     def apply_template(self, session: Session, clip_id: str, template: VideoTemplate) -> str:
         clip, project, transcript = self._editable_clip(session, clip_id)
         previous_plan = EditingPlanV1.model_validate(clip.plan)
@@ -215,8 +241,10 @@ class ClipService:
         clip_id: str,
         target_language: str,
         mode: TranslationMode,
+        provider: CaptionTranslationProvider | None = None,
     ) -> str:
-        if self._translation is None:
+        translator = provider or self._translation
+        if translator is None:
             raise ClipStateError("caption translation provider is not configured")
         clip, project, transcript = self._editable_clip(session, clip_id)
         previous_plan = EditingPlanV1.model_validate(clip.plan)
@@ -226,7 +254,7 @@ class ClipService:
         )
         if not source_text.strip():
             raise ClipStateError("clip contains no caption text to translate")
-        translated = self._translation.translate(
+        translated = translator.translate(
             source_text,
             previous_plan.caption_config.source_language or transcript.language,
             target_language,
@@ -284,6 +312,7 @@ class ClipService:
         start_seconds: float | None,
         end_seconds: float | None,
         placement: Literal["bottom", "pip", "fullscreen", "audio"],
+        volume_db: float = -18,
     ) -> str:
         clip, project, transcript = self._editable_clip(session, clip_id)
         previous_plan = EditingPlanV1.model_validate(clip.plan)
@@ -292,15 +321,29 @@ class ClipService:
         root = self._clip_root(project, clip)
         target = root / "assets" / asset_id / filename
         store_upload(stream, target, self._max_secondary_media_bytes)
+        if kind is SecondaryMediaKind.VOICEOVER:
+            try:
+                metadata = media_metadata(target)
+                if not any(s.get("codec_type") == "audio" for s in metadata.get("streams", [])):
+                    raise MediaError("Voice-over file must contain an audio stream")
+            except Exception:
+                rmtree(target.parent, ignore_errors=True)
+                raise
         media = SecondaryMedia(
             asset_id=asset_id,
             filename=filename,
             kind=kind,
             start_seconds=start_seconds,
             end_seconds=end_seconds,
-            muted=kind not in {SecondaryMediaKind.SOUND_EFFECT, SecondaryMediaKind.MUSIC},
+            muted=kind
+            not in {
+                SecondaryMediaKind.SOUND_EFFECT,
+                SecondaryMediaKind.MUSIC,
+                SecondaryMediaKind.VOICEOVER,
+            },
             loop=kind in {SecondaryMediaKind.GAMEPLAY, SecondaryMediaKind.MUSIC},
-            placement=placement,
+            placement="audio" if kind is SecondaryMediaKind.VOICEOVER else placement,
+            volume_db=volume_db,
         )
         payload = previous_plan.model_dump(mode="json")
         payload["secondary_media"] = [
@@ -345,10 +388,8 @@ class ClipService:
         root = self._clip_root(project, clip)
         output = root / "final.mp4"
         plan = EditingPlanV1.model_validate(clip.plan)
-        if not (root / "captions.ass").exists() and project.transcript:
-            self._artifacts.write(
-                project, clip, plan, Transcript.model_validate(project.transcript)
-            )
+        if not (root / "captions.ass").exists():
+            self._artifacts.write(project, clip, plan, self._transcript(project))
         subtitles = root / "captions.ass"
         if not subtitles.exists():
             subtitles = root / "captions.srt"
@@ -360,6 +401,7 @@ class ClipService:
                 output,
                 preview=False,
                 asset_paths=self._asset_paths(project, clip, plan),
+                source_has_audio=self._source_has_audio(project),
             )
         )
         clip.final_path = str(output)
@@ -387,6 +429,7 @@ class ClipService:
                     pending_preview,
                     preview=True,
                     asset_paths=self._asset_paths(project, clip, plan),
+                    source_has_audio=self._source_has_audio(project),
                 )
             )
         except Exception:
@@ -453,6 +496,18 @@ class ClipService:
     def _editable_clip(self, session: Session, clip_id: str) -> tuple[Clip, Project, Transcript]:
         clip = self._clip(session, clip_id)
         project = session.get(Project, clip.project_id)
-        if not project or not project.transcript:
+        if not project:
+            raise ClipNotFoundError("project not found")
+        if not project.transcript and project.status != "complete":
             raise ClipStateError("project transcript is not available")
-        return clip, project, Transcript.model_validate(project.transcript)
+        return clip, project, self._transcript(project)
+
+    @staticmethod
+    def _transcript(project: Project) -> Transcript:
+        if project.transcript:
+            return Transcript.model_validate(project.transcript)
+        return Transcript(language="und", segments=[], provider="none", model="none")
+
+    @staticmethod
+    def _source_has_audio(project: Project) -> bool:
+        return (project.media_info or {}).get("has_audio", True) is not False

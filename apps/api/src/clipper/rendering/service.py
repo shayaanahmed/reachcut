@@ -19,6 +19,7 @@ class RenderRequest:
     output: Path
     preview: bool = True
     asset_paths: Mapping[str, Path] = field(default_factory=dict)
+    source_has_audio: bool = True
 
 
 class VideoRenderer:
@@ -37,6 +38,7 @@ class VideoRenderer:
             request.output,
             preview=request.preview,
             asset_paths=request.asset_paths,
+            source_has_audio=request.source_has_audio,
         )
         result = self._runner(
             list(command.arguments),
@@ -73,6 +75,8 @@ class VideoRenderer:
             "video_template": request.plan.video_template,
             "content_mode": request.plan.content_mode,
             "tracking_strategy": request.plan.tracking.strategy,
+            "watermark": request.plan.watermark.model_dump(mode="json"),
+            "original_audio_volume": request.plan.original_audio_volume,
             "secondary_media": [
                 item.model_dump(mode="json") for item in request.plan.secondary_media
             ],

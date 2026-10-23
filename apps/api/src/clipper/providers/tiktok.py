@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import time
+from dataclasses import replace
+
 import httpx
 
 from clipper.providers.publishing_http import (
@@ -24,7 +27,7 @@ class TikTokPublishingAdapter(PublishingHttpClient):
         self._client_secret = client_secret
 
     def publish(self, request: PublishRequest, connection: OAuthConnection) -> PublishedPost:
-        connection = self._refresh_connection(connection)
+        connection = self.refresh_connection(connection)
         if not connection.access_token:
             raise ProviderApiError("TikTok requires a user access token")
         privacy = {
@@ -167,8 +170,12 @@ class TikTokPublishingAdapter(PublishingHttpClient):
         if isinstance(error, dict) and error.get("code") not in {None, "ok"}:
             raise ProviderApiError(f"TikTok API rejected the request: {error.get('message')}")
 
-    def _refresh_connection(self, connection: OAuthConnection) -> OAuthConnection:
-        if not connection.refresh_token:
+    def refresh_connection(self, connection: OAuthConnection) -> OAuthConnection:
+        if not connection.refresh_token or (
+            connection.access_token
+            and connection.access_token_expires_at is not None
+            and connection.access_token_expires_at > time.time() + 300
+        ):
             return connection
         if not self._client_key or not self._client_secret:
             raise ProviderApiError(
@@ -194,10 +201,11 @@ class TikTokPublishingAdapter(PublishingHttpClient):
         refresh_token = payload.get("refresh_token")
         if not access_token or not refresh_token:
             raise ProviderApiError("TikTok token refresh returned incomplete credentials")
-        return OAuthConnection(
+        return replace(
+            connection,
             access_token=str(access_token),
             refresh_token=str(refresh_token),
-            external_account_id=connection.external_account_id,
+            access_token_expires_at=time.time() + float(payload.get("expires_in") or 86400),
         )
 
 

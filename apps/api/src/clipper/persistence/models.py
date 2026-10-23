@@ -80,6 +80,9 @@ class ProjectJob(Base):
     phase: Mapped[str] = mapped_column(String(64), default="Waiting to start")
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     language: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    processing_mode: Mapped[str] = mapped_column(
+        String(24), default="clips", server_default="clips"
+    )
     clip_types: Mapped[list[str]] = mapped_column(JSON, default=list)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     enqueued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
@@ -148,6 +151,12 @@ class Clip(Base):
     final_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     project: Mapped[Project] = relationship(back_populates="clips")
+    growth_brief: Mapped[ClipGrowthBrief | None] = relationship(
+        cascade="all, delete-orphan", uselist=False
+    )
+    growth_preparation: Mapped[GrowthPreparation | None] = relationship(
+        cascade="all, delete-orphan", uselist=False
+    )
     publications: Mapped[list[Publication]] = relationship(
         back_populates="clip", cascade="all, delete-orphan"
     )
@@ -227,6 +236,9 @@ class Publication(Base):
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     clip: Mapped[Clip] = relationship(back_populates="publications")
+    growth_context: Mapped[PublicationGrowthContext | None] = relationship(
+        cascade="all, delete-orphan", uselist=False
+    )
     metric_snapshots: Mapped[list[MetricSnapshot]] = relationship(
         back_populates="publication",
         cascade="all, delete-orphan",
@@ -239,6 +251,10 @@ class Publication(Base):
         back_populates="publication", cascade="all, delete-orphan", uselist=False
     )
 
+    management: Mapped[PostManagement | None] = relationship(
+        cascade="all, delete-orphan", uselist=False
+    )
+    changes: Mapped[list[PostChange]] = relationship(cascade="all, delete-orphan")
     failure: Mapped[PublicationFailure | None] = relationship(
         back_populates="publication", cascade="all, delete-orphan", uselist=False
     )
@@ -302,6 +318,12 @@ class MetricSnapshot(Base):
     comments: Mapped[int] = mapped_column(BigInteger, default=0)
     shares: Mapped[int] = mapped_column(BigInteger, default=0)
     watch_time_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    reach: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    sends: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    average_watch_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    opening_retention_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
+    completion_rate_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
+    search_views: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     followers_gained: Mapped[int] = mapped_column(Integer, default=0)
     affiliate_clicks: Mapped[int] = mapped_column(Integer, default=0)
     conversions: Mapped[int] = mapped_column(Integer, default=0)
@@ -312,6 +334,11 @@ class MetricSnapshot(Base):
 
 class SocialAccount(Base):
     __tablename__ = "social_accounts"
+    issue: Mapped[AccountIssue | None] = relationship(cascade="all, delete-orphan", uselist=False)
+
+    @property
+    def health_issue(self) -> str | None:
+        return self.issue.message if self.issue else None
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     platform: Mapped[str] = mapped_column(String(32))
@@ -416,3 +443,137 @@ class PublicationProviderReference(Base):
     )
     external_id: Mapped[str] = mapped_column(String(255))
     publication: Mapped[Publication] = relationship(back_populates="provider_reference")
+
+
+class InformativeShort(Base):
+    """Additive schema: legacy projects, stories and publication FKs remain intact."""
+
+    __tablename__ = "informative_shorts"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    request_key: Mapped[str] = mapped_column(String(100), unique=True)
+    topic: Mapped[str] = mapped_column(Text)
+    settings: Mapped[dict[str, object]] = mapped_column(JSON)
+    sources: Mapped[list[dict[str, object]]] = mapped_column(JSON, default=list)
+    script: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
+    approved_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="draft", index=True)
+    phase: Mapped[str] = mapped_column(String(200), default="Review script and sources")
+    artifacts: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
+    findings: Mapped[list[dict[str, object]]] = mapped_column(JSON, default=list)
+    usage: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    output_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    publication_project_id: Mapped[str | None] = mapped_column(
+        ForeignKey("projects.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, onupdate=now_utc
+    )
+
+
+class ChannelPreset(Base):
+    __tablename__ = "channel_presets"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    name: Mapped[str] = mapped_column(String(120))
+    settings: Mapped[dict[str, object]] = mapped_column(JSON)
+
+
+class PublicationOptions(Base):
+    """Persist recoverable upload inputs without altering legacy publication rows."""
+
+    __tablename__ = "publication_options"
+    publication_id: Mapped[str] = mapped_column(
+        ForeignKey("publications.id", ondelete="CASCADE"), primary_key=True
+    )
+    privacy_status: Mapped[str] = mapped_column(String(16))
+
+
+class GrowthProfile(Base):
+    __tablename__ = "growth_profiles"
+    account_id: Mapped[str] = mapped_column(
+        ForeignKey("social_accounts.id", ondelete="CASCADE"), primary_key=True
+    )
+    payload: Mapped[dict[str, object]] = mapped_column(JSON)
+
+
+class ClipGrowthBrief(Base):
+    __tablename__ = "clip_growth_briefs"
+    clip_id: Mapped[str] = mapped_column(
+        ForeignKey("clips.id", ondelete="CASCADE"), primary_key=True
+    )
+    payload: Mapped[dict[str, object]] = mapped_column(JSON)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class PublicationGrowthContext(Base):
+    __tablename__ = "publication_growth_contexts"
+    publication_id: Mapped[str] = mapped_column(
+        ForeignKey("publications.id", ondelete="CASCADE"), primary_key=True
+    )
+    payload: Mapped[dict[str, object]] = mapped_column(JSON)
+
+
+class GrowthPreparation(Base):
+    __tablename__ = "growth_preparations"
+    clip_id: Mapped[str] = mapped_column(
+        ForeignKey("clips.id", ondelete="CASCADE"), primary_key=True
+    )
+    status: Mapped[str] = mapped_column(String(24), default="pending")
+    fingerprint: Mapped[str] = mapped_column(String(64), default="")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class AccountIssue(Base):
+    __tablename__ = "account_issues"
+    account_id: Mapped[str] = mapped_column(
+        ForeignKey("social_accounts.id", ondelete="CASCADE"), primary_key=True
+    )
+    message: Mapped[str] = mapped_column(Text)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class PostManagement(Base):
+    __tablename__ = "post_management"
+    publication_id: Mapped[str] = mapped_column(
+        ForeignKey("publications.id", ondelete="CASCADE"), primary_key=True
+    )
+    state: Mapped[str] = mapped_column(String(24), default="idle")
+    action: Mapped[str] = mapped_column(String(24), default="")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class PostChange(Base):
+    __tablename__ = "post_changes"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    publication_id: Mapped[str] = mapped_column(ForeignKey("publications.id", ondelete="CASCADE"))
+    action: Mapped[str] = mapped_column(String(24))
+    before: Mapped[dict[str, object]] = mapped_column(JSON)
+    after: Mapped[dict[str, object]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class SourceWorkflowRun(Base):
+    __tablename__ = "source_workflow_runs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    source_project_id: Mapped[str | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    target_project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    source_title: Mapped[str] = mapped_column(String(200))
+    kind: Mapped[str] = mapped_column(String(24))
+    target_language: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    clip_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    scopes: Mapped[list[str]] = mapped_column(JSON, default=list)
+    narration_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    status: Mapped[str] = mapped_column(String(24), default="queued")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

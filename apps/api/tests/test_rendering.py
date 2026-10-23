@@ -162,7 +162,7 @@ def test_gameplay_layout_and_audio_asset_are_composed(make_plan) -> None:  # typ
     video_filter = command.arguments[command.arguments.index("-filter_complex") + 1]
     assert "[primary_panel][game_panel]vstack=inputs=2[base]" in video_filter
     assert "volume=-20.0dB" in video_filter
-    assert "amix=inputs=2:duration=first[a]" in video_filter
+    assert "amix=inputs=2:duration=first:normalize=0[a]" in video_filter
     assert command.arguments.count("-stream_loop") == 2
 
 

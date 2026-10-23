@@ -39,6 +39,39 @@ The API uses `http://host.docker.internal:11434`. Override `CLIPPER_DOCKER_EDITO
 
 Large media uploads go directly from the browser to the FastAPI port instead of passing through Next.js, whose rewrite proxy buffers request bodies and defaults to 10 MB. If you change `CLIPPER_API_PORT`, also update `CLIPPER_BROWSER_API_URL` and rebuild the web image.
 
+## Isolated feature testing
+
+`pnpm test:isolated` runs checks and the selected API/frontend tests, builds
+`reachcut-testing-api:local` and `reachcut-testing-web:local`, and tests the Docker
+app in a browser. It excludes short creation and HTML frame import. Provider
+publishing/OAuth flows use fixtures; the Docker smoke tests upload an existing
+test video and record local publication/metric data without posting remotely.
+The social/publishing smoke check also exercises real API routes and encrypted
+token storage with six synthetic accounts across all five platforms in a
+temporary database inside the test container. It verifies partial bulk failures,
+duplicate prevention, metrics, post updates/deletions and damaged-token cleanup.
+Playwright uses installed Chrome on macOS, or its installed Chromium elsewhere;
+set `PLAYWRIGHT_EXECUTABLE_PATH` to choose another executable.
+
+The independent `compose.testing.yaml` project uses ports **3300** (web) and
+**8300** (API), its own network, database and model volumes, and no `.env` or live
+account credentials. It does not retag or restart the original `clipper` images
+or containers. Test images remain available for inspection. Review the issue
+log in [bug-audit.json](bug-audit.json).
+
+To start or stop just this stack manually:
+
+```bash
+docker compose --env-file /dev/null -f compose.testing.yaml up --build -d --wait
+docker compose --env-file /dev/null -f compose.testing.yaml down
+```
+
+To run only browser checks against it:
+
+```bash
+PLAYWRIGHT_BASE_URL=http://127.0.0.1:3300 pnpm --dir apps/web exec playwright test --grep-invert 'repo URL to storyline|tech tricks|completed video can choose'
+```
+
 ## Storage and backups
 
 - `clipper-data`: SQLite database, uploaded source media, stage artifacts, previews, and exports.

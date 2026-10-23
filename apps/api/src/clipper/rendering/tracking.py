@@ -25,6 +25,7 @@ class VisualAnalysis:
     action_points: tuple[CropPoint, ...] = ()
     sampled_frames: int = 0
     frames_with_faces: int = 0
+    scene_changes: tuple[float, ...] = ()
 
     @property
     def face_coverage(self) -> float:
@@ -32,6 +33,7 @@ class VisualAnalysis:
 
     def as_artifact(self) -> dict[str, object]:
         return {
+            "scene_changes": list(self.scene_changes),
             "face_points": [point.__dict__ for point in self.face_points],
             "group_points": [point.__dict__ for point in self.group_points],
             "action_points": [point.__dict__ for point in self.action_points],
@@ -56,12 +58,15 @@ class VisualAnalysis:
                 if isinstance(item, dict)
             )
 
+        raw_changes = payload.get("scene_changes", [])
+        changes = raw_changes if isinstance(raw_changes, list) else []
         return cls(
             face_points=points("face_points"),
             group_points=points("group_points"),
             action_points=points("action_points"),
             sampled_frames=int(str(payload.get("sampled_frames", 0))),
             frames_with_faces=int(str(payload.get("frames_with_faces", 0))),
+            scene_changes=tuple(float(str(t)) for t in changes),
         )
 
 

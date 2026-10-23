@@ -117,6 +117,7 @@ class SecondaryMediaKind(StrEnum):
     REACTION = "reaction"
     SOUND_EFFECT = "sound_effect"
     MUSIC = "music"
+    VOICEOVER = "voiceover"
 
 
 class Hook(TimeRange):
@@ -216,6 +217,13 @@ class SecondaryMedia(StrictModel):
         return self
 
 
+class WatermarkConfig(StrictModel):
+    text: Annotated[str, Field(max_length=80)] = ""
+    position: Literal["top_left", "top_right", "bottom_left", "bottom_right"] = "bottom_right"
+    opacity: Annotated[float, Field(ge=0.1, le=1)] = 0.7
+    font_size: Annotated[int, Field(ge=18, le=72)] = 32
+
+
 class CaptionConfig(StrictModel):
     preset: CaptionPreset = CaptionPreset.CUSTOM
     enabled: bool = True
@@ -257,6 +265,7 @@ class EditingPlanV1(StrictModel):
     scores: Scores
     rationale: Annotated[str, Field(min_length=1, max_length=600)]
     suggested_title: Annotated[str, Field(min_length=1, max_length=100)] | None = None
+    suggested_description: Annotated[str, Field(max_length=4000)] | None = None
     thumbnail: ThumbnailConfig = Field(default_factory=ThumbnailConfig)
     hashtags: list[Hashtag] = Field(default_factory=list, max_length=8)
     hook: Hook | None = None
@@ -272,6 +281,8 @@ class EditingPlanV1(StrictModel):
         default_factory=list
     )
     audio_track_index: Annotated[int, Field(ge=0, le=32)] = 0
+    original_audio_volume: Annotated[float, Field(ge=0, le=1)] = 1
+    watermark: WatermarkConfig = Field(default_factory=WatermarkConfig)
     emphasis: list[Emphasis] = Field(default_factory=list, max_length=40)
     effects: list[Effect] = Field(default_factory=list, max_length=40)
     cta: CTA | None = None

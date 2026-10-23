@@ -100,3 +100,23 @@ export function viewsTimeline(
   }
   return points;
 }
+
+export function groupInsightPosts(rows: InsightPost[]) {
+  const groups = new Map<
+    string,
+    { key: string; title: string; rows: InsightPost[] }
+  >();
+  for (const row of rows) {
+    const key = `${row.projectId}:${row.clipId}`;
+    const group = groups.get(key) ?? {
+      key,
+      title: row.post.title || row.projectTitle,
+      rows: [],
+    };
+    group.rows.push(row);
+    groups.set(key, group);
+  }
+  return [...groups.values()]
+    .map((group) => ({ ...group, totals: summarizeInsights(group.rows) }))
+    .toSorted((a, b) => b.totals.views - a.totals.views);
+}

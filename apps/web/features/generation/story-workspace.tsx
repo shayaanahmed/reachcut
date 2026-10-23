@@ -60,7 +60,7 @@ export function StoryWorkspace({ videoId }: { videoId: string }) {
     return (
       <main className="page">
         <div className="empty-state">
-          <h1>Story project not found</h1>
+          <h1>AI scene video not found</h1>
           <p>{error ?? "It may have been removed from this workspace."}</p>
           <Link className="primary-link" href="/stories">
             Back to story projects
@@ -156,7 +156,7 @@ export function StoryWorkspace({ videoId }: { videoId: string }) {
   return (
     <main className="page story-workspace-page">
       <div className="breadcrumbs">
-        <Link href="/stories">Story projects</Link>
+        <Link href="/stories">AI scenes library</Link>
         <span>/</span>
         <span>{video.plan.title}</span>
       </div>

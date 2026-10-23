@@ -31,7 +31,10 @@ class FasterWhisperProvider:
 
             try:
                 self._model = WhisperModel(
-                    self.model_name, device=self.device, compute_type=self.compute_type
+                    self.model_name,
+                    device=self.device,
+                    compute_type=self.compute_type,
+                    local_files_only=True,
                 )
             except Exception as error:
                 detail = str(error)

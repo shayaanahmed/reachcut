@@ -62,10 +62,24 @@ def test_tiktok_oauth_exchanges_code_for_refreshable_credentials() -> None:
     assert connection.display_name == "Creator One"
 
 
-def test_instagram_oauth_resolves_professional_account_from_facebook_page() -> None:
+@pytest.mark.parametrize("deletion_granted", [False, True])
+def test_instagram_oauth_resolves_professional_account_from_facebook_page(deletion_granted) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/oauth/access_token"):
             return httpx.Response(200, json={"access_token": "user-token"})
+        if request.url.path.endswith("/me/permissions"):
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "permission": "instagram_manage_contents",
+                            "status": "granted" if deletion_granted else "declined",
+                        },
+                        {"permission": "instagram_basic", "status": "granted"},
+                    ]
+                },
+            )
         assert request.url.path.endswith("/me/accounts")
         assert "instagram_business_account" in request.url.params["fields"]
         return httpx.Response(
@@ -106,7 +120,9 @@ def test_instagram_oauth_resolves_professional_account_from_facebook_page() -> N
     assert "scope" not in authorization
     assert authorization["auth_type"] == ["rerequest"]
     assert authorization["return_scopes"] == ["true"]
-    assert connection.access_token == "user-token"  # noqa: S105 - synthetic test fixture
+    assert connection.access_token == "page-token"  # noqa: S105 - synthetic test fixture
+    assert bool(connection.management_access_token) is deletion_granted
+    assert ("instagram_manage_contents" in connection.granted_scopes) is deletion_granted
     assert connection.refresh_token == ""
     assert connection.external_account_id == "instagram-1"
     assert connection.display_name == "Creator Studio"
@@ -277,9 +293,7 @@ def test_meta_discovery_keeps_all_paginated_destinations_and_never_follows_pagin
     assert [item.external_account_id for item in candidates] == (
         ["page-1", "page-2"] if platform == "facebook" else ["ig-1", "ig-2"]
     )
-    assert candidates[1].access_token == (
-        "page-token-2" if platform == "facebook" else "user-token"
-    )
+    assert candidates[1].access_token == "page-token-2"  # noqa: S105 - synthetic test fixture
     if platform == "instagram":
         assert candidates[1].parent_page_id == "page-2"
     with pytest.raises(OAuthProviderError, match="Multiple"):

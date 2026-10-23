@@ -76,7 +76,7 @@ const failedStory: GeneratedVideo = {
   ],
 };
 
-describe("Story project library", () => {
+describe("AI scene video library", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
@@ -94,7 +94,7 @@ describe("Story project library", () => {
     render(<StoryLibrary />);
 
     expect(await screen.findByText("The garden beneath Mars")).toBeTruthy();
-    const summary = within(screen.getByLabelText("Story project summary"));
+    const summary = within(screen.getByLabelText("AI scene video summary"));
     expect(summary.getByText("Needs attention").nextSibling?.textContent).toBe(
       "1",
     );

@@ -53,7 +53,7 @@ export function ProjectSource({
       setFile(null);
     } catch (caught) {
       setError(
-        caught instanceof Error ? caught.message : "Could not create project",
+        caught instanceof Error ? caught.message : "Could not add source video",
       );
     } finally {
       setBusy(false);
@@ -62,7 +62,7 @@ export function ProjectSource({
 
   return (
     <div className="automation-source">
-      <div className="source-tabs" role="group" aria-label="Project source">
+      <div className="source-tabs" role="group" aria-label="Source video input">
         {(["existing", "url", "upload"] as const).map((option) => (
           <button
             key={option}
@@ -76,7 +76,7 @@ export function ProjectSource({
             }}
           >
             {option === "existing"
-              ? "Existing project"
+              ? "Existing source video"
               : option === "url"
                 ? "From URL"
                 : "Upload video"}
@@ -96,12 +96,12 @@ export function ProjectSource({
       {mode === "existing" ? (
         <>
           <label>
-            Source project
+            Source video
             <select
               value={selectedId}
               onChange={(event) => onSelect(event.target.value)}
             >
-              <option value="">Select a project</option>
+              <option value="">Select a source video</option>
               {projects.map((project) => (
                 <option key={project.id} value={project.id}>
                   {project.title} · {project.status}
@@ -110,7 +110,7 @@ export function ProjectSource({
             </select>
           </label>
           <p className="notice">
-            Queued projects are welcome. Publishing waits until analysis is
+            Queued source videos are welcome. Publishing waits until analysis is
             complete and your scheduled time arrives.
           </p>
         </>
@@ -140,6 +140,7 @@ export function ProjectSource({
               Source video
               <input
                 name="media"
+                aria-label="Source video file"
                 type="file"
                 accept="video/*,.mkv"
                 required
@@ -163,7 +164,7 @@ export function ProjectSource({
             </label>
           )}
           <label>
-            Project name
+            Source video name
             <input
               name="title"
               required
@@ -206,7 +207,7 @@ export function ProjectSource({
               ? mode === "url"
                 ? "Adding to queue…"
                 : "Uploading…"
-              : "Create project & add to queue"}
+              : "Add source video to queue"}
           </button>
           <p className="notice">
             {mode === "url"

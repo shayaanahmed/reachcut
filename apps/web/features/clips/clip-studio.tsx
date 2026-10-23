@@ -6,7 +6,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { useProjectWorkbench } from "../projects/use-project-workbench";
-import { previewUrl, thumbnailUrl, type ThumbnailTemplate } from "./api";
+import {
+  finalUrl,
+  previewUrl,
+  thumbnailUrl,
+  type ThumbnailTemplate,
+} from "./api";
 import {
   ClipStyleEditor,
   studioPreviewFromClip,
@@ -72,7 +77,7 @@ export function ClipStudio({
     <main className="studio-page">
       <header className="studio-topbar">
         <div className="studio-breadcrumbs">
-          <Link href="/projects">Projects</Link>
+          <Link href="/projects">Source videos</Link>
           <span>/</span>
           <Link href={`/projects/${project.id}`}>{project.title}</Link>
           <span>/</span>
@@ -182,6 +187,7 @@ export function ClipStudio({
           <LiveClipPreview
             clipId={clip.id}
             previewPath={clip.preview_path}
+            finalPath={clip.final_path}
             version={planFingerprint}
             state={livePreview}
             layer={previewLayer}
@@ -380,6 +386,7 @@ function ThumbnailDesigner({
 function LiveClipPreview({
   clipId,
   previewPath,
+  finalPath,
   version,
   state,
   layer,
@@ -388,6 +395,7 @@ function LiveClipPreview({
 }: {
   clipId: string;
   previewPath: string | null;
+  finalPath: string | null;
   version: string;
   state: StudioPreviewState;
   layer: PreviewLayer;
@@ -410,11 +418,11 @@ function LiveClipPreview({
       className={`studio-phone-stage ${state.frameStyle} ${gameplay ? "gameplay" : ""} ${state.zoomEffect}`}
       style={style}
     >
-      {previewPath ? (
+      {previewPath || finalPath ? (
         <video
           key={version}
           className="studio-main-video"
-          src={`${previewUrl(clipId)}?v=${version}`}
+          src={`${previewPath ? previewUrl(clipId) : finalUrl(clipId)}?v=${version}`}
           controls
           playsInline
           preload="metadata"
@@ -457,6 +465,28 @@ function LiveClipPreview({
       {state.progressBar && (
         <div className="studio-progress-preview">
           <span />
+        </div>
+      )}
+      {state.watermark.text && (
+        <div
+          className="studio-watermark-preview"
+          style={{
+            position: "absolute",
+            ...(state.watermark.position.startsWith("top")
+              ? { top: "5.2%" }
+              : { bottom: "5.2%" }),
+            ...(state.watermark.position.endsWith("left")
+              ? { left: "5%" }
+              : { right: "5%" }),
+            color: "white",
+            opacity: state.watermark.opacity,
+            fontSize: `${state.watermark.font_size * 0.32}px`,
+            pointerEvents: "none",
+            zIndex: 5,
+            textShadow: "0 1px 2px black",
+          }}
+        >
+          {state.watermark.text}
         </div>
       )}
       <div className="studio-safe-zone" aria-hidden="true" />

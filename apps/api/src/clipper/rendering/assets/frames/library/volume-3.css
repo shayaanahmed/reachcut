@@ -1,0 +1,55 @@
+
+:root{box-sizing:border-box;--pb:#101114;--pf:#eceef2;--pm:#9aa0ad;--pc:#181a20;--pl:#2a2d36;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:light){:root:not([data-theme=dark]){--pb:#f5f6f9;--pf:#14161c;--pm:#5d6472;--pc:#fff;--pl:#d9dde6}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--pb);color:var(--pf);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;padding:24px 18px 60px;max-width:1180px;margin-inline:auto}
+h1{font-size:30px;margin:0 0 6px;letter-spacing:-.02em}
+p.l{color:var(--pm);max-width:72ch;margin:0 0 18px}
+.bar{margin-bottom:22px}
+button{font:inherit;border:1px solid var(--pl);background:var(--pc);color:var(--pf);padding:7px 14px;border-radius:99px;cursor:pointer}
+main{display:grid;grid-template-columns:repeat(auto-fill,minmax(216px,1fr));gap:22px}
+figure{margin:0;container-type:inline-size}
+figcaption{margin-top:8px;font-size:13px;color:var(--pm)}
+figcaption b{display:block;color:var(--pf);font-size:14px}
+.st{position:relative;aspect-ratio:9/16;border-radius:16px;overflow:hidden;background:var(--bg);color:var(--fg);cursor:pointer;font-size:4.6cqw;line-height:1.3;border:1px solid var(--pl)}
+.a{position:absolute}.ctr{text-align:center}.mut{opacity:.6}
+.mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+.cp{position:absolute;left:6%;right:6%;bottom:11%;text-align:center;font-weight:800;font-size:1.5em;line-height:1.15}
+.w{display:inline-block;opacity:0}.k{color:var(--hl)}
+.bar2{height:.7em;border-radius:.4em;background:rgba(127,127,127,.3);overflow:hidden}
+.sx{display:block;height:100%;background:var(--ac);transform-origin:left;transform:scaleX(0)}
+.bar2 .sx{width:100%}
+.type{overflow:hidden;white-space:nowrap;width:0}
+.dr{stroke-dasharray:100;stroke-dashoffset:100}
+.grow{transform:scaleY(0);transform-origin:top}
+.wipe{clip-path:inset(0 100% 0 0)}
+.st:not(.play) :is(.pop,.rot,.slam,.flip,.sl){opacity:0}
+.play .pop{animation:pop .5s both;animation-delay:var(--d,0s)}
+.play .sl{animation:sl .5s both;animation-delay:var(--d,0s)}
+.play .rot{animation:pr .55s cubic-bezier(.3,1.6,.5,1) both;animation-delay:var(--d,0s)}
+.play .slam{animation:sm .35s cubic-bezier(.2,1.4,.4,1) both;animation-delay:var(--d,0s)}
+.play .flip{animation:fp .8s cubic-bezier(.2,1.2,.4,1) both;animation-delay:var(--d,0s)}
+.play .w{animation:up .35s both}
+.play .type{animation:type .9s steps(20) both;animation-delay:var(--d)}
+.play .dr{animation:draw 1.2s ease-out var(--d,.3s) forwards}
+.play .grow{animation:gr .8s both;animation-delay:var(--d)}
+.play .sx{animation:fl 1s both;animation-delay:var(--d)}
+.play .wipe{animation:wp .8s ease-out both;animation-delay:var(--d)}
+.dots i{display:inline-block;width:.5em;height:.5em;border-radius:50%;background:#8e8e93;margin:0 .1em;animation:bl 1s infinite}
+.dots i:nth-child(2){animation-delay:.2s}.dots i:nth-child(3){animation-delay:.4s}
+.cur{display:inline-block;width:.6em;height:1em;background:currentColor;vertical-align:-.15em;animation:bk 1s steps(1) infinite}
+.zig{height:.8em;background:linear-gradient(135deg,#fffdf5 25%,transparent 25%) -.4em 0,linear-gradient(225deg,#fffdf5 25%,transparent 25%) -.4em 0;background-size:.8em .8em}
+@keyframes pop{from{opacity:0;transform:translateY(8px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes sl{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes pr{from{opacity:0;transform:scale(.3) rotate(calc(var(--r)*3))}to{opacity:1;transform:rotate(var(--r))}}
+@keyframes sm{from{opacity:0;transform:scale(2.4)}to{opacity:1;transform:none}}
+@keyframes fp{from{opacity:0;transform:perspective(500px) rotateY(90deg)}to{opacity:1;transform:none}}
+@keyframes up{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes type{to{width:var(--w)}}
+@keyframes gr{to{transform:none}}
+@keyframes fl{to{transform:none}}
+@keyframes wp{to{clip-path:inset(0)}}
+@keyframes bl{50%{opacity:.25}}
+@keyframes bk{50%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.st *{animation-duration:.01s!important}}

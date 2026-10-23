@@ -23,6 +23,7 @@ class StageRunner:
         name: str,
         cache_key: str,
         operation: Callable[[ProgressReporter], StageResult],
+        validate_cached: Callable[[StageResult], bool] | None = None,
     ) -> StageResult:
         stage = session.scalar(
             select(StageRun).where(StageRun.project_id == project.id, StageRun.name == name)
@@ -30,7 +31,12 @@ class StageRunner:
         if stage and stage.status == StageStatus.SUCCEEDED and stage.cache_key == cache_key:
             artifact = self.artifact_path(project, name)
             if artifact.exists():
-                return json.loads(artifact.read_text())  # type: ignore[no-any-return]
+                try:
+                    cached: StageResult = json.loads(artifact.read_text())
+                    if validate_cached is None or validate_cached(cached):
+                        return cached
+                except (ValueError, OSError):
+                    pass  # Truncated or removed artifacts are rerun using saved inputs.
         if not stage:
             stage = StageRun(project_id=project.id, name=name, attempts=0, progress=0)
             session.add(stage)
@@ -62,7 +68,9 @@ class StageRunner:
                 raise InterruptedError("Project stopped")
             artifact = self.artifact_path(project, name)
             artifact.parent.mkdir(parents=True, exist_ok=True)
-            artifact.write_text(json.dumps(result, indent=2) + "\n")
+            pending = artifact.with_suffix(".pending.json")
+            pending.write_text(json.dumps(result, indent=2) + "\n")
+            pending.replace(artifact)
             stage.status = StageStatus.SUCCEEDED
             stage.progress = 1
             stage.finished_at = datetime.now(UTC)

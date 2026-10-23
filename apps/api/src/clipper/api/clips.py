@@ -31,6 +31,7 @@ from clipper.projects import (
     resolve_clip_artifact,
 )
 from clipper.projects.clips import ClipNotFoundError, ClipStateError, ClipStyleUpdate
+from clipper.providers.ollama_translation import OllamaCaptionTranslationProvider
 
 router = APIRouter()
 
@@ -84,6 +85,8 @@ def update_clip_style(
                 cta_style=request.cta_style,
                 effects=tuple(request.effects) if request.effects is not None else None,
                 audio_track_index=request.audio_track_index,
+                original_audio_volume=request.original_audio_volume,
+                watermark=request.watermark,
             ),
         )
     except ClipNotFoundError as error:
@@ -116,12 +119,16 @@ def translate_clip_captions(
     request: CaptionTranslationRequest,
     session: Session = Depends(get_session),
 ) -> object:
+    runtime = runtime_settings_service.get(session)
     try:
         project_id = clip_service.translate_captions(
             session,
             clip_id,
             request.target_language.lower(),
             request.mode,
+            provider=OllamaCaptionTranslationProvider(
+                runtime.ollama_base_url, runtime.model_for("translation")
+            ),
         )
     except ClipNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
@@ -183,6 +190,7 @@ def add_clip_secondary_media(
     start_seconds: float | None = Form(default=None, ge=0),
     end_seconds: float | None = Form(default=None, ge=0),
     media: UploadFile = File(),
+    volume_db: float = Form(default=-18, ge=-40, le=0),
     session: Session = Depends(get_session),
 ) -> object:
     if not authorization_confirmed:
@@ -197,6 +205,7 @@ def add_clip_secondary_media(
             start_seconds,
             end_seconds,
             placement,
+            volume_db=volume_db,
         )
     except ClipNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error

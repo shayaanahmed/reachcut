@@ -53,6 +53,12 @@ export type MetricCreate = {
   comments: number;
   shares: number;
   watch_time_seconds: number | null;
+  reach?: number | null;
+  sends?: number | null;
+  average_watch_seconds?: number | null;
+  opening_retention_percent?: number | null;
+  completion_rate_percent?: number | null;
+  search_views?: number | null;
   followers_gained: number;
   affiliate_clicks: number;
   conversions: number;
@@ -66,6 +72,7 @@ export async function createPublicationBatch(
 ): Promise<Project> {
   const response = await fetch(`${API_URL}/clips/${clipId}/publish-batch`, {
     method: "POST",
+    signal: AbortSignal.timeout(30000),
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ publications }),
   });
@@ -270,6 +277,7 @@ export async function approveClipBatch(
   return projectSchema.parse(await response.json());
 }
 export type BulkPublishResult = {
+  updated?: number;
   project: Project;
   queued: number;
   skipped: { clip_id: string; account_id: string; reason: string }[];
@@ -284,6 +292,7 @@ export async function publishProjectBatch(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(30000),
       body: JSON.stringify({ clip_ids: clipIds, account_ids: accountIds }),
     },
   );
@@ -291,4 +300,24 @@ export async function publishProjectBatch(
     throw await responseError(response, "Could not publish clips");
   const data = (await response.json()) as BulkPublishResult;
   return { ...data, project: projectSchema.parse(data.project) };
+}
+
+export function loadPublishingSelection(clipId: string): string[] | null {
+  try {
+    const saved = JSON.parse(
+      localStorage.getItem(`publishing-selection:${clipId}`) ?? "null",
+    );
+    return Array.isArray(saved) && saved.every((id) => typeof id === "string")
+      ? saved
+      : null;
+  } catch {
+    return null;
+  }
+}
+export function savePublishingSelection(clipId: string, ids: string[]) {
+  try {
+    localStorage.setItem(`publishing-selection:${clipId}`, JSON.stringify(ids));
+  } catch {
+    /* Selection still works when browser storage is unavailable. */
+  }
 }

@@ -16,6 +16,7 @@ from clipper.persistence.models import OAuthAccountSelection, SocialAccountIdent
 from clipper.providers.credentials import CredentialStoreError, EncryptedCredentialStore
 from clipper.publishing import OAuthClient, OAuthConnection, PublishingPlatform
 from clipper.publishing.contracts import MultiAccountOAuthClient
+from clipper.publishing.permissions import instagram_publishing_issue
 
 
 class PublishingConnectionError(RuntimeError):
@@ -304,8 +305,12 @@ class PublishingConnectionService:
 
     def disconnect(self, session: Session, account_id: str) -> SocialAccount:
         account = self._account(session, account_id)
-        stored = self._credentials.load(account.id)
-        if stored and stored.external_account_id:
+        try:
+            stored = self._credentials.load(account.id)
+        except CredentialStoreError:
+            stored = None
+        # A replaced token must not change the identity or prevent disconnection.
+        if stored and stored.external_account_id and not account.identity:
             self._bind_identity(account, stored)
             session.flush()
         self._credentials.delete(account.id)
@@ -346,6 +351,12 @@ class PublishingConnectionService:
             and connection.refresh_token == connection.access_token
         ):
             issues.append("account_reconnect_required")
+        if (
+            account.platform == "instagram"
+            and connection
+            and instagram_publishing_issue(connection)
+        ):
+            issues.append("publishing_permission_missing")
         if (
             account.identity
             and connection

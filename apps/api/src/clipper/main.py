@@ -9,7 +9,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from clipper.api.dependencies import (
     publishing_connections,
     run_automation_cycle,
+    run_growth_cycle,
+    run_informative_cycle,
     run_project_cycle,
+    run_publication_cycle,
     run_story_video_cycle,
 )
 from clipper.api.routes import router
@@ -28,6 +31,16 @@ async def automation_scheduler() -> None:
         await asyncio.sleep(15)
 
 
+async def growth_scheduler() -> None:
+    while True:
+        try:
+            processed = await asyncio.to_thread(run_growth_cycle)
+        except Exception as error:
+            logger.exception("growth_scheduler_failed", error_category=type(error).__name__)
+            processed = None
+        await asyncio.sleep(1 if processed else 10)
+
+
 async def story_video_scheduler() -> None:
     while True:
         try:
@@ -35,6 +48,24 @@ async def story_video_scheduler() -> None:
         except Exception as error:
             logger.exception("story_video_scheduler_failed", error_category=type(error).__name__)
         # Also back off after an engine reservation conflict instead of spinning on 409.
+        await asyncio.sleep(2)
+
+
+async def publication_scheduler() -> None:
+    while True:
+        try:
+            await asyncio.to_thread(run_publication_cycle)
+        except Exception as error:
+            logger.exception("publication_scheduler_failed", error_category=type(error).__name__)
+        await asyncio.sleep(10)
+
+
+async def informative_scheduler() -> None:
+    while True:
+        try:
+            await asyncio.to_thread(run_informative_cycle)
+        except Exception as error:
+            logger.exception("informative_scheduler_failed", error_category=type(error).__name__)
         await asyncio.sleep(2)
 
 
@@ -58,15 +89,27 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     create_schema()
     await asyncio.to_thread(initialize_account_identities)
     await asyncio.to_thread(run_project_cycle, recover=True)
+    growth_worker = asyncio.create_task(growth_scheduler())
+    publication_worker = asyncio.create_task(publication_scheduler())
+    informative_worker = asyncio.create_task(informative_scheduler())
     project_worker = asyncio.create_task(project_scheduler())
     scheduler = asyncio.create_task(automation_scheduler())
     video_scheduler = asyncio.create_task(story_video_scheduler())
     try:
         yield
     finally:
+        growth_worker.cancel()
+        publication_worker.cancel()
+        informative_worker.cancel()
         project_worker.cancel()
         scheduler.cancel()
         video_scheduler.cancel()
+        with suppress(asyncio.CancelledError):
+            await growth_worker
+        with suppress(asyncio.CancelledError):
+            await publication_worker
+        with suppress(asyncio.CancelledError):
+            await informative_worker
         with suppress(asyncio.CancelledError):
             await project_worker
         with suppress(asyncio.CancelledError):

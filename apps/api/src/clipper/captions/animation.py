@@ -9,6 +9,14 @@ def animated_events(
 ) -> list[tuple[float, float, str]]:
     """Return timed ASS event payloads without serializing an ASS document."""
 
+    if not cue.words:
+        return [
+            (
+                cue.start_seconds,
+                cue.end_seconds,
+                _with_secondary(ass_escape(cue.text), cue.secondary_text),
+            )
+        ]
     emphasized = {_word_key(word) for word in config.highlighted_words}
     for item in emphasis or []:
         emphasized.update(_word_key(word) for word in item.words)
@@ -84,7 +92,7 @@ def ass_color(value: str) -> str:
 
 
 def ass_escape(value: str) -> str:
-    return value.replace("\\", r"\\").replace("{", r"\{").replace("}", r"\}")
+    return value.replace("\\", r"\\").replace("{", r"\{").replace("}", r"\}").replace("\n", r"\N")
 
 
 def _word_key(value: str) -> str:

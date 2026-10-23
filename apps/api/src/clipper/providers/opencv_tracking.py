@@ -19,7 +19,7 @@ class VisualTrackingError(RuntimeError):
 class OpenCvVisualTrackingProvider:
     """Sample local video frames for face/group and motion-centroid tracking."""
 
-    CONTRACT_VERSION = "opencv-tracking-1"
+    CONTRACT_VERSION = "opencv-tracking-2"
 
     def __init__(self, sample_interval_seconds: float = 0.5) -> None:
         self.sample_interval_seconds = max(sample_interval_seconds, 0.1)
@@ -31,7 +31,7 @@ class OpenCvVisualTrackingProvider:
 
     @property
     def identity(self) -> str:
-        return f"opencv:{cv2.__version__}:{self.CONTRACT_VERSION}"
+        return f"opencv:{cv2.__version__}:{self.CONTRACT_VERSION}:{self.sample_interval_seconds}"
 
     def analyze(
         self,
@@ -49,6 +49,8 @@ class OpenCvVisualTrackingProvider:
         face_points: list[CropPoint] = []
         group_points: list[CropPoint] = []
         action_points: list[CropPoint] = []
+        scene_changes: list[float] = []
+        previous_histogram: np.ndarray[Any, Any] | None = None
         sampled = 0
         frames_with_faces = 0
         previous_gray: np.ndarray[Any, Any] | None = None
@@ -64,6 +66,15 @@ class OpenCvVisualTrackingProvider:
                 frame = self._resize(np.asarray(frame, dtype=np.uint8))
                 height, width = frame.shape[:2]
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                histogram = cv2.calcHist([gray], [0], None, [64], [0, 256])
+                cv2.normalize(histogram, histogram)
+                if (
+                    previous_histogram is not None
+                    and cv2.compareHist(previous_histogram, histogram, cv2.HISTCMP_BHATTACHARYYA)
+                    > 0.65
+                ):
+                    scene_changes.append(timestamp)
+                previous_histogram = histogram
                 faces = np.asarray(
                     self._face_detector.detectMultiScale(
                         gray,
@@ -95,6 +106,7 @@ class OpenCvVisualTrackingProvider:
             action_points=tuple(action_points),
             sampled_frames=sampled,
             frames_with_faces=frames_with_faces,
+            scene_changes=tuple(scene_changes),
         )
 
     @staticmethod

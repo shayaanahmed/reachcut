@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from dataclasses import replace
 
 import httpx
 
@@ -25,7 +26,7 @@ class XPublishingAdapter(PublishingHttpClient):
         self._client_secret = client_secret
 
     def publish(self, request: PublishRequest, connection: OAuthConnection) -> PublishedPost:
-        connection = self._refresh_connection(connection)
+        connection = self.refresh_connection(connection)
         if not connection.access_token:
             raise ProviderApiError("X requires a user access token")
         headers = {"Authorization": f"Bearer {connection.access_token}"}
@@ -82,6 +83,24 @@ class XPublishingAdapter(PublishingHttpClient):
             updated_connection=connection,
         )
 
+    def delete_post(
+        self, external_id: str | None, post_url: str | None, connection: OAuthConnection
+    ) -> None:
+        del post_url
+        if not external_id:
+            raise ProviderApiError("X deletion requires the original post ID")
+        try:
+            with self.client_session() as client:
+                response = client.delete(
+                    f"https://api.x.com/2/tweets/{external_id}",
+                    headers={"Authorization": f"Bearer {connection.access_token}"},
+                )
+                response.raise_for_status()
+                if response.json().get("data", {}).get("deleted") is not True:
+                    raise ProviderApiError("X did not confirm deletion")
+        except httpx.HTTPError as error:
+            raise self.raise_error("X deletion failed", error) from error
+
     def refresh(
         self,
         external_id: str,
@@ -95,8 +114,12 @@ class XPublishingAdapter(PublishingHttpClient):
             external_id=external_id,
         )
 
-    def _refresh_connection(self, connection: OAuthConnection) -> OAuthConnection:
-        if not connection.refresh_token:
+    def refresh_connection(self, connection: OAuthConnection) -> OAuthConnection:
+        if not connection.refresh_token or (
+            connection.access_token
+            and connection.access_token_expires_at is not None
+            and connection.access_token_expires_at > time.time() + 300
+        ):
             return connection
         if not self._client_id:
             raise ProviderApiError("X token refresh requires CLIPPER_X_CLIENT_ID")
@@ -122,10 +145,11 @@ class XPublishingAdapter(PublishingHttpClient):
         access_token = payload.get("access_token")
         if not access_token:
             raise ProviderApiError("X token refresh did not return an access token")
-        return OAuthConnection(
+        return replace(
+            connection,
             access_token=str(access_token),
             refresh_token=str(payload.get("refresh_token") or connection.refresh_token),
-            external_account_id=connection.external_account_id,
+            access_token_expires_at=time.time() + float(payload.get("expires_in") or 7200),
         )
 
 

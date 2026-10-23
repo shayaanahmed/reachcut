@@ -1,0 +1,209 @@
+[
+  {
+    "id": "photo",
+    "name": "Curiosity hook",
+    "description": "Full-frame illustration and a bold caption.",
+    "use": "Hook",
+    "sample": {
+      "template": "photo",
+      "caption": "How does that feature work?",
+      "eyebrow": "HOOK",
+      "title": "A closer look",
+      "items": [],
+      "query": "",
+      "duration_seconds": 5,
+      "visual_type": "workflow"
+    }
+  },
+  {
+    "id": "layers",
+    "name": "Look underneath",
+    "description": "Colorful layers separate to explain an idea.",
+    "use": "Explain",
+    "sample": {
+      "template": "layers",
+      "caption": "There is more than you see",
+      "eyebrow": "EXPLAIN",
+      "title": "Look underneath",
+      "items": [
+        {
+          "title": "The screen",
+          "body": "What you tap"
+        },
+        {
+          "title": "The logic",
+          "body": "What happens"
+        },
+        {
+          "title": "The evidence",
+          "body": "What explains it"
+        }
+      ],
+      "query": "",
+      "duration_seconds": 5,
+      "visual_type": "workflow"
+    }
+  },
+  {
+    "id": "reveal",
+    "name": "The big reveal",
+    "description": "Oversized name, source card and useful details.",
+    "use": "Reveal",
+    "sample": {
+      "template": "reveal",
+      "caption": "Meet your next useful discovery",
+      "eyebrow": "REVEAL",
+      "title": "REA",
+      "items": [
+        {
+          "title": "Local analysis",
+          "body": "On your computer"
+        },
+        {
+          "title": "With evidence",
+          "body": "Explain the findings"
+        }
+      ],
+      "query": "",
+      "duration_seconds": 5,
+      "visual_type": "workflow"
+    }
+  },
+  {
+    "id": "demo",
+    "name": "Show the possibility",
+    "description": "An explicitly illustrative input and result.",
+    "use": "Example",
+    "sample": {
+      "template": "demo",
+      "caption": "Learn how, then build your own",
+      "eyebrow": "EXAMPLE",
+      "title": "Find that one note",
+      "items": [
+        {
+          "title": "Input",
+          "body": "A feature you want to understand"
+        },
+        {
+          "title": "Action",
+          "body": "Follow the evidence"
+        },
+        {
+          "title": "Possible result",
+          "body": "Build your own version"
+        }
+      ],
+      "query": "recipe",
+      "duration_seconds": 5,
+      "visual_type": "workflow"
+    }
+  },
+  {
+    "id": "steps",
+    "name": "Three clear steps",
+    "description": "Numbered cards reveal one action at a time.",
+    "use": "How-to",
+    "sample": {
+      "template": "steps",
+      "caption": "A small change worth trying",
+      "eyebrow": "HOW-TO",
+      "title": "Follow the clues",
+      "items": [
+        {
+          "title": "Pick an app",
+          "body": "Choose a feature to understand"
+        },
+        {
+          "title": "Ask your AI",
+          "body": "Investigate how it works"
+        },
+        {
+          "title": "Inspect the evidence",
+          "body": "Use findings to help you build"
+        }
+      ],
+      "query": "",
+      "duration_seconds": 5,
+      "visual_type": "workflow"
+    }
+  },
+  {
+    "id": "comparison",
+    "name": "Before and after",
+    "description": "Two contrasting panels make the difference visible.",
+    "use": "Contrast",
+    "sample": {
+      "template": "comparison",
+      "caption": "Same problem, a different approach",
+      "eyebrow": "CONTRAST",
+      "title": "A better way?",
+      "items": [
+        {
+          "title": "Before",
+          "body": "Guess how it works"
+        },
+        {
+          "title": "After",
+          "body": "Follow the evidence"
+        }
+      ],
+      "query": "",
+      "duration_seconds": 5,
+      "visual_type": "workflow"
+    }
+  },
+  {
+    "id": "payoff",
+    "name": "Result first",
+    "description": "One useful outcome with an animated visual trail.",
+    "use": "Payoff",
+    "sample": {
+      "template": "payoff",
+      "caption": "Your next idea starts here",
+      "eyebrow": "PAYOFF",
+      "title": "From question to idea",
+      "items": [
+        {
+          "title": "Question",
+          "body": ""
+        },
+        {
+          "title": "Discovery",
+          "body": ""
+        },
+        {
+          "title": "Your idea",
+          "body": ""
+        }
+      ],
+      "query": "",
+      "duration_seconds": 5,
+      "visual_type": "workflow"
+    }
+  },
+  {
+    "id": "poll",
+    "name": "Pick a side",
+    "description": "A full-frame illustration and two comment choices.",
+    "use": "Closing",
+    "sample": {
+      "template": "poll",
+      "caption": "Which feature would you investigate?",
+      "eyebrow": "CLOSING",
+      "title": "Which feature?",
+      "items": [
+        {
+          "title": "Search",
+          "body": ""
+        },
+        {
+          "title": "Photo editing",
+          "body": ""
+        }
+      ],
+      "query": "",
+      "duration_seconds": 5,
+      "visual_type": "workflow"
+    }
+  }
+]

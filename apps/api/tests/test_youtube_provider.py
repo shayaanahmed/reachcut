@@ -20,6 +20,7 @@ def test_youtube_oauth_requests_upload_and_metrics_access() -> None:
     assert set(query["scope"][0].split()) == {
         "https://www.googleapis.com/auth/youtube.upload",
         "https://www.googleapis.com/auth/youtube.readonly",
+        "https://www.googleapis.com/auth/youtube.force-ssl",
     }
     assert query["include_granted_scopes"] == ["true"]
     assert query["prompt"] == ["consent"]
@@ -30,7 +31,11 @@ def test_youtube_oauth_discovers_the_authorized_channel() -> None:
         if request.url.host == "oauth2.googleapis.com":
             return httpx.Response(
                 200,
-                json={"access_token": "access", "refresh_token": "refresh"},
+                json={
+                    "access_token": "access",
+                    "refresh_token": "refresh",
+                    "scope": "https://www.googleapis.com/auth/youtube.force-ssl",
+                },
             )
         assert request.url.params["mine"] == "true"
         assert request.headers["authorization"] == "Bearer access"
@@ -53,6 +58,7 @@ def test_youtube_oauth_discovers_the_authorized_channel() -> None:
 
     connection = oauth.exchange_code("oauth-code")
 
+    assert connection.granted_scopes == ("https://www.googleapis.com/auth/youtube.force-ssl",)
     assert connection.external_account_id == "channel-1"
     assert connection.display_name == "Creator Studio"
     assert connection.username == "creator"
@@ -66,6 +72,8 @@ def test_encrypted_credentials_and_oauth_state_round_trip(tmp_path: Path) -> Non
         refresh_token=secret_value,
         access_token="temporary-access-value",  # noqa: S106
         external_account_id="provider-account-1",
+        management_access_token="synthetic-management-value",  # noqa: S106
+        granted_scopes=("https://www.googleapis.com/auth/youtube.force-ssl",),
     )
 
     store.save("account-1", connection)
@@ -73,6 +81,7 @@ def test_encrypted_credentials_and_oauth_state_round_trip(tmp_path: Path) -> Non
     token_file = tmp_path / "credentials" / "account-1.token"
     assert b"very-secret-refresh-token" not in token_file.read_bytes()
     assert b"temporary-access-value" not in token_file.read_bytes()
+    assert b"synthetic-management-value" not in token_file.read_bytes()
     assert store.load("account-1") == connection
     assert store.open_state(store.seal_state("account-1")) == "account-1"
 

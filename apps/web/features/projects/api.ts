@@ -5,12 +5,17 @@ import {
   type ClipTypeSuggestion,
   type Project,
 } from "../../lib/contracts";
-import { API_URL, responseError, UPLOAD_API_URL } from "../../lib/http";
+import {
+  API_URL,
+  errorMessage,
+  responseError,
+  UPLOAD_API_URL,
+} from "../../lib/http";
 
 export async function listProjects(): Promise<Project[]> {
   const response = await fetch(`${API_URL}/projects`, { cache: "no-store" });
   if (!response.ok)
-    throw new Error(`Could not load projects (${response.status})`);
+    throw new Error(`Could not load source videos (${response.status})`);
   return projectSchema.array().parse(await response.json());
 }
 
@@ -19,7 +24,7 @@ export async function getProject(projectId: string): Promise<Project> {
     cache: "no-store",
   });
   if (!response.ok)
-    throw new Error(`Could not load project (${response.status})`);
+    throw new Error(`Could not load source video (${response.status})`);
   return projectSchema.parse(await response.json());
 }
 
@@ -39,12 +44,15 @@ export async function uploadProject(
         reject(new Error("Upload failed. Check your connection and retry."));
       request.onload = () => {
         try {
-          const payload = JSON.parse(request.responseText);
+          let payload: unknown;
+          try {
+            payload = JSON.parse(request.responseText);
+          } catch {
+            payload = null;
+          }
           if (request.status < 200 || request.status >= 300) {
             throw new Error(
-              typeof payload.detail === "string"
-                ? payload.detail
-                : "Upload failed",
+              errorMessage(payload, `Upload failed (${request.status})`),
             );
           }
           resolve(projectSchema.parse(payload));
@@ -63,7 +71,20 @@ export async function uploadProject(
   return projectSchema.parse(await response.json());
 }
 
+export async function uploadPublishingVideo(data: FormData): Promise<Project> {
+  const response = await fetch(
+    `${UPLOAD_API_URL}/projects/upload-for-publishing`,
+    {
+      method: "POST",
+      body: data,
+    },
+  );
+  if (!response.ok) throw await responseError(response, "Video upload failed");
+  return projectSchema.parse(await response.json());
+}
+
 export type UrlImportRequest = {
+  preset_id?: string;
   language?: string | null;
   title: string;
   url: string;
@@ -92,7 +113,7 @@ export async function updateProject(
     body: JSON.stringify({ title }),
   });
   if (!response.ok)
-    throw await responseError(response, "Project update failed");
+    throw await responseError(response, "Source video update failed");
   return projectSchema.parse(await response.json());
 }
 
@@ -101,18 +122,23 @@ export async function deleteProject(projectId: string): Promise<void> {
     method: "DELETE",
   });
   if (!response.ok)
-    throw await responseError(response, "Project deletion failed");
+    throw await responseError(response, "Source video deletion failed");
 }
 
 export async function processProject(
   projectId: string,
   language?: string,
   clipTypes: ClipType[] = [],
+  processingMode: "clips" | "metadata" = "clips",
 ): Promise<void> {
   const response = await fetch(`${API_URL}/projects/${projectId}/process`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ language: language || null, clip_types: clipTypes }),
+    body: JSON.stringify({
+      language: language || null,
+      clip_types: clipTypes,
+      processing_mode: processingMode,
+    }),
   });
   if (!response.ok) throw await responseError(response, "Processing failed");
 }
@@ -133,7 +159,7 @@ export async function stopProject(projectId: string): Promise<void> {
     method: "POST",
   });
   if (!response.ok)
-    throw await responseError(response, "Could not stop project");
+    throw await responseError(response, "Could not stop source video");
 }
 
 export async function retryProject(projectId: string): Promise<void> {
@@ -141,5 +167,25 @@ export async function retryProject(projectId: string): Promise<void> {
     method: "POST",
   });
   if (!response.ok)
-    throw await responseError(response, "Could not retry project");
+    throw await responseError(response, "Could not retry source video");
+}
+
+export type QualityReview = {
+  limitations: string;
+  clips: {
+    clip_id: string;
+    findings: {
+      message: string;
+      start: number;
+      severity: string;
+      basis: string;
+    }[];
+    corrections: { attempt: number; action: string }[];
+  }[];
+};
+export async function getQualityReview(id: string): Promise<QualityReview> {
+  const response = await fetch(`${API_URL}/projects/${id}/quality`);
+  if (!response.ok)
+    throw await responseError(response, "Could not load quality review");
+  return response.json() as Promise<QualityReview>;
 }

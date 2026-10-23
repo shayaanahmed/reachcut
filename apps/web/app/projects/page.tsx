@@ -13,11 +13,11 @@ export default function ProjectsPage() {
       <div className="topbar">
         <div>
           <span className="eyebrow">LIBRARY</span>
-          <h1>Projects</h1>
+          <h1>Source videos</h1>
           <p>Manage every source, analysis, and finished clip.</p>
         </div>
         <Link className="primary-link" href="/projects/new">
-          ＋ New project
+          ＋ Clip a video
         </Link>
       </div>
       {workbench.error && (
@@ -39,9 +39,9 @@ export default function ProjectsPage() {
           onRetry={workbench.retry}
         />
       )}
-      <section className="section-block" aria-label="All projects">
+      <section className="section-block" aria-label="All source videos">
         {workbench.loading ? (
-          <div className="loading-card">Loading projects…</div>
+          <div className="loading-card">Loading source videos…</div>
         ) : (
           <ProjectList
             projects={workbench.projects}

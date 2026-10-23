@@ -2,7 +2,15 @@ import textwrap
 
 from clipper.captions.animation import animated_events, ass_color, ass_escape
 from clipper.captions.models import CaptionCue
-from clipper.domain.editing_plan import CTA, CaptionConfig, Effect, EffectType, Emphasis, Hook
+from clipper.domain.editing_plan import (
+    CTA,
+    CaptionConfig,
+    Effect,
+    EffectType,
+    Emphasis,
+    Hook,
+    WatermarkConfig,
+)
 
 
 def serialize_ass(
@@ -12,6 +20,8 @@ def serialize_ass(
     hook: Hook | None = None,
     cta: CTA | None = None,
     effects: list[Effect] | None = None,
+    watermark: WatermarkConfig | None = None,
+    duration_seconds: float = 0,
 ) -> str:
     """Serialize Unicode ASS; shaping remains delegated to libass/FriBidi."""
 
@@ -44,6 +54,8 @@ def serialize_ass(
             "-1,0,0,0,100,100,0,0,3,3,0,5,90,90,120,1",
             f"Style: Speaker,{font},38,&H00FFFFFF,&H00FFFFFF,&H00111111,&H98000000,"
             "-1,0,0,0,100,100,0,0,3,2,0,7,54,54,100,1",
+            f"Style: Watermark,{font},32,&H00FFFFFF,&H00FFFFFF,&H00111111,&HFF000000,"
+            "0,0,0,0,100,100,0,0,1,1,0,3,54,54,100,1",
             "",
             "[Events]",
             "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
@@ -84,6 +96,14 @@ def serialize_ass(
                 style,
             )
         )
+    if watermark and watermark.text.strip() and duration_seconds > 0:
+        alignment = {"top_left": 7, "top_right": 9, "bottom_left": 1, "bottom_right": 3}[
+            watermark.position
+        ]
+        alpha = round((1 - watermark.opacity) * 255)
+        tags = rf"{{\an{alignment}\fs{watermark.font_size}\alpha&H{alpha:02X}&\bord1\shad0}}"
+        text = ass_escape(watermark.text.strip().replace("\n", " ").replace("\r", " "))
+        events.append(_ass_event(0, duration_seconds, tags + text, "Watermark"))
     return header + "\n" + "\n".join(events) + "\n"
 
 

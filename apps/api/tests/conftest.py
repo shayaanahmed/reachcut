@@ -37,6 +37,9 @@ def isolate_background_schedulers(monkeypatch: pytest.MonkeyPatch) -> None:
     import clipper.main as main
 
     monkeypatch.setattr(main, "initialize_account_identities", lambda: None)
+    monkeypatch.setattr(main, "run_growth_cycle", lambda: None)
     monkeypatch.setattr(main, "run_project_cycle", lambda **kwargs: None)
     monkeypatch.setattr(main, "run_automation_cycle", lambda: [])
     monkeypatch.setattr(main, "run_story_video_cycle", lambda: None)
+    monkeypatch.setattr(main, "run_informative_cycle", lambda: None)
+    monkeypatch.setattr(main, "run_publication_cycle", lambda: None)

@@ -26,6 +26,7 @@ class ProjectQueue:
         source_url: str | None = None,
         *,
         retry: bool = False,
+        processing_mode: str = "clips",
     ) -> ProjectJob:
         job = session.get(ProjectJob, project.id)
         if job and job.status in {"queued", "running"}:
@@ -36,6 +37,7 @@ class ProjectQueue:
             job = ProjectJob(project=project)
             session.add(job)
         if not retry:
+            job.processing_mode = processing_mode
             job.language = language
             job.clip_types = [item.value for item in clip_types]
         if source_url:
@@ -45,6 +47,17 @@ class ProjectQueue:
         job.error = None
         job.enqueued_at = now_utc()
         project.status = "queued"
+        if retry:
+            from clipper.persistence.models import SourceWorkflowRun
+
+            run = session.scalar(
+                select(SourceWorkflowRun)
+                .where(SourceWorkflowRun.target_project_id == project.id)
+                .order_by(SourceWorkflowRun.created_at.desc())
+                .limit(1)
+            )
+            if run and run.status in {"failed", "cancelled"}:
+                run.status, run.error, run.finished_at = "queued", None, None
         session.commit()
         return job
 
@@ -56,6 +69,11 @@ class ProjectQueue:
         )
         if cancelled.rowcount:  # type: ignore[attr-defined]
             project.status = "cancelled"
+            from clipper.projects.source_workflows import active_workflow
+
+            run = active_workflow(session, project.id)
+            if run:
+                run.status, run.finished_at = "cancelled", now_utc()
         else:
             session.refresh(project)
             if project.status in ACTIVE_PROJECT_STATUSES:
@@ -86,6 +104,13 @@ class ProjectQueue:
                 job.status = "queued"
                 job.phase = "Resuming interrupted work"
                 job.project.status = "queued"
+            from clipper.projects.source_workflows import active_workflow
+
+            run = active_workflow(session, job.project_id)
+            if run:
+                run.status = job.status
+                if job.status == "cancelled":
+                    run.finished_at = now_utc()
         session.commit()
 
     def run_next(
@@ -110,6 +135,11 @@ class ProjectQueue:
         if not claimed.rowcount:  # type: ignore[attr-defined]
             session.rollback()
             return None
+        from clipper.projects.source_workflows import active_workflow
+
+        run = active_workflow(session, job.project_id)
+        if run:
+            run.status, run.started_at = "running", now_utc()
         project = job.project
         project.status = "processing"
         session.commit()
@@ -145,7 +175,11 @@ class ProjectQueue:
             if project.status == "cancel_requested":
                 raise InterruptedError("Project stopped")
             job.status = "completed"
-            job.phase = "Ready for review"
+            job.phase = (
+                "Publishing details ready"
+                if job.processing_mode == "metadata"
+                else "Ready for review"
+            )
         except InterruptedError:
             session.rollback()
             project.status = "cancelled"
@@ -157,5 +191,9 @@ class ProjectQueue:
             job.status = "failed"
             job.phase = "Needs attention"
             job.error = str(error)[:1000]
+        if run:
+            run.status = job.status
+            run.error = job.error if job.status == "failed" else None
+            run.finished_at = now_utc()
         session.commit()
         return project.id

@@ -12,17 +12,17 @@ export default function NewProjectPage() {
   return (
     <main className="page create-project-page">
       <div className="breadcrumbs">
-        <Link href="/projects">Projects</Link>
+        <Link href="/projects">Source videos</Link>
         <span>/</span>
-        <span>New project</span>
+        <span>Clip a video</span>
       </div>
       <div className="topbar compact">
         <div>
           <span className="eyebrow">NEW PRODUCTION</span>
-          <h1>Turn one video into a clip campaign</h1>
+          <h1>Clip a video</h1>
           <p>
             Add a source you can repurpose. ReachCut will analyze it locally and
-            prepare reviewable views and revenue cuts.
+            prepare clips for you to review.
           </p>
         </div>
       </div>

@@ -3,6 +3,15 @@ import pytest
 from clipper.config import Settings
 
 
+def test_voicebox_defaults_to_local_service_port_and_can_be_overridden(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CLIPPER_VOICEBOX_BASE_URL", raising=False)
+    assert Settings(_env_file=None).voicebox_base_url == "http://127.0.0.1:17600"
+    monkeypatch.setenv("CLIPPER_VOICEBOX_BASE_URL", "http://voicebox:8000")
+    assert Settings(_env_file=None).voicebox_base_url == "http://voicebox:8000"
+
+
 def test_model_runtime_settings_are_loaded_from_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

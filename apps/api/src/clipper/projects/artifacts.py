@@ -101,6 +101,8 @@ class ClipArtifactService:
                 plan.hook,
                 plan.cta,
                 plan.effects,
+                plan.watermark,
+                plan.timeline_duration,
             ),
             encoding="utf-8",
         )

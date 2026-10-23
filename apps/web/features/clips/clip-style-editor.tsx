@@ -8,6 +8,7 @@ type CaptionConfig = Clip["plan"]["caption_config"];
 type StudioTab = "story" | "captions" | "layout" | "motion" | "assets";
 
 export type StudioPreviewState = {
+  watermark: Clip["plan"]["watermark"];
   frameStyle: Clip["plan"]["frame_style"];
   cropFocusX: number;
   cropFocusY: number;
@@ -31,8 +32,13 @@ const tabs: { id: StudioTab; label: string; icon: string; help: string }[] = [
   { id: "story", label: "Story", icon: "◫", help: "Cuts, hook & CTA" },
   { id: "captions", label: "Captions", icon: "Aa", help: "Text & language" },
   { id: "layout", label: "Layout", icon: "⌗", help: "Frame & tracking" },
-  { id: "motion", label: "Motion", icon: "↗", help: "Zoom & overlays" },
-  { id: "assets", label: "Assets", icon: "+", help: "B-roll, game & SFX" },
+  { id: "motion", label: "Motion", icon: "↗", help: "Watermark & overlays" },
+  {
+    id: "assets",
+    label: "Assets",
+    icon: "+",
+    help: "Voice-over, music & video",
+  },
 ];
 
 const presetValues: Record<
@@ -132,6 +138,7 @@ export function studioPreviewFromClip(clip: Clip): StudioPreviewState {
     ["punch_zoom", "slow_zoom"].includes(effect.type),
   );
   return {
+    watermark: clip.plan.watermark,
     frameStyle: clip.plan.frame_style,
     cropFocusX: clip.plan.crop_focus_x,
     cropFocusY: clip.plan.crop_focus_y,
@@ -165,6 +172,14 @@ function previewFromForm(
   const data = new FormData(form);
   const override = String(data.get("caption_text_override") ?? "").trim();
   return {
+    watermark: {
+      text: String(data.get("watermark_text") ?? ""),
+      position: data.get(
+        "watermark_position",
+      ) as Clip["plan"]["watermark"]["position"],
+      opacity: Number(data.get("watermark_opacity")),
+      font_size: Number(data.get("watermark_font_size")),
+    },
     frameStyle: data.get("frame_style") as StudioPreviewState["frameStyle"],
     cropFocusX: Number(data.get("crop_focus_x")),
     cropFocusY: Number(data.get("crop_focus_y")),
@@ -432,8 +447,8 @@ export function ClipStyleEditor({
                 required
               />
               <small>
-                Comma-separated ranges. Gaps are removed from the final
-                timeline.
+                Trim by entering start-end in seconds, for example 2-12. Keep
+                multiple sections with 2-12, 18-25. Gaps are removed.
               </small>
             </label>
             <Toggle
@@ -728,6 +743,18 @@ export function ClipStyleEditor({
                 defaultValue={clip.plan.audio_track_index}
               />
             </label>
+            <label>
+              Original audio volume
+              <input
+                name="original_audio_volume"
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                defaultValue={clip.plan.original_audio_volume}
+              />
+              <small>Set to 0 to mute, or lower it under a voice-over.</small>
+            </label>
           </div>
         </section>
 
@@ -741,6 +768,48 @@ export function ClipStyleEditor({
             description="Use a small number of intentional effects to support retention."
           />
           <div className="studio-field-grid">
+            <label className="span-two">
+              Watermark text
+              <input
+                name="watermark_text"
+                maxLength={80}
+                defaultValue={clip.plan.watermark.text}
+                placeholder="@yourbrand · leave blank to remove"
+              />
+            </label>
+            <label>
+              Watermark position
+              <select
+                name="watermark_position"
+                defaultValue={clip.plan.watermark.position}
+              >
+                <option value="top_left">Top left</option>
+                <option value="top_right">Top right</option>
+                <option value="bottom_left">Bottom left</option>
+                <option value="bottom_right">Bottom right</option>
+              </select>
+            </label>
+            <label>
+              Watermark opacity
+              <input
+                name="watermark_opacity"
+                type="range"
+                min={0.1}
+                max={1}
+                step={0.05}
+                defaultValue={clip.plan.watermark.opacity}
+              />
+            </label>
+            <label>
+              Watermark size
+              <input
+                name="watermark_font_size"
+                type="number"
+                min={18}
+                max={72}
+                defaultValue={clip.plan.watermark.font_size}
+              />
+            </label>
             <label>
               Transition
               <select
@@ -861,7 +930,7 @@ export function ClipStyleEditor({
       >
         <PanelHeading
           title="Secondary media"
-          description="Layer licensed gameplay, B-roll, reactions, sound effects or music."
+          description="Add a recorded voice-over, music, sound effects, or extra video. Timings are relative to the edited clip; voice-overs play once. Lower original audio in Layout."
         />
         {dirty && (
           <div className="studio-unsaved-warning" role="status">
@@ -887,7 +956,8 @@ export function ClipStyleEditor({
           />
           <label>
             Asset type
-            <select name="kind" defaultValue="gameplay">
+            <select name="kind" defaultValue="voiceover">
+              <option value="voiceover">Voice-over</option>
               <option value="gameplay">Gameplay footage</option>
               <option value="broll">B-roll</option>
               <option value="reaction">Reaction / PIP</option>
@@ -897,7 +967,7 @@ export function ClipStyleEditor({
           </label>
           <label>
             Placement
-            <select name="placement" defaultValue="bottom">
+            <select name="placement" defaultValue="audio">
               <option value="bottom">Bottom split</option>
               <option value="pip">Picture in picture</option>
               <option value="fullscreen">Full screen</option>
@@ -916,6 +986,20 @@ export function ClipStyleEditor({
             End (optional)
             <input name="end_seconds" type="number" min={0} step={0.1} />
           </label>
+          <label>
+            Audio volume (dB)
+            <input
+              name="volume_db"
+              type="number"
+              min={-40}
+              max={0}
+              step={1}
+              defaultValue={0}
+            />
+            <small>
+              0 is full volume; use a lower value for background music.
+            </small>
+          </label>
           <button disabled={mutationBusy || dirty}>
             {dirty
               ? "Save edits before attaching"
@@ -929,7 +1013,9 @@ export function ClipStyleEditor({
             {clip.plan.secondary_media.map((asset) => (
               <article key={asset.asset_id}>
                 <span aria-hidden="true">
-                  {asset.kind === "music" || asset.kind === "sound_effect"
+                  {asset.kind === "music" ||
+                  asset.kind === "sound_effect" ||
+                  asset.kind === "voiceover"
                     ? "♫"
                     : "▶"}
                 </span>

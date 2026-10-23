@@ -178,7 +178,9 @@ test("manage groups and publish a selection to the intended channels", async ({
     });
   });
   await page.getByRole("button", { name: /Publish selected/ }).click();
-  await expect(page.getByText("1 posts queued · 1 skipped")).toBeVisible();
+  await expect(page.getByRole("status")).toContainText(
+    "1 posts queued · 0 existing posts updated · 1 skipped",
+  );
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
     path: "/tmp/reachcut-publishing-desktop.png",
@@ -258,12 +260,15 @@ test("insights preserve old metrics and skip disconnected accounts without dashb
   await expect(
     page.getByRole("heading", { name: "Views & insights" }),
   ).toBeVisible();
+  await page
+    .getByText("Views over time · explore the trend chart", { exact: true })
+    .click();
   await expect(
     page.getByRole("img", { name: /Cumulative views/ }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Some insights need attention" }),
-  ).toBeVisible();
+  const syncStatus = page.getByRole("group", { name: "Account sync status" });
+  await syncStatus.locator("summary").click();
+  await expect(syncStatus).toContainText("1 account sync issue need attention");
   await expect(
     page.locator(".insight-totals").getByText("1,234", { exact: true }),
   ).toBeVisible();
@@ -356,6 +361,10 @@ test("one failed metrics sync does not prevent another account from refreshing",
       : route.fulfill({ json: withPosts });
   });
   await page.goto("/insights");
+  await page
+    .getByRole("group", { name: "Account sync status" })
+    .locator("summary")
+    .click();
   await expect(
     page.getByText("Authorization expired. Reconnect Faith channel.", {
       exact: false,

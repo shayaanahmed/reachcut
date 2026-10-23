@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from clipper.media import MediaError, StoredUpload, inspect_stored_media
+from clipper.media.tools import require_tool
 
 
 class YtDlpDownloader:
@@ -57,6 +58,8 @@ class YtDlpDownloader:
             str(max_bytes),
             "--format",
             "bv*+ba/b",
+            "--ffmpeg-location",
+            require_tool("ffmpeg"),
             "--merge-output-format",
             "mp4",
             "--output",

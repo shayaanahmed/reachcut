@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Faceless video templates: sequences, vol. 2</title>
+<style>
+:root{box-sizing:border-box;--pb:#101114;--pf:#eceef2;--pm:#9aa0ad;--pc:#181a20;--pl:#2a2d36;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:light){:root:not([data-theme=dark]){--pb:#f5f6f9;--pf:#14161c;--pm:#5d6472;--pc:#fff;--pl:#d9dde6}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--pb);color:var(--pf);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;padding:24px 18px 60px;max-width:1000px;margin-inline:auto}
+h1{font-size:30px;margin:0 0 6px;letter-spacing:-.02em}
+p.l{color:var(--pm);max-width:72ch;margin:0 0 18px}
+button{font:inherit;border:1px solid var(--pl);background:var(--pc);color:var(--pf);padding:7px 14px;border-radius:99px;cursor:pointer}
+button.on{background:var(--pf);color:var(--pb)}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+#desc{color:var(--pm);margin:0 0 20px}
+.wrap{display:grid;grid-template-columns:minmax(0,340px) 1fr;gap:28px;align-items:start}
+@media(max-width:760px){.wrap{grid-template-columns:1fr}}
+.stw{container-type:inline-size;width:100%}
+.ctl{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+li{border:1px solid var(--pl);background:var(--pc);border-radius:12px;padding:10px 12px;cursor:pointer}
+li.on{border-color:var(--pf)}
+li b{display:flex;justify-content:space-between;font-size:14px}
+li span{color:var(--pm);font-size:12px}
+li p{margin:4px 0 0;font-size:13.5px}
+.st{position:relative;aspect-ratio:9/16;border-radius:18px;overflow:hidden;background:var(--bg);color:var(--fg);font-size:4.6cqw;line-height:1.3;border:1px solid var(--pl)}
+.a{position:absolute}.ctr{text-align:center}.mut{color:var(--mut)}.ac{color:var(--ac)}
+.mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.85em}
+.card{background:var(--card);border:var(--bw,1px) solid var(--bd);border-radius:1em;padding:.9em}
+.chip{display:inline-block;border:var(--bw,1px) solid var(--bd);border-radius:99px;padding:.15em .7em;font-size:.8em;color:var(--mut);background:var(--card)}
+.badge{display:inline-block;background:var(--ac);color:var(--bg);font-weight:800;font-size:.8em;padding:.25em .7em;border-radius:.4em}
+.row{display:flex;align-items:center;gap:.6em;background:var(--card);border:var(--bw,1px) solid var(--bd);border-radius:.7em;padding:.7em .8em;font-weight:700}
+.num{width:1.6em;height:1.6em;border-radius:50%;background:var(--ac);color:var(--bg);display:inline-flex;align-items:center;justify-content:center;font-size:.85em;flex:none}
+.col{display:flex;flex-direction:column;gap:.7em}
+.big{font-size:3.4em;font-weight:900;line-height:1}
+.bar2{height:.7em;border-radius:.4em;background:rgba(127,127,127,.3);overflow:hidden}
+.sx{display:block;height:100%;background:var(--ac);transform-origin:left;transform:scaleX(0)}
+.bb{max-width:80%;padding:.6em .9em;border-radius:1.1em;background:var(--card)}
+.me{background:var(--ac);color:#fff;margin-left:auto}
+.key{display:inline-flex;align-items:center;justify-content:center;font-size:1.9em;font-weight:700;width:1.6em;height:1.6em;background:linear-gradient(#444853,#262930);border-radius:.25em;box-shadow:0 .12em 0 #0a0b0e;color:#fff}
+.add{background:rgba(74,222,128,.18);color:#4ade80}.del{background:rgba(248,113,113,.18);color:#f87171}
+.cp{position:absolute;left:6%;right:6%;bottom:11%;text-align:center;font-weight:800;font-size:1.5em;line-height:1.15}
+.w{display:inline-block;opacity:0}.k{color:var(--hl)}
+.pg{position:absolute;top:.6em;left:.6em;right:.6em;display:flex;gap:.3em;z-index:5}
+.pg i{flex:1;height:.25em;border-radius:9px;background:rgba(127,127,127,.4);overflow:hidden}
+.pg i.dn{background:var(--fg)}
+.pg b{display:block;height:100%;background:var(--fg);transform:scaleX(0);transform-origin:left;animation:fl linear both}
+.type{overflow:hidden;white-space:nowrap;width:0}
+.wipe{clip-path:inset(0 100% 0 0)}
+.st:not(.play) :is(.pop,.slam,.sl){opacity:0}
+.play .pop{animation:pop .5s both;animation-delay:var(--d,0s)}
+.play .sl{animation:sl .5s both;animation-delay:var(--d,0s)}
+.play .slam{animation:sm .35s cubic-bezier(.2,1.4,.4,1) both;animation-delay:var(--d,0s)}
+.play .w{animation:up .35s both}
+.play .type{animation:type .9s steps(20) both;animation-delay:var(--d)}
+.play .sx{animation:fl 1s both;animation-delay:var(--d)}
+.play .wipe{animation:wp .8s ease-out both;animation-delay:var(--d)}
+.paused *{animation-play-state:paused!important}
+@keyframes pop{from{opacity:0;transform:translateY(8px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes sl{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes sm{from{opacity:0;transform:scale(2.4)}to{opacity:1;transform:none}}
+@keyframes up{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes type{to{width:var(--w)}}
+@keyframes fl{to{transform:none}}
+@keyframes wp{to{clip-path:inset(0)}}
+@media (prefers-reduced-motion:reduce){.st *{animation-duration:.01s!important}}
+</style>
+</head>
+<body>
+<h1>Faceless video templates, vol. 2</h1>
+<p class="l">Five full five-scene sequences built from the frame designs in vols. 2 to 4 (chat thread, newspaper, keycaps, error-to-fix, pull request). Two for GitHub repos, one for history stories, two for tech tricks. Pick one, watch it play, click a scene to jump, and copy the voiceover. Highlighted caption words are the ones you stress. All names and numbers are placeholders.</p>
+<div class="tabs" id="tabs"></div>
+<p id="desc"></p>
+<div class="wrap">
+<div><div class="stw"><div class="st" id="st"></div></div>
+<div class="ctl"><button id="pv">⏮</button><button id="pp">⏸</button><button id="nx">⏭</button><button id="cs">Copy script</button></div></div>
+<ol id="ls"></ol>
+</div>
+<script>
+const T=[
+{name:"Chat Reveal (repo)",s:"--bg:#fff;--card:#f0f0f3;--bd:#e3e3e8;--fg:#111;--mut:#777;--ac:#0a84ff;--hl:#0a84ff;font-family:system-ui,sans-serif",desc:"Repo niche. A friend asks, you reveal the repo, they react, you offer the link.",scenes:[
+{n:"The question",d:4,c:"Everyone keeps [asking]",v:"Everyone keeps asking me how I build apps this fast.",g:`<div class="a col" style="left:6%;right:6%;top:9%"><div class="bb pop">how are you building that so fast??</div><div class="bb pop" style="--d:.8s;width:4.5em">• • •</div></div>`},
+{n:"The reveal",d:5,c:"It’s [repo-name]",v:"It’s a free repo called repo-name.",g:`<div class="a col" style="left:6%;right:6%;top:9%"><div class="bb me pop">repo-name. It’s free.</div><div class="card pop" style="--d:.7s"><div class="mono">owner / <b>repo-name</b></div><div class="mut" style="font-size:.85em;margin:.4em 0">Turns a prompt into a working app.</div><span class="chip">MIT</span> <b class="ac">★ 12.4K</b></div></div>`},
+{n:"What it does",d:5,c:"Describe it. [It builds it]",v:"You describe what you want, and it builds it. No code needed.",g:`<div class="a col" style="left:6%;right:6%;top:9%"><div class="bb pop">wait what does it actually do</div><div class="bb me pop" style="--d:.8s">You describe it. It builds it.</div><div class="bb me pop" style="--d:1.6s">Zero code needed.</div></div>`},
+{n:"The reaction",d:4.5,c:"They [lost it]",v:"My friend’s reaction says it all. Twelve thousand people already starred it.",g:`<div class="a col" style="left:6%;right:6%;top:9%"><div class="bb pop">no way 🤯</div><div class="bb pop" style="--d:.7s">sending this to everyone</div></div><div class="a ctr" style="left:10%;right:10%;top:36%"><span class="badge pop" style="--d:1.4s;font-size:1em;padding:.4em 1em">★ 12.4K stars</span></div>`},
+{n:"Call to action",d:4.5,c:"Comment [the word]",v:"Want the link? Comment the word and I’ll send it to you.",g:`<div class="a col" style="left:6%;right:6%;top:9%"><div class="bb pop">ok send me the link</div><div class="bb me pop" style="--d:.7s">Comment “WORD” and it’s yours 📩</div></div>`}]},
+{name:"PR Merge Hype (repo)",s:"--bg:#0d1117;--card:#161b22;--bd:#30363d;--fg:#e6edf3;--mut:#8b949e;--ac:#3fb950;--hl:#3fb950;font-family:system-ui,sans-serif",desc:"Repo niche. Shows a real-looking pull request going from opened to merged to proof of growth.",scenes:[
+{n:"PR opened",d:4.5,c:"Someone just [opened this]",v:"Someone just opened this pull request on a trending repo.",g:`<div class="a card pop" style="left:6%;right:6%;top:9%"><span class="badge" style="background:#8957e5;color:#fff">Open</span><div style="font-weight:800;margin:.5em 0 .2em">Add one-command setup</div><div class="mut mono">#212 · @dev_anna wants to merge 1 commit</div></div>`},
+{n:"Checks",d:5,c:"Every check [passes]",v:"Every single check passes: tests, build, and lint.",g:`<div class="a col" style="left:6%;right:6%;top:9%"><div class="row pop" style="--d:.2s"><span class="ac">✓</span>Tests passed</div><div class="row pop" style="--d:.8s"><span class="ac">✓</span>Build passed</div><div class="row pop" style="--d:1.4s"><span class="ac">✓</span>Lint passed</div></div>`},
+{n:"Merged",d:4.5,c:"Merged in [minutes]",v:"And it’s merged in minutes. This project moves fast.",g:`<div class="a ctr" style="left:6%;right:6%;top:10%"><span class="badge slam" style="background:#8957e5;color:#fff;font-size:1.6em;padding:.4em 1em">⑂ MERGED</span><div class="mut mono pop" style="--d:.8s;margin-top:.8em">+12 −3 · 4 minutes</div></div>`},
+{n:"The growth",d:5,c:"That’s [why] it’s #1",v:"That pace is why it’s the number one trending repo this week.",g:`<div class="a card" style="left:6%;right:6%;top:9%"><div class="mut mono">STARS THIS WEEK</div><div class="big ac" style="margin:.2em 0"><span data-to="12400">0</span></div><div class="bar2"><i class="sx" style="--d:.3s"></i></div></div><div class="a badge pop" style="--d:1.4s;right:6%;top:32%">#1 trending</div>`},
+{n:"Call to action",d:4.5,c:"Follow for [daily repos]",v:"Follow for a new trending repo every single day.",g:`<div class="a ctr" style="left:8%;right:8%;top:12%"><div class="pop" style="font-size:1.9em;font-weight:900;line-height:1.1">New repo<br><span class="ac">every day</span></div><span class="badge pop" style="--d:.7s;margin-top:.9em;padding:.5em 1.2em;border-radius:1em">+ Follow</span></div>`}]},
+{name:"Breaking News (history)",s:"--bg:#efe9d8;--card:#fffdf5;--bd:#1a1a1a;--fg:#1a1a1a;--mut:#6b6048;--ac:#b00020;--hl:#b00020;--bw:2px;font-family:Georgia,'Times New Roman',serif",desc:"History niche. A story told like a front page: headline, dateline, timeline, twist, follow.",scenes:[
+{n:"Headline",d:4.5,c:"The story [nobody] told you",v:"This is the story they never taught you in school.",g:`<div class="a ctr" style="left:6%;right:6%;top:8%"><div class="mut" style="font-size:.75em;letter-spacing:.2em;border-bottom:2px solid var(--fg);padding-bottom:.3em">THE DAILY PAST · EXTRA</div><div class="slam" style="font-size:2.3em;font-weight:900;line-height:1.05;margin-top:.5em">THE MAN WHO VANISHED<br>AT SEA</div></div>`},
+{n:"Dateline",d:5,c:"It starts in [year]",v:"It starts in the year nineteen hundred, on a quiet harbor.",g:`<div class="a card pop" style="left:6%;right:6%;top:9%"><div class="mut" style="font-size:.8em">PLACE NAME · YEAR</div><div style="font-weight:800;font-size:1.3em;margin:.3em 0">A ship leaves port at dawn.</div><div class="mut" style="font-size:.85em">Nobody on the dock knows it won’t return.</div></div>`},
+{n:"Timeline",d:5.5,c:"Then [everything] changes",v:"Within three weeks, the crew is lost, the cargo is gone, and the captain is missing.",g:`<div class="a col" style="left:8%;right:8%;top:9%"><div class="row pop" style="--d:.2s"><span class="num">1</span>Day 1: departs</div><div class="row pop" style="--d:.9s"><span class="num">2</span>Day 9: last signal</div><div class="row pop" style="--d:1.6s"><span class="num" style="background:var(--hl);color:#fff">3</span>Day 21: ship found empty</div></div>`},
+{n:"The twist",d:5,c:"But here’s [the twist]",v:"But here’s the twist: the logbook was still written in the captain’s hand.",g:`<div class="a" style="left:-5%;right:-5%;top:10%;background:var(--hl);color:#fff;font-weight:900;text-align:center;padding:.4em;letter-spacing:.1em;transform:rotate(-4deg)" ><span class="slam" style="display:inline-block">THE TWIST</span></div><div class="a card pop" style="--d:.7s;left:6%;right:6%;top:26%"><div class="mono type" style="--w:100%;--d:1s">Last entry: “All is calm.”</div></div>`},
+{n:"Call to action",d:4.5,c:"Follow for [one story] a day",v:"Follow for a new true story every day.",g:`<div class="a ctr" style="left:8%;right:8%;top:12%"><div class="pop" style="font-size:1.8em;font-weight:900;line-height:1.1">A new true story<br><span class="ac">every day</span></div><span class="badge pop" style="--d:.7s;margin-top:.9em;padding:.5em 1.2em">+ Follow</span></div>`}]},
+{name:"Keycap Shortcut (tech trick)",s:"background:radial-gradient(circle at 50% 25%,#2a2f3d,#0e1015);--card:rgba(255,255,255,.08);--bd:rgba(255,255,255,.2);--fg:#fff;--mut:#aab4c4;--ac:#7cc8ff;--hl:#7cc8ff;--bg:#0e1015;font-family:system-ui,sans-serif",desc:"Tech-trick niche. Teaches one keyboard shortcut: slow way, keys, palette, result, save.",scenes:[
+{n:"The slow way",d:4,c:"You’re doing it [the slow way]",v:"You’re still clicking through menus to do this? Stop.",g:`<div class="a card pop" style="left:7%;right:7%;top:10%"><div class="mut" style="font-size:.8em">FILE › EDIT › VIEW › TOOLS › …</div><div style="font-weight:800;margin-top:.5em">9 clicks</div></div>`},
+{n:"The keys",d:5,c:"Press [this] instead",v:"Press command and K. That’s the whole trick.",g:`<div class="a ctr" style="left:0;right:0;top:12%"><span class="key pop">⌘</span> <span class="ac" style="font-size:1.6em">+</span> <span class="key pop" style="--d:.6s">K</span></div>`},
+{n:"The palette",d:5,c:"Type it. [Run it]",v:"A search box opens. Type what you want, and hit enter.",g:`<div class="a card" style="left:7%;right:7%;top:10%"><div class="mono type" style="--w:100%;--d:.4s">⌘ export as PDF</div><div class="row pop" style="--d:1.6s;margin-top:.6em;border-color:var(--ac)">Export as PDF<span class="chip" style="margin-left:auto">↵</span></div></div>`},
+{n:"The result",d:4.5,c:"9 clicks to [one]",v:"Nine clicks, down to one shortcut.",g:`<div class="a col" style="left:7%;right:7%;top:10%"><div class="card pop"><div class="mut" style="font-size:.8em">BEFORE</div><b>9 clicks</b></div><div class="card wipe" style="--d:.8s;background:var(--ac);color:#0e1015"><div style="font-size:.8em">AFTER</div><b>1 shortcut</b></div></div>`},
+{n:"Call to action",d:4.5,c:"Save this [for later]",v:"Save this for later, and follow for more tech tricks.",g:`<div class="a ctr" style="left:8%;right:8%;top:11%"><div class="pop" style="font-size:3.2em">🔖</div><div class="pop" style="--d:.4s;font-size:1.6em;font-weight:800">Save this for later</div><span class="chip pop" style="--d:.9s">+ follow for more tricks</span></div>`}]},
+{name:"Bug → Fix (tech trick)",s:"--bg:#0c0c12;--card:#171722;--bd:#2a2a3a;--fg:#fff;--mut:#8a8aa0;--ac:#4ade80;--hl:#4ade80;font-family:system-ui,sans-serif",desc:"Tech-trick niche. Shows a scary error, the cause, the one-line fix, and a command worth saving.",scenes:[
+{n:"The error",d:4.5,c:"Seen this [error]?",v:"Seen this error? It ruins everyone’s day.",g:`<div class="a card mono" style="left:6%;right:6%;top:9%;border-color:#f87171"><div class="del slam" style="padding:.3em .6em;font-weight:700">✗ ERROR: module not found</div><div class="mut" style="margin-top:.6em">at index.js:14</div></div>`},
+{n:"The cause",d:5,c:"The [cause] is tiny",v:"The cause is tiny: one wrong path in your config.",g:`<div class="a card mono" style="left:6%;right:6%;top:9%"><div class="mut" style="margin-bottom:.4em">config.json</div><div>"path": <span class="del">"./src/lib"</span></div><div class="mut pop" style="--d:.9s;margin-top:.6em">↑ folder doesn’t exist</div></div>`},
+{n:"The fix",d:5,c:"Change [one line]",v:"Change that one line, and you’re done.",g:`<div class="a card mono" style="left:6%;right:6%;top:9%;padding:.6em 0"><div class="del type" style="--w:100%;--d:.3s;padding:.2em .8em">- "path": "./src/lib"</div><div class="add type" style="--w:100%;--d:1.3s;padding:.2em .8em">+ "path": "./lib"</div></div>`},
+{n:"Success",d:4,c:"Fixed in [ten seconds]",v:"Run it again, and it just works.",g:`<div class="a col" style="left:6%;right:6%;top:9%"><div class="row mono pop" style="border-color:var(--ac);color:var(--ac)">✓ Build succeeded</div><div class="bar2 pop" style="--d:.4s"><i class="sx" style="--d:.5s"></i></div></div>`},
+{n:"Call to action",d:4.5,c:"Copy this [one-liner]",v:"Save this one-liner. You’ll need it again.",g:`<div class="a card mono pop" style="left:6%;right:6%;top:10%"><div class="mut" style="margin-bottom:.4em">terminal</div><div class="ac">$ npm run fix-paths</div></div><div class="a badge pop" style="--d:.8s;right:6%;top:30%">COPY</div>`}]}
+];
+function cap(t){let i=0;return t.replace(/\[([^\]]+)\]|(\S+)/g,(m,a,b)=>(a||b).split(" ").map(w=>`<span class="w${a?" k":""}" style="animation-delay:${(.3+i++*.22).toFixed(2)}s">${w}</span>`).join(" ")+" ")}
+const fmt=(v,s)=>(v>=1000?(v/1000).toFixed(1)+"K":Math.round(v))+(s||"");
+function count(n){const to=+n.dataset.to,sf=n.dataset.sf,t0=performance.now();(function s(t){const p=Math.min(1,(t-t0)/1400);n.textContent=fmt(to*(1-Math.pow(1-p,3)),sf);if(p<1)requestAnimationFrame(s)})(t0)}
+const $=s=>document.querySelector(s),st=$("#st");
+let ti=0,si=0,tm=null,paused=false,t0=0,rem=0;
+function nxt(){load((si+1)%T[ti].scenes.length)}
+function load(i){clearTimeout(tm);si=i;const t=T[ti],sc=t.scenes[i];paused=false;$("#pp").textContent="⏸";
+ st.style.cssText=t.s;st.classList.remove("paused","play");
+ st.innerHTML=`<div class="pg">${t.scenes.map((s,j)=>`<i class="${j<i?"dn":""}">${j==i?`<b style="animation-duration:${s.d}s"></b>`:""}</i>`).join("")}</div>${sc.g}<div class="cp">${cap(sc.c)}</div>`;
+ void st.offsetWidth;st.classList.add("play");st.querySelectorAll("[data-to]").forEach(count);
+ document.querySelectorAll("#ls li").forEach((l,j)=>l.classList.toggle("on",j==i));
+ rem=sc.d*1000;t0=Date.now();tm=setTimeout(nxt,rem)}
+function pick(k){ti=k;const t=T[k];$("#desc").textContent=t.desc;
+ [...$("#tabs").children].forEach((b,j)=>b.classList.toggle("on",j==k));
+ $("#ls").innerHTML=t.scenes.map((s,j)=>`<li data-i="${j}"><b>${j+1}. ${s.n}<span>${s.d}s</span></b><p>${s.v}</p></li>`).join("");load(0)}
+$("#tabs").innerHTML=T.map(t=>`<button>${t.name}</button>`).join("");
+$("#tabs").onclick=e=>{const b=e.target.closest("button");if(b)pick([...$("#tabs").children].indexOf(b))};
+$("#ls").onclick=e=>{const l=e.target.closest("li");if(l)load(+l.dataset.i)};
+$("#pv").onclick=()=>load((si+T[ti].scenes.length-1)%T[ti].scenes.length);
+$("#nx").onclick=nxt;
+$("#pp").onclick=()=>{if(paused){paused=false;st.classList.remove("paused");t0=Date.now();tm=setTimeout(nxt,rem);$("#pp").textContent="⏸"}else{paused=true;rem-=Date.now()-t0;clearTimeout(tm);st.classList.add("paused");$("#pp").textContent="▶"}};
+$("#cs").onclick=()=>{const x=T[ti].scenes.map(s=>s.v).join("\n\n");try{navigator.clipboard.writeText(x);$("#cs").textContent="Copied ✓"}catch(e){$("#cs").textContent="Copy blocked"}setTimeout(()=>$("#cs").textContent="Copy script",1500)};
+pick(0);
+</script>
+</body>
+</html>

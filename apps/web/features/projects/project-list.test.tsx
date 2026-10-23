@@ -33,14 +33,14 @@ describe("project list", () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText("Search projects"), {
+    fireEvent.change(screen.getByLabelText("Search source videos"), {
       target: { value: "Alpha" },
     });
     expect(screen.getByText("Alpha Interview")).toBeTruthy();
     expect(screen.queryByText("Beta Tutorial")).toBeNull();
     expect(screen.getByText("1.5 MB")).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText("Search projects"), {
+    fireEvent.change(screen.getByLabelText("Search source videos"), {
       target: { value: "" },
     });
     fireEvent.click(screen.getByRole("button", { name: "review" }));

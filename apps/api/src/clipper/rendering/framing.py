@@ -128,6 +128,7 @@ def build_video_filter(
     subtitle_filter = "ass" if subtitles.suffix.lower() == ".ass" else "subtitles"
     render_ass = (
         plan.caption_config.enabled
+        or bool(plan.watermark.text.strip())
         or bool(plan.hook and plan.hook.render)
         or bool(plan.cta and plan.cta.render)
         or any(

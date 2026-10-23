@@ -6,6 +6,7 @@ export function ImportLanguage({ disabled }: { disabled: boolean }) {
         <option value="">Auto-detect</option>
         <option value="ur">Urdu (اردو)</option>
         <option value="en">English</option>
+        <option value="ur-en">Urdu and English (mixed)</option>
         <option value="hi">Hindi (हिन्दी)</option>
         <option value="ar">Arabic (العربية)</option>
         <option value="de">German</option>

@@ -538,3 +538,91 @@ def test_meta_publish_refuses_credentials_bound_to_another_destination(
                 WrongCredentials(),
             )
         assert not clip.publications
+
+
+def test_provider_upload_id_survives_failure_and_verified_refresh_recovers_without_upload(
+    make_plan,
+):
+    import pytest
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    service = PublicationService()
+
+    class Publisher(FakePublisher):
+        def publish(self, request, connection):
+            request.on_upload_started("saved-video-id")
+            raise ValueError("Finish connection interrupted")
+
+        def refresh(self, external_id, connection, account_username):
+            assert external_id == "saved-video-id"
+            return PublishedPost(
+                post_url="https://www.facebook.com/reel/saved-video-id", external_id=external_id
+            )
+
+    with Session(engine) as session:
+        clip = add_project_with_clip(session, make_plan)
+        session.add(
+            SocialAccount(
+                id="account-1", platform="facebook", label="Page", connection_status="connected"
+            )
+        )
+        session.commit()
+        request = AutomaticPublicationCreate("account-1", "Title", "Caption")
+        _, queued = service.queue_many(session, clip.id, [request], FakeCredentials())
+        id = queued[0][0]
+        with pytest.raises(ValueError, match="interrupted"):
+            service.publish_queued(session, id, request, Publisher(), FakeCredentials())
+        session.rollback()
+        service.mark_failed(session, id, "Finish connection interrupted")
+        session.expire_all()
+        post = clip.publications[0]
+        assert post.provider_publication_id == "saved-video-id"
+        assert post.status == "uncertain"
+        service.refresh_publication(session, id, {"facebook": Publisher()}, FakeCredentials())
+        session.expire_all()
+        assert post.status == "published"
+        assert post.error is None
+        assert len(clip.publications) == 1
+    engine.dispose()
+
+
+def test_definitive_publishing_permission_rejection_is_failed_and_requires_reconnect(make_plan):
+    import pytest
+
+    from clipper.persistence.models import PublicationDestination
+    from clipper.providers.publishing_http import ProviderPublishingPermissionError
+
+    class Rejected(FakePublisher):
+        def publish(self, request, connection):
+            raise ProviderPublishingPermissionError(
+                "Instagram publishing authorization targets another account"
+            )
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        clip = add_project_with_clip(session, make_plan)
+        account = SocialAccount(
+            id="account-1",
+            platform="instagram",
+            label="Intended account",
+            connection_status="connected",
+        )
+        session.add(account)
+        session.commit()
+        service = PublicationService()
+        request = AutomaticPublicationCreate("account-1", "Title", "Caption")
+        _, queued = service.queue_many(session, clip.id, [request], FakeCredentials())
+        id = queued[0][0]
+        with pytest.raises(ProviderPublishingPermissionError):
+            service.publish_queued(session, id, request, Rejected(), FakeCredentials())
+        session.rollback()
+        service.mark_failed(session, id, "later callback")
+        session.expire_all()
+        post = clip.publications[0]
+        assert post.status == "failed"
+        assert "another account" in post.error
+        assert account.connection_status == "disconnected"
+        assert session.get(PublicationDestination, id) is None
+    engine.dispose()

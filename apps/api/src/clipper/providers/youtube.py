@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
@@ -23,7 +24,8 @@ from clipper.publishing import (
 
 YOUTUBE_UPLOAD_SCOPE = "https://www.googleapis.com/auth/youtube.upload"
 YOUTUBE_READONLY_SCOPE = "https://www.googleapis.com/auth/youtube.readonly"
-YOUTUBE_SCOPES = (YOUTUBE_UPLOAD_SCOPE, YOUTUBE_READONLY_SCOPE)
+YOUTUBE_MANAGE_SCOPE = "https://www.googleapis.com/auth/youtube.force-ssl"
+YOUTUBE_SCOPES = (YOUTUBE_UPLOAD_SCOPE, YOUTUBE_READONLY_SCOPE, YOUTUBE_MANAGE_SCOPE)
 
 
 class YouTubeConfigurationError(OAuthConfigurationError):
@@ -114,6 +116,7 @@ class YouTubeOAuthClient:
         channel_id = str(channel.get("id") or "")
         custom_url = str(snippet.get("customUrl") or "").lstrip("@")
         return OAuthConnection(
+            granted_scopes=tuple(str(payload["scope"]).split()) if payload.get("scope") else None,
             refresh_token=str(refresh_token),
             access_token=str(access_token),
             external_account_id=channel_id,
@@ -123,7 +126,16 @@ class YouTubeOAuthClient:
         )
 
     def access_token(self, connection: OAuthConnection) -> str:
+        return self.refresh_connection(connection).access_token
+
+    def refresh_connection(self, connection: OAuthConnection) -> OAuthConnection:
         self._require_configured()
+        if (
+            connection.access_token
+            and connection.access_token_expires_at is not None
+            and connection.access_token_expires_at > time.time() + 300
+        ):
+            return connection
         try:
             with self._client_session() as client:
                 response = client.post(
@@ -138,10 +150,19 @@ class YouTubeOAuthClient:
                 response.raise_for_status()
         except httpx.HTTPError as error:
             raise YouTubeApiError(_http_error("YouTube authorization failed", error)) from error
-        token = response.json().get("access_token")
+        payload = response.json()
+        token = payload.get("access_token")
         if not token:
             raise YouTubeApiError("Google did not return an access token")
-        return str(token)
+        return replace(
+            connection,
+            granted_scopes=tuple(str(payload["scope"]).split())
+            if payload.get("scope")
+            else connection.granted_scopes,
+            access_token=str(token),
+            refresh_token=str(payload.get("refresh_token") or connection.refresh_token),
+            access_token_expires_at=time.time() + float(payload.get("expires_in") or 3600),
+        )
 
     @contextmanager
     def _client_session(self) -> Iterator[httpx.Client]:
@@ -168,6 +189,9 @@ class YouTubePublishingAdapter:
     ) -> None:
         self._oauth = oauth
         self._client = client
+
+    def refresh_connection(self, connection: OAuthConnection) -> OAuthConnection:
+        return self._oauth.refresh_connection(connection)
 
     def publish(self, request: PublishRequest, connection: OAuthConnection) -> PublishedPost:
         if request.privacy_status not in {"public", "unlisted", "private"}:
@@ -229,6 +253,80 @@ class YouTubePublishingAdapter:
             external_id=str(video_id),
             status="processing",
         )
+
+    def update_post(
+        self,
+        external_id: str | None,
+        post_url: str | None,
+        title: str,
+        description: str,
+        connection: OAuthConnection,
+    ) -> None:
+        video_id = external_id or _video_id_from_url(post_url)
+        if not video_id:
+            raise YouTubeApiError("This post has no recognizable YouTube video ID")
+        headers = {"Authorization": f"Bearer {self._oauth.access_token(connection)}"}
+        try:
+            with self._client_session() as client:
+                current = client.get(
+                    "https://www.googleapis.com/youtube/v3/videos",
+                    params={"part": "snippet", "id": video_id},
+                    headers=headers,
+                )
+                current.raise_for_status()
+                items = current.json().get("items", [])
+                if not items:
+                    raise YouTubeApiError("YouTube could not find this video")
+                snippet = {
+                    key: value
+                    for key, value in items[0]["snippet"].items()
+                    if key
+                    in {
+                        "title",
+                        "description",
+                        "categoryId",
+                        "tags",
+                        "defaultLanguage",
+                        "defaultAudioLanguage",
+                    }
+                }
+                snippet.update(title=title, description=description)
+                response = client.put(
+                    "https://www.googleapis.com/youtube/v3/videos",
+                    params={"part": "snippet"},
+                    headers=headers,
+                    json={"id": video_id, "snippet": snippet},
+                )
+                response.raise_for_status()
+                if response.json().get("id") != video_id:
+                    raise YouTubeApiError("YouTube did not confirm the existing video's update")
+        except httpx.HTTPError as error:
+            raise YouTubeApiError(
+                _http_error(
+                    "YouTube update failed; reconnect for post-management permission", error
+                )
+            ) from error
+
+    def delete_post(
+        self, external_id: str | None, post_url: str | None, connection: OAuthConnection
+    ) -> None:
+        video_id = external_id or _video_id_from_url(post_url)
+        if not video_id:
+            raise YouTubeApiError("This post has no recognizable YouTube video ID")
+        try:
+            with self._client_session() as client:
+                response = client.delete(
+                    "https://www.googleapis.com/youtube/v3/videos",
+                    params={"id": video_id},
+                    headers={"Authorization": f"Bearer {self._oauth.access_token(connection)}"},
+                )
+                response.raise_for_status()
+        except httpx.HTTPError as error:
+            raise YouTubeApiError(
+                _http_error(
+                    "YouTube deletion failed; reconnect for post-management permission", error
+                )
+            ) from error
 
     def metrics(
         self,
@@ -302,6 +400,24 @@ class YouTubePublishingAdapter:
 
 def _http_error(prefix: str, error: httpx.HTTPError) -> str:
     if isinstance(error, httpx.HTTPStatusError):
+        try:
+            reasons = {
+                str(item.get("reason", ""))
+                for item in error.response.json().get("error", {}).get("errors", [])
+            }
+        except (ValueError, AttributeError, TypeError):
+            reasons = set()
+        if "uploadLimitExceeded" in reasons:
+            return (
+                f"{prefix}: uploadLimitExceeded — this YouTube channel has an upload restriction. "
+                "Pause uploads and check YouTube Studio. This is separate from Google Cloud API "
+                "quota. YouTube did not supply a reset time; retry manually after it clears."
+            )
+        if reasons & {"quotaExceeded", "dailyLimitExceeded"}:
+            return (
+                f"{prefix}: quotaExceeded — Google Cloud API quota exhausted. "
+                "Check the project's quota dashboard before retrying."
+            )
         return f"{prefix}: {error.response.text[:500]}"
     return f"{prefix}: {error}"
 

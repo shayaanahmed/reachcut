@@ -112,6 +112,10 @@ def test_project_routes_support_create_read_update_and_delete(
             assert updated.status_code == 200
             assert updated.json()["title"] == "Renamed project"
 
+            rejected = client.put(f"/api/projects/{project_id}", json={"title": " \t\n "})
+            assert rejected.status_code == 422
+            assert client.get(f"/api/projects/{project_id}").json()["title"] == "Renamed project"
+
             assert created.json()["status"] == "queued"
             assert created.json()["job"]["status"] == "queued"
             assert client.delete(f"/api/projects/{project_id}").status_code == 409
@@ -140,6 +144,26 @@ def test_project_routes_support_create_read_update_and_delete(
             assert client.get(f"/api/projects/{imported_id}").json()["status"] == "queued"
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.mark.parametrize("title", [" ", "\t\n", "\u2003"])
+def test_blank_source_titles_are_rejected_before_upload_or_url_import(title: str) -> None:
+    with TestClient(app) as client:
+        uploaded = client.post(
+            "/api/projects/upload",
+            data={"title": title, "authorization_confirmed": "true"},
+            files={"media": ("fixture.mp4", b"invalid media", "video/mp4")},
+        )
+        imported = client.post(
+            "/api/projects/import-url",
+            json={
+                "title": title,
+                "url": "https://youtube.com/watch?v=abc",
+                "authorization_confirmed": True,
+            },
+        )
+    assert uploaded.status_code == 422
+    assert imported.status_code == 422
 
 
 def test_delete_clip_removes_its_record_publications_and_owned_artifacts(

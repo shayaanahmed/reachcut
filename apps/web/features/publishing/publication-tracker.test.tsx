@@ -1,8 +1,16 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Project, SocialAccount } from "../../lib/contracts";
 import { PublicationTracker } from "./publication-tracker";
+
+afterEach(cleanup);
 
 const clip = {
   id: "clip-1",
@@ -28,6 +36,7 @@ const clip = {
       visual_interest: 88,
     },
     rationale: "A complete idea.",
+    suggested_description: null,
     suggested_title: "A useful idea",
     hashtags: ["#Clip"],
     hook: null,
@@ -58,6 +67,13 @@ const clip = {
     transition_duration_seconds: 0.2,
     secondary_media: [],
     audio_track_index: 0,
+    original_audio_volume: 1,
+    watermark: {
+      text: "",
+      position: "bottom_right",
+      opacity: 0.7,
+      font_size: 32,
+    },
     thumbnail: {
       template: "speaker",
       headline: null,
@@ -395,4 +411,119 @@ it("shows the saved provider failure and publication attempt ID", () => {
     "Check the account connection and try publishing again",
   );
   view.unmount();
+});
+
+it("does not substitute another channel when a preset destination is unavailable", () => {
+  const view = render(
+    <PublicationTracker
+      clip={clip}
+      accounts={[account]}
+      preferredAccountIds={["unavailable-channel"]}
+      isPending={() => false}
+      onPublish={vi.fn()}
+      onRecordMetrics={vi.fn()}
+      onRefreshPublication={vi.fn()}
+      onSyncMetrics={vi.fn()}
+      onDeletePublication={vi.fn()}
+    />,
+  );
+  expect(
+    within(view.container)
+      .getByRole("button", { name: /Main YouTube/ })
+      .getAttribute("aria-pressed"),
+  ).toBe("false");
+  view.unmount();
+});
+
+it.each([
+  "A local AI demo",
+  "A local AI demo #LocalAI",
+  "A local AI demo #localai.",
+])("publishes reviewed growth copy without duplicating tags: %s", (caption) => {
+  const publish = vi.fn();
+  render(
+    <PublicationTracker
+      clip={clip}
+      accounts={[account]}
+      growthCopy={[
+        {
+          platform: "youtube",
+          title: "Run AI locally",
+          caption,
+          cover_text: "Local AI",
+          hashtags: ["#LocalAI"],
+        },
+      ]}
+      isPending={() => false}
+      onPublish={publish}
+      onRecordMetrics={vi.fn()}
+      onRefreshPublication={vi.fn()}
+      onSyncMetrics={vi.fn()}
+      onDeletePublication={vi.fn()}
+    />,
+  );
+  expect(
+    (screen.getByLabelText("Suggested title") as HTMLInputElement).disabled,
+  ).toBe(true);
+  expect(screen.getByLabelText("Reviewed platform copy").textContent).toContain(
+    "Run AI locally",
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: /Publish to YouTube Shorts/ }),
+  );
+  expect(publish).toHaveBeenCalledWith("clip-1", [
+    {
+      social_account_id: "account-1",
+      title: "Run AI locally",
+      description: caption.includes("#")
+        ? caption
+        : "A local AI demo\n\n#LocalAI",
+      privacy_status: "public",
+    },
+  ]);
+});
+
+it("offers status recovery for an uncertain upload with a saved remote ID without publishing again", () => {
+  const refresh = vi.fn();
+  const publish = vi.fn();
+  render(
+    <PublicationTracker
+      clip={{
+        ...clip,
+        publications: [
+          {
+            id: "uncertain-facebook",
+            platform: "facebook",
+            status: "uncertain",
+            post_url: null,
+            title: "Uploaded clip",
+            description: "Caption",
+            published_at: null,
+            created_at: "2026-10-23T10:00:00Z",
+            social_account_id: "account-1",
+            account_label: "Page",
+            account_username: "page",
+            provider_publication_id: "saved-video",
+            metric_snapshots: [],
+            error: "Facebook status temporarily unavailable",
+          },
+        ],
+      }}
+      accounts={[account]}
+      isPending={() => false}
+      onPublish={publish}
+      onRecordMetrics={vi.fn()}
+      onRefreshPublication={refresh}
+      onSyncMetrics={vi.fn()}
+      onDeletePublication={vi.fn()}
+    />,
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Check existing upload status" }),
+  );
+  expect(refresh).toHaveBeenCalledWith("uncertain-facebook");
+  expect(publish).not.toHaveBeenCalled();
+  expect(screen.getByRole("alert").textContent).toContain(
+    "temporarily unavailable",
+  );
 });

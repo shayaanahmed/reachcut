@@ -1,0 +1,374 @@
+[
+  {
+    "id": "builtin-electric",
+    "name": "Electric Signal",
+    "hook_template": "Your next idea starts with {subject}.",
+    "pacing": "Oversized impact type, acid-green accents and dark tactile technology textures. Open on a specific surprising possibility. One bold idea per shot.",
+    "caption_style": "bold",
+    "beats": [
+      {
+        "heading": "The hook",
+        "visual": "diagram",
+        "direction": "Open with an everyday desire or frustration."
+      },
+      {
+        "heading": "What it does",
+        "visual": "diagram",
+        "direction": "Explain the actual purpose in plain language."
+      },
+      {
+        "heading": "Why it helps",
+        "visual": "diagram",
+        "direction": "Use a familiar real-world example; label imagined uses."
+      },
+      {
+        "heading": "How it works",
+        "visual": "diagram",
+        "direction": "Explain the input, process and result without jargon."
+      },
+      {
+        "heading": "The possibility",
+        "visual": "diagram",
+        "direction": "Show an achievable result and important prerequisites."
+      },
+      {
+        "heading": "Try it",
+        "visual": "diagram",
+        "direction": "Give a realistic next step."
+      }
+    ],
+    "reference_ids": [],
+    "basis": "starter",
+    "layout": "kinetic",
+    "design": {
+      "background": "#10120F",
+      "accent": "#D6FF3F",
+      "foreground": "#FFFFFF",
+      "font": "Anton",
+      "weight": 800,
+      "uppercase": true,
+      "background_prompt": "Oversized impact type, acid-green accents and dark tactile technology textures. Open on a specific surprising possibility. One bold idea per shot. Portrait editorial still life, tactile materials and sculptural shapes, a focal object in the lower middle, clean space in the upper third, no text, no logos, no interface.",
+      "background_asset_id": "builtin-electric",
+      "visual_direction": "Oversized impact type, acid-green accents and dark tactile technology textures. Open on a specific surprising possibility. One bold idea per shot.",
+      "font_reason": "Chosen to match this visual treatment.",
+      "niche_reason": "",
+      "suitable_for": [
+        "discoveries",
+        "tools",
+        "quick tips"
+      ],
+      "reuse_background": true,
+      "preview_scenes": []
+    }
+  },
+  {
+    "id": "builtin-paper",
+    "name": "The Sunday Edit",
+    "hook_template": "A new possibility with {subject}.",
+    "pacing": "Warm editorial storytelling with cream paper, red annotations and elegant serif headlines. A familiar human situation, a thoughtful reveal, a practical takeaway.",
+    "caption_style": "minimal",
+    "beats": [
+      {
+        "heading": "The hook",
+        "visual": "diagram",
+        "direction": "Open with an everyday desire or frustration."
+      },
+      {
+        "heading": "What it does",
+        "visual": "diagram",
+        "direction": "Explain the actual purpose in plain language."
+      },
+      {
+        "heading": "Why it helps",
+        "visual": "diagram",
+        "direction": "Use a familiar real-world example; label imagined uses."
+      },
+      {
+        "heading": "How it works",
+        "visual": "diagram",
+        "direction": "Explain the input, process and result without jargon."
+      },
+      {
+        "heading": "The possibility",
+        "visual": "diagram",
+        "direction": "Show an achievable result and important prerequisites."
+      },
+      {
+        "heading": "Try it",
+        "visual": "diagram",
+        "direction": "Give a realistic next step."
+      }
+    ],
+    "reference_ids": [],
+    "basis": "starter",
+    "layout": "editorial",
+    "design": {
+      "background": "#F6F0E4",
+      "accent": "#C6432D",
+      "foreground": "#251C18",
+      "font": "Fraunces",
+      "weight": 800,
+      "uppercase": false,
+      "background_prompt": "Warm editorial storytelling with cream paper, red annotations and elegant serif headlines. A familiar human situation, a thoughtful reveal, a practical takeaway. Portrait editorial still life, tactile materials and sculptural shapes, a focal object in the lower middle, clean space in the upper third, no text, no logos, no interface.",
+      "background_asset_id": "builtin-paper",
+      "visual_direction": "Warm editorial storytelling with cream paper, red annotations and elegant serif headlines. A familiar human situation, a thoughtful reveal, a practical takeaway.",
+      "font_reason": "Chosen to match this visual treatment.",
+      "niche_reason": "",
+      "suitable_for": [
+        "stories",
+        "culture",
+        "education"
+      ],
+      "reuse_background": true,
+      "preview_scenes": []
+    }
+  },
+  {
+    "id": "builtin-blueprint",
+    "name": "Open Blueprint",
+    "hook_template": "Here is how {subject} works.",
+    "pacing": "Cobalt layers and floating diagram cards. Make a complex idea approachable through input, action and outcome. Keep the language human and concrete.",
+    "caption_style": "bold",
+    "beats": [
+      {
+        "heading": "The hook",
+        "visual": "diagram",
+        "direction": "Open with an everyday desire or frustration."
+      },
+      {
+        "heading": "What it does",
+        "visual": "diagram",
+        "direction": "Explain the actual purpose in plain language."
+      },
+      {
+        "heading": "Why it helps",
+        "visual": "diagram",
+        "direction": "Use a familiar real-world example; label imagined uses."
+      },
+      {
+        "heading": "How it works",
+        "visual": "diagram",
+        "direction": "Explain the input, process and result without jargon."
+      },
+      {
+        "heading": "The possibility",
+        "visual": "diagram",
+        "direction": "Show an achievable result and important prerequisites."
+      },
+      {
+        "heading": "Try it",
+        "visual": "diagram",
+        "direction": "Give a realistic next step."
+      }
+    ],
+    "reference_ids": [],
+    "basis": "starter",
+    "layout": "cards",
+    "design": {
+      "background": "#0B1F45",
+      "accent": "#FFAE5B",
+      "foreground": "#F3F6FF",
+      "font": "Space Grotesk",
+      "weight": 800,
+      "uppercase": false,
+      "background_prompt": "Cobalt layers and floating diagram cards. Make a complex idea approachable through input, action and outcome. Keep the language human and concrete. Portrait editorial still life, tactile materials and sculptural shapes, a focal object in the lower middle, clean space in the upper third, no text, no logos, no interface.",
+      "background_asset_id": "builtin-blueprint",
+      "visual_direction": "Cobalt layers and floating diagram cards. Make a complex idea approachable through input, action and outcome. Keep the language human and concrete.",
+      "font_reason": "Chosen to match this visual treatment.",
+      "niche_reason": "",
+      "suitable_for": [
+        "explainers",
+        "how it works",
+        "tutorials"
+      ],
+      "reuse_background": true,
+      "preview_scenes": []
+    }
+  },
+  {
+    "id": "builtin-mint",
+    "name": "A Little Better",
+    "hook_template": "Make everyday life better with {subject}.",
+    "pacing": "Calm mint studio imagery, spacious rounded forms and friendly confident typography. Lead with an achievable everyday improvement, then show the simple first step.",
+    "caption_style": "minimal",
+    "beats": [
+      {
+        "heading": "The hook",
+        "visual": "diagram",
+        "direction": "Open with an everyday desire or frustration."
+      },
+      {
+        "heading": "What it does",
+        "visual": "diagram",
+        "direction": "Explain the actual purpose in plain language."
+      },
+      {
+        "heading": "Why it helps",
+        "visual": "diagram",
+        "direction": "Use a familiar real-world example; label imagined uses."
+      },
+      {
+        "heading": "How it works",
+        "visual": "diagram",
+        "direction": "Explain the input, process and result without jargon."
+      },
+      {
+        "heading": "The possibility",
+        "visual": "diagram",
+        "direction": "Show an achievable result and important prerequisites."
+      },
+      {
+        "heading": "Try it",
+        "visual": "diagram",
+        "direction": "Give a realistic next step."
+      }
+    ],
+    "reference_ids": [],
+    "basis": "starter",
+    "layout": "spotlight",
+    "design": {
+      "background": "#E6F3E9",
+      "accent": "#27614A",
+      "foreground": "#102D23",
+      "font": "Bricolage Grotesque",
+      "weight": 800,
+      "uppercase": false,
+      "background_prompt": "Calm mint studio imagery, spacious rounded forms and friendly confident typography. Lead with an achievable everyday improvement, then show the simple first step. Portrait editorial still life, tactile materials and sculptural shapes, a focal object in the lower middle, clean space in the upper third, no text, no logos, no interface.",
+      "background_asset_id": "builtin-mint",
+      "visual_direction": "Calm mint studio imagery, spacious rounded forms and friendly confident typography. Lead with an achievable everyday improvement, then show the simple first step.",
+      "font_reason": "Chosen to match this visual treatment.",
+      "niche_reason": "",
+      "suitable_for": [
+        "everyday ideas",
+        "lifestyle",
+        "practical advice"
+      ],
+      "reuse_background": true,
+      "preview_scenes": []
+    }
+  },
+  {
+    "id": "builtin-coral",
+    "name": "Plot Twist",
+    "hook_template": "Wait. You can do that with {subject}?",
+    "pacing": "Unexpected coral and violet, a headline-to-image split and playful expressive type. Build curiosity, reveal the useful twist early, then explain the real possibility.",
+    "caption_style": "bold",
+    "beats": [
+      {
+        "heading": "The hook",
+        "visual": "diagram",
+        "direction": "Open with an everyday desire or frustration."
+      },
+      {
+        "heading": "What it does",
+        "visual": "diagram",
+        "direction": "Explain the actual purpose in plain language."
+      },
+      {
+        "heading": "Why it helps",
+        "visual": "diagram",
+        "direction": "Use a familiar real-world example; label imagined uses."
+      },
+      {
+        "heading": "How it works",
+        "visual": "diagram",
+        "direction": "Explain the input, process and result without jargon."
+      },
+      {
+        "heading": "The possibility",
+        "visual": "diagram",
+        "direction": "Show an achievable result and important prerequisites."
+      },
+      {
+        "heading": "Try it",
+        "visual": "diagram",
+        "direction": "Give a realistic next step."
+      }
+    ],
+    "reference_ids": [],
+    "basis": "starter",
+    "layout": "split",
+    "design": {
+      "background": "#25132F",
+      "accent": "#FF886E",
+      "foreground": "#FFF4EC",
+      "font": "Syne",
+      "weight": 800,
+      "uppercase": false,
+      "background_prompt": "Unexpected coral and violet, a headline-to-image split and playful expressive type. Build curiosity, reveal the useful twist early, then explain the real possibility. Portrait editorial still life, tactile materials and sculptural shapes, a focal object in the lower middle, clean space in the upper third, no text, no logos, no interface.",
+      "background_asset_id": "builtin-coral",
+      "visual_direction": "Unexpected coral and violet, a headline-to-image split and playful expressive type. Build curiosity, reveal the useful twist early, then explain the real possibility.",
+      "font_reason": "Chosen to match this visual treatment.",
+      "niche_reason": "",
+      "suitable_for": [
+        "surprising facts",
+        "creative ideas",
+        "myth versus reality"
+      ],
+      "reuse_background": true,
+      "preview_scenes": []
+    }
+  },
+  {
+    "id": "builtin-midnight",
+    "name": "After Hours",
+    "hook_template": "Take a closer look at {subject}.",
+    "pacing": "Immersive full-bleed cinematic imagery, violet light and concise confident headlines. Show an intriguing result first, then explain its purpose and how to begin.",
+    "caption_style": "bold",
+    "beats": [
+      {
+        "heading": "The hook",
+        "visual": "diagram",
+        "direction": "Open with an everyday desire or frustration."
+      },
+      {
+        "heading": "What it does",
+        "visual": "diagram",
+        "direction": "Explain the actual purpose in plain language."
+      },
+      {
+        "heading": "Why it helps",
+        "visual": "diagram",
+        "direction": "Use a familiar real-world example; label imagined uses."
+      },
+      {
+        "heading": "How it works",
+        "visual": "diagram",
+        "direction": "Explain the input, process and result without jargon."
+      },
+      {
+        "heading": "The possibility",
+        "visual": "diagram",
+        "direction": "Show an achievable result and important prerequisites."
+      },
+      {
+        "heading": "Try it",
+        "visual": "diagram",
+        "direction": "Give a realistic next step."
+      }
+    ],
+    "reference_ids": [],
+    "basis": "starter",
+    "layout": "poster",
+    "design": {
+      "background": "#17132A",
+      "accent": "#C4ADFF",
+      "foreground": "#FFFFFF",
+      "font": "Bricolage Grotesque",
+      "weight": 800,
+      "uppercase": false,
+      "background_prompt": "Immersive full-bleed cinematic imagery, violet light and concise confident headlines. Show an intriguing result first, then explain its purpose and how to begin. Portrait editorial still life, tactile materials and sculptural shapes, a focal object in the lower middle, clean space in the upper third, no text, no logos, no interface.",
+      "background_asset_id": "builtin-midnight",
+      "visual_direction": "Immersive full-bleed cinematic imagery, violet light and concise confident headlines. Show an intriguing result first, then explain its purpose and how to begin.",
+      "font_reason": "Chosen to match this visual treatment.",
+      "niche_reason": "",
+      "suitable_for": [
+        "showcases",
+        "inspiration",
+        "result-first stories"
+      ],
+      "reuse_background": true,
+      "preview_scenes": []
+    }
+  }
+]

@@ -151,7 +151,10 @@ class OllamaEditorialProvider:
 
     @property
     def identity(self) -> str:
-        return f"ollama:{self.model}:{self.CONTRACT_VERSION}"
+        configuration = hashlib.sha256(f"{self.base_url}|{self.generation!r}".encode()).hexdigest()[
+            :16
+        ]
+        return f"ollama:{self.model}:{self.CONTRACT_VERSION}:{configuration}"
 
     def select_candidates(
         self,

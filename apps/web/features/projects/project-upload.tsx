@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import type { Project } from "../../lib/contracts";
+import { ChannelPresetPicker } from "../informative/preset-picker";
 import { ImportLanguage } from "./import-language";
 import type { UrlImportRequest } from "./api";
 
@@ -16,7 +17,7 @@ const URL_STEPS = [
     detail: "Download the video in the background",
   },
   {
-    title: "Prepare the project",
+    title: "Prepare the source video",
     detail: "Verify the file and save it locally",
   },
   {
@@ -48,6 +49,9 @@ export function ProjectUpload({
     setImportState("working");
     const created = await onImportUrl({
       title: String(data.get("title")),
+      ...(data.get("preset_id")
+        ? { preset_id: String(data.get("preset_id")) }
+        : {}),
       url: String(data.get("url")),
       authorization_confirmed: data.get("authorization_confirmed") === "true",
       ...(data.get("language")
@@ -67,7 +71,7 @@ export function ProjectUpload({
       <div className="panel-heading">
         <div>
           <span className="eyebrow">SOURCE MEDIA</span>
-          <h2 id="new-project">Start a new project</h2>
+          <h2 id="new-project">Clip a video</h2>
         </div>
         <div className="source-tabs" role="tablist" aria-label="Source type">
           <button
@@ -140,7 +144,7 @@ export function ProjectUpload({
               </span>
             </label>
             <label>
-              Project name
+              Source video name
               <input
                 name="title"
                 value={title}
@@ -150,10 +154,11 @@ export function ProjectUpload({
                 placeholder="Founder interview — August"
               />
             </label>
+            <ChannelPresetPicker disabled={busy} />
             <ImportLanguage disabled={busy} />
             <Authorization disabled={busy} />
             <button className="primary-button import-action" disabled={busy}>
-              {busy ? "Creating your workspace…" : "Create project"}
+              {busy ? "Creating your workspace…" : "Clip a video"}
               <span aria-hidden="true">→</span>
             </button>
           </form>
@@ -210,7 +215,7 @@ export function ProjectUpload({
               </div>
             )}
             <label>
-              Project name
+              Source video name
               <input
                 name="title"
                 value={title}
@@ -221,6 +226,7 @@ export function ProjectUpload({
                 placeholder="Product launch cutdowns"
               />
             </label>
+            <ChannelPresetPicker disabled={busy} />
             <ImportLanguage disabled={busy} />
             <Authorization disabled={busy} />
             <button className="primary-button import-action" disabled={busy}>
@@ -299,18 +305,18 @@ function ImportJourney({
         <span className="eyebrow">WHAT HAPPENS NEXT</span>
         <strong>
           {state === "ready"
-            ? "Project queued"
+            ? "Source video queued"
             : state === "failed"
               ? "Import needs attention"
               : state === "working"
-                ? "Creating your project"
+                ? "Adding your source video"
                 : "A guided local import"}
         </strong>
         <p>
           {state === "failed"
             ? error ||
               "The source could not be imported. Check the link and try again."
-            : "Downloads and analysis run in the background. You can add another project right away."}
+            : "Downloads and analysis run in the background. You can add another source video right away."}
         </p>
       </div>
       <div className="journey-progress" aria-hidden="true">

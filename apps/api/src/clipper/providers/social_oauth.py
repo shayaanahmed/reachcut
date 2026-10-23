@@ -49,6 +49,27 @@ class _OAuthHttpClient:
         return OAuthProviderError(f"{platform} authorization failed: {error}")
 
     @staticmethod
+    def long_lived_meta_token(
+        client: httpx.Client, base: str, config: OAuthAppConfig, token: str
+    ) -> str:
+        response = client.get(
+            f"{base}/oauth/access_token",
+            params={
+                "grant_type": "fb_exchange_token",
+                "client_id": config.client_id,
+                "client_secret": config.client_secret,
+                "fb_exchange_token": token,
+            },
+        )
+        response.raise_for_status()
+        extended = response.json().get("access_token")
+        if not extended:
+            raise OAuthProviderError(
+                "Meta did not return long-lived credentials; reconnect the account"
+            )
+        return str(extended)
+
+    @staticmethod
     def meta_permission_statuses(
         client: httpx.Client,
         base_url: str,
@@ -244,6 +265,9 @@ class InstagramOAuthClient(_OAuthHttpClient):
                 user_token = token_response.json().get("access_token")
                 if not user_token:
                     raise OAuthProviderError("Meta did not return an access token")
+                user_token = self.long_lived_meta_token(
+                    client, self._base, self._config, str(user_token)
+                )
                 accounts_response = client.get(
                     f"{self._base}/me/accounts",
                     params={
@@ -256,12 +280,9 @@ class InstagramOAuthClient(_OAuthHttpClient):
                 )
                 accounts_response.raise_for_status()
                 pages = self.meta_pages(client, self._base, str(user_token), accounts_response)
-                if pages == []:
-                    permission_statuses = self.meta_permission_statuses(
-                        client,
-                        self._base,
-                        str(user_token),
-                    )
+                permission_statuses = self.meta_permission_statuses(
+                    client, self._base, str(user_token)
+                )
         except httpx.HTTPError as error:
             raise self.provider_error("Meta", error) from error
         connections: dict[str, OAuthConnection] = {}
@@ -277,7 +298,19 @@ class InstagramOAuthClient(_OAuthHttpClient):
                 connections.setdefault(
                     external_id,
                     OAuthConnection(
-                        access_token=str(user_token),
+                        access_token=str(page["access_token"]),
+                        management_access_token=str(user_token)
+                        if (permission_statuses or {}).get("instagram_manage_contents") == "granted"
+                        else "",
+                        granted_scopes=tuple(
+                            sorted(
+                                permission
+                                for permission, status in permission_statuses.items()
+                                if status == "granted"
+                            )
+                        )
+                        if permission_statuses is not None
+                        else None,
                         external_account_id=external_id,
                         display_name=str(instagram.get("name") or username or "Instagram account"),
                         username=username,
@@ -412,6 +445,9 @@ class FacebookOAuthClient(_OAuthHttpClient):
                 user_token = token_response.json().get("access_token")
                 if not user_token:
                     raise OAuthProviderError("Meta did not return an access token")
+                user_token = self.long_lived_meta_token(
+                    client, self._base, self._config, str(user_token)
+                )
                 accounts_response = client.get(
                     f"{self._base}/me/accounts",
                     params={

@@ -2,7 +2,11 @@
 
 ReachCut is a local-first application for turning media you are authorized to repurpose into reviewable vertical clips. The core pipeline uses local models and local FFmpeg processes. Official API adapters can upload approved clips to YouTube, TikTok, Instagram Reels, Facebook Reels, and X without opening each platform's upload interface.
 
-The current vertical slice provides secure local upload and allowlisted URL import through `yt-dlp`, media probing, durable stage state, provider-based `faster-whisper` transcription, configurable Ollama editorial selection, and schema-validated views- and revenue-oriented editing plans. Transcript signals suggest useful clip directions such as funny moments, advice, stories, insights, and educational sections. The Creative Studio adds auto-curated source slices, content modes, OpenCV face/action tracking, caption presets and translation, hook/CTA/card overlays, transitions, zoom/progress effects, gameplay split-screen, B-roll, reaction PIP, SFX, music, and alternate source-audio selection. Deterministic FFmpeg rendering produces review previews and final 9:16 exports. Clips require human approval unless the user explicitly creates an automation pipeline that opts into approval, rendering, and publishing.
+**Clip a video** and **Create a short** are the primary workflows. **Source videos** retains existing project routes; **Created videos** stores generated shorts and informative videos. The cinematic generator and old story library are available under **Labs → AI scenes**. See [the release workflow, setup, recovery and migration guide](docs/informative-release.md) and [verification status and remaining acceptance blockers](docs/release-verification.md).
+
+**Create a short** has two paths: paste a public GitHub repo URL, or let Ollama suggest tech tricks from official guides. Choose a storyline and a visual frame sequence, review the scenes, then create the video. **Frame library** contains the 24 supplied animated designs from volumes 2 and 3, with seven themes for volume 2. VoiceBox narration can be added later; editing and publishing use the existing clip workflow. See [short studio setup](docs/guided-creation.md).
+
+The clipping workflow provides secure local upload and allowlisted URL import through `yt-dlp`, media probing, durable stage state, provider-based `faster-whisper` transcription, configurable Ollama editorial selection, and schema-validated views- and revenue-oriented editing plans. Transcript signals suggest useful clip directions such as funny moments, advice, stories, insights, and educational sections. The Creative Studio adds auto-curated source slices, content modes, OpenCV face/action tracking, caption presets and translation, hook/CTA/card overlays, transitions, zoom/progress effects, gameplay split-screen, B-roll, reaction PIP, SFX, music, and alternate source-audio selection. Deterministic FFmpeg rendering produces review previews and final 9:16 exports. Clips require human approval unless the user explicitly creates an automation pipeline that opts into approval, rendering, and publishing.
 
 For Urdu and other non-English media, select the spoken language when importing the source or before manually requesting analysis. The default `large-v3-turbo` Whisper model substantially improves multilingual recognition, while ASS/libass captions preserve Unicode/RTL shaping. Caption position, font, size, colors, highlighted words, line length, and pop/karaoke animation can be reviewed and changed on each generated clip.
 
@@ -34,7 +38,7 @@ docker compose --profile setup run --rm whisper-model-init
 docker compose -f compose.yaml -f compose.ollama.yaml up --build -d
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The first command explicitly downloads the configured editorial model into a persistent Docker volume. Whisper downloads its configured model on the first transcription and caches it in a separate volume. Application projects and exports persist in `clipper-data`.
+Open [http://localhost:3000](http://localhost:3000). The first command explicitly downloads the configured editorial model into a persistent Docker volume. Whisper uses installed cached models; run the explicit Whisper setup command before transcription. Application projects and exports persist in `clipper-data`.
 
 The API image includes the locked `yt-dlp` package. For native development, `CLIPPER_YT_DLP_REPOSITORY=../yt-dlp` runs the sibling checkout directly; clear that setting to use the installed package. URL import accepts HTTPS links from `CLIPPER_YT_DLP_ALLOWED_HOSTS` and always requires rights confirmation.
 
@@ -71,14 +75,14 @@ on API startup using saved stage artifacts. The queue table is created automatic
 in the existing database; no additional queue service is required. Keep the API
 running for processing and scheduled publishing to continue.
 
-
 Use **Publishing** in the sidebar to approve selected or all generated clips, render
 approved selections, and publish finished exports to accounts, platforms, or social
 account groups. Create groups such as Religious, Art, and Tech under **Accounts**;
 rename them, change their members, or delete them without disconnecting accounts or
 removing published history. An account may belong to several groups. Bulk publishing
 shows its exact destinations and skips unapproved clips, missing exports, disconnected
-accounts, and posts already queued or published to the same account. Failed attempts
+accounts, and uploads already in progress. Supported existing posts receive updated
+pipeline copy; unsupported edits link to the original platform post. Failed attempts
 can be retried; concurrent duplicate requests cannot reserve the same clip/account.
 
 **Insights** provides cumulative views charts, group/platform/account filters,
@@ -87,7 +91,96 @@ snapshot per post; currencies remain separate. Automatic refresh skips unavailab
 accounts and isolates each provider failure, while saved metrics remain visible.
 Expired or revoked credentials require reconnecting the original account in Accounts.
 Metrics unavailable through the current provider adapters can still be entered on a
-clip's publishing page. Chart period controls the chart; summary cards show latest
+clip's publishing page. **Automatic growth** runs in the background while the API
+is running. It infers an audience, language, topic focus and search query, chooses
+an opening, and prepares copy for each platform from the clip and saved account
+results. Before a final export exists, it applies the opening overlay and cover
+headline and regenerates the preview. Finished videos keep their existing edit.
+Publishing automations wait for preparation before rendering; queued uploads wait
+before sending. Platform-specific copy applies automatically. Advanced audience,
+evidence and copy controls remain available as explicit manual overrides.
+When speech is absent, the pipeline reads sampled source frames with the configured
+visual review model before generating copy. Filenames and earlier generated copy
+are not factual evidence. Automatic audience guesses stay with their clip; they
+do not become global account preferences. Only measured performance crosses clip
+boundaries, and explicit audience preferences cannot supply unrelated subject matter.
+If neither speech nor source frames can establish a subject, optimization stops with
+an actionable error instead of guessing. Overlong generated cover headlines are
+shortened to the display limit while the saved domain contract remains strict.
+
+Both project pipeline modes (**Generate clips** and **Publishing details only**) now
+include **Optimize audience, SEO & growth** after copy generation. The stage shows
+progress and errors; retry the project after fixing the model or Ollama connection.
+Growth requests use a 180-second timeout per inference. Metadata-only runs
+retain clip IDs, source edits, exports and publication records. Turning off automatic
+growth in Settings skips inference. Manual refresh remains available in the brief.
+
+Each **Source video** offers four workflows: **Generate clips**, **Prepare full
+video**, **Refresh publishing details**, and **Create language version**. New clips,
+full-video masters and language versions have independent project/clip IDs and
+exports. Metadata refreshes update selected existing clips (no selection means all),
+preserving edits and live posts. Run history links to each output and supports
+retry without creating another output.
+
+Language versions support translated publishing copy, spoken subtitles, and
+replacement narration supplied as an audio upload. Choose one clip for narration;
+audio must be no longer than its video and at most two seconds shorter. Generated
+dubbing and translation of text already baked into frames are not provided. Media
+changes need review and rendering before publication. Translation uses the model
+selected for translation in Settings.
+
+The publisher and social-post editor use the same latest draft, including relevant
+hashtags recovered from metadata generation if a growth package omitted them.
+Previously published copy remains visible separately. Missing YouTube management
+permissions show a reconnect action before updating; manual draft edits survive a
+connection recheck. Mixed platform selections process supported destinations and
+report each unsupported or failed destination without creating duplicate posts.
+
+**Insights** groups destinations by project/clip identity, with combined latest
+views and platform summaries. Expand one clip to compare accounts. Search and paging
+limit long lists; extra business metrics and sync warnings are collapsible.
+
+**Publishing → Manage social posts** groups existing posts by clip and provides
+capability-aware controls, latest pipeline copy, operation errors and before/after
+history. Republishing a selected account updates its latest existing published post:
+YouTube supports title/description updates; Facebook supports caption updates.
+YouTube connections created before management support may need **Reconnect** to grant
+`youtube.force-ssl`. Instagram, TikTok and X caption edits are unavailable in this
+integration; open the original platform post. Deletion is implemented for YouTube,
+Facebook, Instagram and X, subject to platform ownership
+and permissions. Instagram deletion also requires `instagram_manage_contents` and
+Facebook User authorization, separate from the Page token used for publishing.
+Add the optional permission to the Meta Facebook Login for Business configuration
+and reconnect. Until these grants are verified, deletion is disabled with setup
+guidance; publishing stays available. TikTok deletion must be performed on TikTok. A successful remote
+delete retains local history and metrics. **Remove local record** never deletes a
+platform post; **Cancel queued upload** only cancels before an upload starts.
+**Publish as a separate new post** explicitly creates a new identity while retaining
+the original. No video replacement is performed by a metadata update.
+
+Account sync and post-management failures persist in **Accounts**, so reconnect
+instructions remain visible after leaving Insights. Successful metric sync clears
+resolved sync warnings.
+
+**Settings → General → Models by task** selects separate installed Ollama models
+for clip selection, source analysis, scripting, growth, metadata, translation,
+visual review and illustration generation. Transcription has its own Whisper
+selector, and narration keeps its existing voice settings. Fast, Balanced and
+Quality presets choose from installed models without downloading anything. Empty
+text task overrides inherit the main LLM; visual review inherits the thumbnail
+vision model; illustration generation inherits the content series model.
+
+**Growth & experiments** is a separate page linked from Insights. It compares results with earlier posts on the
+same account at a similar age. Five earlier posts are required for a baseline.
+Supported account counters refresh every 30 minutes even without an open web page.
+Changed observations inform subsequent drafts; identical refreshes do not trigger
+another inference. Missing retention or search metrics remain unknown. Optional
+manual observations include reach, sends, average watch time, retention at three
+seconds, completion and search views. Saved briefs are frozen with submitted
+publications so later edits do not rewrite the learning history. Preparation
+survives restarts, backs off after errors and stops after three failed attempts
+until explicitly retried. AI-inferred queries are hypotheses, not measured search
+volumes or promises of reach. Chart period controls the chart; summary cards show latest
 lifetime totals for the selected destinations.
 
 For Facebook and Instagram logins with multiple destinations, ReachCut lists the
@@ -138,13 +231,13 @@ For the default local setup, the web application is at `http://127.0.0.1:3000` a
 the API is at `http://127.0.0.1:8000`. OAuth callbacks go to the API, not the web
 application.
 
-| Platform  | Registered callback                                      | Required `.env` values                                                                       |
-| --------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| YouTube   | `http://127.0.0.1:8000/api/oauth/youtube/callback`       | `CLIPPER_YOUTUBE_CLIENT_ID`, `CLIPPER_YOUTUBE_CLIENT_SECRET`, `CLIPPER_YOUTUBE_REDIRECT_URI` |
-| TikTok    | `http://127.0.0.1:8000/api/oauth/tiktok/callback`        | `CLIPPER_TIKTOK_CLIENT_KEY`, `CLIPPER_TIKTOK_CLIENT_SECRET`, `CLIPPER_TIKTOK_REDIRECT_URI`   |
-| Instagram | `http://localhost:8000/api/oauth/instagram/callback`       | `CLIPPER_INSTAGRAM_APP_ID`, `CLIPPER_INSTAGRAM_APP_SECRET`, `CLIPPER_INSTAGRAM_LOGIN_CONFIG_ID`, `CLIPPER_INSTAGRAM_REDIRECT_URI` |
-| Facebook  | `http://localhost:8000/api/oauth/facebook/callback`      | `CLIPPER_FACEBOOK_APP_ID`, `CLIPPER_FACEBOOK_APP_SECRET`, `CLIPPER_FACEBOOK_LOGIN_CONFIG_ID`, `CLIPPER_FACEBOOK_REDIRECT_URI`   |
-| X         | `http://127.0.0.1:8000/api/oauth/x/callback`             | `CLIPPER_X_CLIENT_ID`, `CLIPPER_X_CLIENT_SECRET`, `CLIPPER_X_REDIRECT_URI`                   |
+| Platform  | Registered callback                                  | Required `.env` values                                                                                                            |
+| --------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| YouTube   | `http://127.0.0.1:8000/api/oauth/youtube/callback`   | `CLIPPER_YOUTUBE_CLIENT_ID`, `CLIPPER_YOUTUBE_CLIENT_SECRET`, `CLIPPER_YOUTUBE_REDIRECT_URI`                                      |
+| TikTok    | `http://127.0.0.1:8000/api/oauth/tiktok/callback`    | `CLIPPER_TIKTOK_CLIENT_KEY`, `CLIPPER_TIKTOK_CLIENT_SECRET`, `CLIPPER_TIKTOK_REDIRECT_URI`                                        |
+| Instagram | `http://localhost:8000/api/oauth/instagram/callback` | `CLIPPER_INSTAGRAM_APP_ID`, `CLIPPER_INSTAGRAM_APP_SECRET`, `CLIPPER_INSTAGRAM_LOGIN_CONFIG_ID`, `CLIPPER_INSTAGRAM_REDIRECT_URI` |
+| Facebook  | `http://localhost:8000/api/oauth/facebook/callback`  | `CLIPPER_FACEBOOK_APP_ID`, `CLIPPER_FACEBOOK_APP_SECRET`, `CLIPPER_FACEBOOK_LOGIN_CONFIG_ID`, `CLIPPER_FACEBOOK_REDIRECT_URI`     |
+| X         | `http://127.0.0.1:8000/api/oauth/x/callback`         | `CLIPPER_X_CLIENT_ID`, `CLIPPER_X_CLIENT_SECRET`, `CLIPPER_X_REDIRECT_URI`                                                        |
 
 Instagram and Facebook both use Meta/Facebook Login with Page permissions, but may
 use separate Meta apps and therefore keep separate credentials. Instagram resolves
@@ -159,12 +252,12 @@ authorization nor media delivery requires a public ReachCut endpoint.
 
 Every publishing adapter sends media through an outbound upload from the local API:
 
-| Platform  | Local media transport                                      |
-| --------- | ---------------------------------------------------------- |
-| YouTube   | Google resumable upload session                            |
+| Platform  | Local media transport                                       |
+| --------- | ----------------------------------------------------------- |
+| YouTube   | Google resumable upload session                             |
 | TikTok    | Content Posting API `FILE_UPLOAD` chunks                    |
 | Instagram | Meta resumable container followed by `rupload.facebook.com` |
-| Facebook  | Facebook Reels binary upload session                       |
+| Facebook  | Facebook Reels binary upload session                        |
 | X         | X Media API initialize/append/finalize chunks               |
 
 No provider receives a localhost media URL or needs to make an inbound request to
@@ -241,6 +334,13 @@ and [web-server OAuth](https://developers.google.com/youtube/v3/guides/auth/serv
 Testing users can connect without completing public verification, subject to Google's
 testing restrictions and refresh-token lifetime. A public external app may require
 brand and sensitive-scope verification before arbitrary Google accounts can connect.
+For lasting YouTube connections, set the Google OAuth app audience to **In production**
+and reconnect once. Google expires refresh tokens after seven days for external apps in
+Testing. ReachCut renews access tokens automatically and persists rotated credentials
+before uploads, status checks, or insights requests. Revoked authorization still needs
+reconnection. Meta connections exchange the login token for a long-lived token before
+obtaining Page credentials for Facebook and Instagram; reconnect older accounts once
+to replace their short-lived credentials.
 
 ### TikTok
 

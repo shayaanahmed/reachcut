@@ -13,6 +13,14 @@ class ProviderApiError(RuntimeError):
     pass
 
 
+class ProviderUploadRejected(ProviderApiError):
+    """The provider operation failed before a live post could have been created."""
+
+
+class ProviderPublishingPermissionError(ProviderUploadRejected):
+    """The selected account requires new publishing authorization."""
+
+
 class ProviderAuthenticationError(ProviderApiError):
     pass
 

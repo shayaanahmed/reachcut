@@ -10,6 +10,13 @@ class TranscriptionLanguage:
 def language_settings(code: str | None) -> TranscriptionLanguage:
     """Return language-specific transcription hints in one owned module."""
 
+    if code in {"ur-en", "mixed"}:
+        return TranscriptionLanguage(
+            code=None,
+            initial_prompt=(
+                "Urdu and English conversation. Preserve Urdu script and English technical terms."
+            ),
+        )
     if code == "ur":
         return TranscriptionLanguage(
             code="ur",

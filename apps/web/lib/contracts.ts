@@ -71,6 +71,7 @@ const editingPlan = z.object({
   }),
   rationale: z.string(),
   suggested_title: z.string().nullable().default(null),
+  suggested_description: z.string().nullable().default(null),
   thumbnail: z
     .object({
       template: z
@@ -178,6 +179,7 @@ const editingPlan = z.object({
           "reaction",
           "sound_effect",
           "music",
+          "voiceover",
         ]),
         start_seconds: z.number().nullable().default(null),
         end_seconds: z.number().nullable().default(null),
@@ -191,6 +193,22 @@ const editingPlan = z.object({
     )
     .default([]),
   audio_track_index: z.number().default(0),
+  original_audio_volume: z.number().min(0).max(1).default(1),
+  watermark: z
+    .object({
+      text: z.string().max(80).default(""),
+      position: z
+        .enum(["top_left", "top_right", "bottom_left", "bottom_right"])
+        .default("bottom_right"),
+      opacity: z.number().min(0.1).max(1).default(0.7),
+      font_size: z.number().min(18).max(72).default(32),
+    })
+    .default({
+      text: "",
+      position: "bottom_right",
+      opacity: 0.7,
+      font_size: 32,
+    }),
   emphasis: z.array(z.unknown()),
   effects: z.array(effect),
   cta: timeRange
@@ -219,6 +237,12 @@ const metricSnapshot = z.object({
   comments: z.number(),
   shares: z.number(),
   watch_time_seconds: z.number().nullable(),
+  reach: z.number().nullable().optional(),
+  sends: z.number().nullable().optional(),
+  average_watch_seconds: z.number().nullable().optional(),
+  opening_retention_percent: z.number().nullable().optional(),
+  completion_rate_percent: z.number().nullable().optional(),
+  search_views: z.number().nullable().optional(),
   followers_gained: z.number(),
   affiliate_clicks: z.number(),
   conversions: z.number(),
@@ -230,7 +254,16 @@ const publication = z.object({
   error: z.string().nullable().optional(),
   id: z.string(),
   platform: socialPlatformSchema,
-  status: z.enum(["ready", "queued", "processing", "published", "failed"]),
+  status: z.enum([
+    "ready",
+    "queued",
+    "processing",
+    "published",
+    "failed",
+    "deferred",
+    "uncertain",
+    "deleted",
+  ]),
   post_url: z.string().nullable(),
   title: z.string(),
   description: z.string(),
@@ -256,6 +289,7 @@ export const socialAccountSchema = z.object({
   default_campaign_url: z.string().nullable(),
   currency: z.string(),
   connection_status: z.string(),
+  health_issue: z.string().nullable().optional(),
   is_default: z.boolean(),
   is_active: z.boolean(),
   created_at: z.string(),
@@ -297,6 +331,9 @@ export const projectSchema = z.object({
     .object({
       status: z.string(),
       phase: z.string(),
+      processing_mode: z
+        .enum(["clips", "metadata", "language"])
+        .default("clips"),
       source_url: z.string().nullable(),
       error: z.string().nullable(),
       enqueued_at: z.string(),
@@ -317,6 +354,8 @@ export const projectSchema = z.object({
       status: z.string(),
       progress: z.number(),
       attempts: z.number(),
+      started_at: z.string().nullable().optional(),
+      finished_at: z.string().nullable().optional(),
       error: z.record(z.string(), z.unknown()).nullable(),
     }),
   ),
@@ -350,6 +389,23 @@ export const runtimeSettingsSchema = z.object({
   ollama_base_url: z.string(),
   editorial_model: z.string(),
   thumbnail_model: z.string(),
+  task_models: z
+    .partialRecord(
+      z.enum([
+        "clip_selection",
+        "metadata",
+        "growth",
+        "research",
+        "scripting",
+        "translation",
+        "visual_review",
+        "image_generation",
+      ]),
+      z.string(),
+    )
+    .default({}),
+  transcription_model: z.string().default("large-v3-turbo"),
+  automatic_growth: z.boolean().default(true),
 });
 
 export const automationPipelineSchema = z.object({

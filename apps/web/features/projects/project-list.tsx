@@ -138,7 +138,7 @@ export function ProjectList({
         <span className="empty-icon" aria-hidden="true">
           ＋
         </span>
-        <h3>No projects yet</h3>
+        <h3>No source videos yet</h3>
         <p>Import a video to begin finding and editing standout moments.</p>
         <Link className="primary-link" href="/projects/new">
           Create your first project
@@ -156,8 +156,8 @@ export function ProjectList({
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search projects"
-              aria-label="Search projects"
+              placeholder="Search source videos"
+              aria-label="Search source videos"
             />
           </label>
           <div className="project-filters" aria-label="Filter projects">

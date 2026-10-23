@@ -10,8 +10,12 @@ export function projectPhase(project: Project): string {
   if (project.status === "cancelled") return "Paused";
   if (project.status === "failed") return "Needs attention";
   if (project.status === "review") return "Ready for review";
+  if (project.status === "complete") return "Ready for publishing";
   const stage = project.stages.find((item) => item.status === "running");
   const labels: Record<string, string> = {
+    localize: "Preparing language version",
+    generate_metadata: "Writing publishing details",
+    optimize_growth: project.job?.phase ?? "Optimizing audience, SEO & growth",
     probe: "Preparing media",
     analyze_visuals: "Analyzing visuals",
     transcribe: "Transcribing",
@@ -57,8 +61,8 @@ export function ProjectQueue({
       <div className="queue-panel-heading">
         <div>
           <span className="eyebrow">BACKGROUND WORK</span>
-          <h2 id="project-queue-title">Project queue</h2>
-          <p>One project at a time. Your next project starts automatically.</p>
+          <h2 id="project-queue-title">Processing queue</h2>
+          <p>One source video at a time. The next starts automatically.</p>
         </div>
         <div className="queue-counts">
           <span>

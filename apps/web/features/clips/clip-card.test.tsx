@@ -28,6 +28,7 @@ const clip = {
       visual_interest: 88,
     },
     rationale: "A clear, self-contained idea.",
+    suggested_description: null,
     suggested_title: "The Detail Everyone Missed",
     hashtags: ["#UsefulTips", "#MustWatch", "#VideoClip"],
     hook: null,
@@ -58,6 +59,13 @@ const clip = {
     transition_duration_seconds: 0.2,
     secondary_media: [],
     audio_track_index: 0,
+    original_audio_volume: 1,
+    watermark: {
+      text: "",
+      position: "bottom_right",
+      opacity: 0.7,
+      font_size: 32,
+    },
     thumbnail: {
       template: "speaker",
       headline: null,

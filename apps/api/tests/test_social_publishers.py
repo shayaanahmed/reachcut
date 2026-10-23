@@ -221,9 +221,13 @@ def test_instagram_metrics_explains_missing_insights_permission() -> None:
         )
 
 
-def test_facebook_local_reel_upload_finishes_and_builds_url(media: Path) -> None:
+def test_facebook_local_reel_upload_preserves_id_and_waits_for_publication(media: Path) -> None:
+    started = []
+
     def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST", "No immediate permalink GET after finish"
         if request.url.host == "rupload.facebook.com":
+            assert started == ["video-1"]
             assert request.content == b"rendered-video"
             assert request.headers["content-type"] == "application/octet-stream"
             assert request.headers["content-length"] == str(len(b"rendered-video"))
@@ -242,11 +246,13 @@ def test_facebook_local_reel_upload_finishes_and_builds_url(media: Path) -> None
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
     result = FacebookPublishingAdapter("v26.0", client=client).publish(
-        PublishRequest(media, "Title", "Caption"),
+        PublishRequest(media, "Title", "Caption", on_upload_started=started.append),
         OAuthConnection(access_token="test-access-value", external_account_id="page-1"),  # noqa: S106
     )
 
-    assert result.post_url == "https://www.facebook.com/reel/video-1"
+    assert result.post_url is None
+    assert result.external_id == "video-1"
+    assert result.status == "processing"
 
 
 def test_facebook_metrics_reads_reel_counts_and_can_resolve_id_from_url() -> None:
@@ -526,3 +532,200 @@ def test_instagram_does_not_reencode_unrelated_upload_failures(
             PublishRequest(media, "Title", "Caption"),
             OAuthConnection(access_token="test-value", external_account_id="ig-1"),  # noqa: S106
         )
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        (
+            {"video_status": "processing", "publishing_phase": {"status": "not_started"}},
+            "processing",
+        ),
+        ({"video_status": "ready", "publishing_phase": {"status": "not_started"}}, "processing"),
+        (
+            {
+                "video_status": "ready",
+                "publishing_phase": {"status": "complete", "publish_status": "published"},
+            },
+            "published",
+        ),
+        ({"video_status": "error", "processing_phase": {"status": "error"}}, "failed"),
+    ],
+)
+def test_facebook_refresh_checks_real_publication_status(status, expected):
+    def handler(request):
+        assert request.method == "GET"
+        assert request.url.params["fields"] == "status"
+        return httpx.Response(200, json={"id": "video-1", "status": status})
+
+    adapter = FacebookPublishingAdapter(
+        "v26.0", client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    result = adapter.refresh(
+        "video-1",
+        OAuthConnection(access_token="test-token", external_account_id="page-1"),  # noqa: S106
+        "",
+    )
+    assert result.status == expected
+    assert bool(result.post_url) == (expected == "published")
+    assert bool(result.error) == (expected == "failed")
+
+
+def test_facebook_temporarily_unreadable_video_never_claims_it_is_published():
+    adapter = FacebookPublishingAdapter(
+        "v26.0",
+        client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(
+                    400, json={"error": {"code": 100, "error_subcode": 33}}
+                )
+            )
+        ),
+    )
+    with pytest.raises(ProviderApiError, match="existing upload ID is saved"):
+        adapter.refresh(
+            "video-1",
+            OAuthConnection(access_token="test-token", external_account_id="page-1"),  # noqa: S106
+            "",
+        )
+
+
+def test_instagram_delete_requires_management_permission_and_uses_user_authorization():
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        assert request.method == "DELETE"
+        assert request.headers["Authorization"] == "Bearer synthetic-user-authorization"
+        assert "synthetic-page-authorization" not in str(request.url)
+        return httpx.Response(200, json={"success": True})
+
+    adapter = InstagramPublishingAdapter(
+        "v26.0", client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    connection = OAuthConnection(
+        access_token="synthetic-page-authorization",  # noqa: S106
+        external_account_id="instagram-1",
+    )
+    with pytest.raises(ProviderApiError, match="instagram_manage_contents"):
+        adapter.delete_post("media-1", None, connection)
+    assert not calls
+    from dataclasses import replace
+
+    authorized = replace(
+        connection,
+        granted_scopes=("instagram_manage_contents",),
+        management_access_token="synthetic-user-authorization",  # noqa: S106
+    )
+    adapter.delete_post("media-1", None, authorized)
+    assert len(calls) == 1
+
+
+def test_instagram_unsupported_delete_keeps_failure_actionable():
+    adapter = InstagramPublishingAdapter(
+        "v26.0",
+        client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(
+                    400, json={"error": {"code": 100, "error_subcode": 33}}
+                )
+            )
+        ),
+    )
+    connection = OAuthConnection(
+        management_access_token="synthetic-user-authorization",  # noqa: S106
+        granted_scopes=("instagram_manage_contents",),
+    )
+    with pytest.raises(ProviderApiError, match="Deletion was not confirmed"):
+        adapter.delete_post("media-1", None, connection)
+
+
+def test_instagram_permission_rejection_before_container_is_definite_failure(media):
+    from clipper.providers.publishing_http import ProviderPublishingPermissionError
+
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(
+            400,
+            json={
+                "error": {
+                    "code": 10,
+                    "message": "Application does not have permission for this action",
+                }
+            },
+        )
+
+    adapter = InstagramPublishingAdapter(
+        "v26.0", client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    with pytest.raises(ProviderPublishingPermissionError, match="creating the upload container"):
+        adapter.publish(
+            PublishRequest(media, "Title", "Caption"),
+            OAuthConnection(access_token="test-value", external_account_id="ig-1"),  # noqa: S106
+        )
+    assert len(calls) == 1
+    assert calls[0].url.path.endswith("/ig-1/media")
+
+
+@pytest.mark.parametrize("linked_id", [None, "another-instagram-account"])
+def test_instagram_page_link_preflight_rejects_missing_or_wrong_account_without_any_write(
+    media, linked_id
+):
+    from clipper.providers.publishing_http import ProviderPublishingPermissionError
+
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        assert request.method == "GET"
+        return httpx.Response(
+            200, json={"instagram_business_account": {"id": linked_id} if linked_id else None}
+        )
+
+    adapter = InstagramPublishingAdapter(
+        "v26.0", client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    with pytest.raises(ProviderPublishingPermissionError, match="does not match"):
+        adapter.publish(
+            PublishRequest(media, "Title", "Caption"),
+            OAuthConnection(
+                access_token="test-value",  # noqa: S106
+                external_account_id="expected-instagram",
+                parent_page_id="page-1",
+            ),
+        )
+    assert len(calls) == 1
+
+
+def test_instagram_published_id_survives_temporary_permalink_failure(media):
+    ids = []
+    writes = []
+
+    def handler(request):
+        if request.method == "POST":
+            writes.append(request.url.path)
+        if request.url.path.endswith("/media"):
+            return httpx.Response(
+                200, json={"id": "container", "uri": "https://rupload.facebook.com/container"}
+            )
+        if request.url.host == "rupload.facebook.com":
+            return httpx.Response(200)
+        if request.url.path.endswith("/container"):
+            return httpx.Response(200, json={"status_code": "FINISHED"})
+        if request.url.path.endswith("/media_publish"):
+            return httpx.Response(200, json={"id": "live-media"})
+        assert ids == ["live-media"]
+        return httpx.Response(400, json={"error": {"code": 100, "error_subcode": 33}})
+
+    adapter = InstagramPublishingAdapter(
+        "v26.0", client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    result = adapter.publish(
+        PublishRequest(media, "Title", "Caption", on_upload_started=ids.append),
+        OAuthConnection(access_token="test-value", external_account_id="ig-1"),  # noqa: S106
+    )
+    assert result.status == "processing" and result.external_id == "live-media"
+    assert ids == ["live-media"]
+    assert sum(path.endswith("media_publish") for path in writes) == 1

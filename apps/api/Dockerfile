@@ -29,6 +29,10 @@ WORKDIR /app
 COPY --from=build --chown=clipper:clipper /app/.venv ./.venv
 COPY --from=build --chown=clipper:clipper /app/src ./src
 
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+RUN python -m playwright install --with-deps chromium \
+    && chmod -R a+rX /opt/playwright
+
 USER 10001:10001
 EXPOSE 8000
 VOLUME ["/data", "/models/huggingface"]

@@ -143,7 +143,6 @@ def queue_project_publications(
             # One damaged connection must not block all other destinations.
             continue
     for clip in clips:
-        requests: list[AutomaticPublicationCreate] = []
         for account in accounts:
             reason = None
             if clip.approval_status != "approved":
@@ -154,7 +153,7 @@ def queue_project_publications(
                 reason = "Reconnect this account in Settings → Accounts"
             elif any(
                 p.social_account_id == account.id
-                and p.status in {"queued", "processing", "published"}
+                and p.status in {"queued", "processing", "published", "uncertain", "deferred"}
                 for p in clip.publications
             ):
                 reason = "Already queued or published to this account"
@@ -172,7 +171,7 @@ def queue_project_publications(
             description = "\n\n".join(
                 value
                 for value in [
-                    title,
+                    str(clip.plan.get("suggested_description") or title),
                     " ".join(tags),
                     account.default_cta,
                     account.default_campaign_url,
@@ -181,13 +180,23 @@ def queue_project_publications(
             )
             if account.platform == "x":
                 description = description[:280]
-            requests.append(
-                AutomaticPublicationCreate(
-                    social_account_id=account.id, title=title, description=description[:5000]
+            try:
+                _, additions = service.queue_many(
+                    session,
+                    clip.id,
+                    [
+                        AutomaticPublicationCreate(
+                            social_account_id=account.id,
+                            title=title,
+                            description=description[:5000],
+                        )
+                    ],
+                    credentials,
+                    commit=False,
                 )
-            )
-        if requests:
-            _, additions = service.queue_many(session, clip.id, requests, credentials, commit=False)
-            queued.extend(additions)
+            except (CredentialStoreError, PublicationNotFoundError, PublicationStateError) as error:
+                skipped.append(BulkPublishSkip(clip.id, account.id, str(error)))
+            else:
+                queued.extend(additions)
     session.commit()
     return queued, skipped

@@ -44,7 +44,13 @@ function progressFor(video: GeneratedVideo) {
   );
 }
 
-export function StoryLibrary() {
+export function StoryLibrary({
+  title = "AI scenes library",
+  description = "Manage every AI-directed film, render, and final master.",
+}: {
+  title?: string;
+  description?: string;
+}) {
   const [videos, setVideos] = useState<GeneratedVideo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -189,17 +195,17 @@ export function StoryLibrary() {
       <div className="topbar">
         <div>
           <span className="eyebrow">STORY STUDIO LIBRARY</span>
-          <h1>Story projects</h1>
-          <p>Manage every AI-directed film, render, and final master.</p>
+          <h1>{title}</h1>
+          <p>{description}</p>
         </div>
         <Link className="primary-link" href="/generate">
-          ＋ Create story video
+          ＋ Create AI scenes video
         </Link>
       </div>
 
       <section
         className="story-library-stats"
-        aria-label="Story project summary"
+        aria-label="AI scene video summary"
       >
         <article>
           <span>Total stories</span>

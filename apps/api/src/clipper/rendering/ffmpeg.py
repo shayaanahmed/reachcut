@@ -25,6 +25,7 @@ def build_ffmpeg_command(
     *,
     preview: bool,
     asset_paths: Mapping[str, Path] | None = None,
+    source_has_audio: bool = True,
 ) -> FfmpegCommand:
     """Build a shell-free FFmpeg command without running a process."""
 
@@ -43,7 +44,9 @@ def build_ffmpeg_command(
         audio_sources = "".join(f"[source_a{index}]" for index in range(len(slices)))
         source_audio = f"0:a:{plan.audio_track_index}"
         video_parts = [f"[0:v]split={len(slices)}{video_sources};"]
-        audio_parts = [f"[{source_audio}]asplit={len(slices)}{audio_sources};"]
+        audio_parts = (
+            [f"[{source_audio}]asplit={len(slices)}{audio_sources};"] if source_has_audio else []
+        )
         for index, source_slice in enumerate(slices):
             slice_duration = source_slice.end_seconds - source_slice.start_seconds
             video_transition = ""
@@ -62,18 +65,19 @@ def build_ffmpeg_command(
                 f"end={source_slice.end_seconds:.3f},setpts=PTS-STARTPTS"
                 f"{video_transition}[cut_v{index}];"
             )
-            audio_parts.append(
-                f"[source_a{index}]atrim=start={source_slice.start_seconds:.3f}:"
-                f"end={source_slice.end_seconds:.3f},asetpts=PTS-STARTPTS"
-                f"{audio_transition}[cut_a{index}];"
-            )
+            if source_has_audio:
+                audio_parts.append(
+                    f"[source_a{index}]atrim=start={source_slice.start_seconds:.3f}:"
+                    f"end={source_slice.end_seconds:.3f},asetpts=PTS-STARTPTS"
+                    f"{audio_transition}[cut_a{index}];"
+                )
         cut_v = "".join(f"[cut_v{index}]" for index in range(len(slices)))
         cut_a = "".join(f"[cut_a{index}]" for index in range(len(slices)))
         timeline_filter = (
             "".join(video_parts)
             + f"{cut_v}concat=n={len(slices)}:v=1:a=0[timeline_v];"
             + "".join(audio_parts)
-            + f"{cut_a}concat=n={len(slices)}:v=0:a=1[timeline_a];"
+            + (f"{cut_a}concat=n={len(slices)}:v=0:a=1[timeline_a];" if source_has_audio else "")
         )
         video_input = "timeline_v"
         audio_map = "[timeline_a]"
@@ -97,12 +101,20 @@ def build_ffmpeg_command(
     audio_assets = [
         item
         for item in referenced_assets
-        if item.kind in {SecondaryMediaKind.SOUND_EFFECT, SecondaryMediaKind.MUSIC}
+        if item.kind
+        in {SecondaryMediaKind.SOUND_EFFECT, SecondaryMediaKind.MUSIC, SecondaryMediaKind.VOICEOVER}
         and not item.muted
     ]
-    if audio_assets:
-        base_audio = "timeline_a" if multi_slice else f"0:a:{plan.audio_track_index}"
-        audio_labels = [f"[{base_audio}]"]
+    if audio_assets or not source_has_audio or plan.original_audio_volume != 1:
+        if source_has_audio:
+            base_audio = "timeline_a" if multi_slice else f"0:a:{plan.audio_track_index}"
+            video_filter += (
+                f";[{base_audio}]volume={plan.original_audio_volume:.3f},"
+                f"apad,atrim=duration={duration:.3f}[base_audio]"
+            )
+        else:
+            video_filter += f";anullsrc=r=48000:cl=stereo,atrim=duration={duration:.3f}[base_audio]"
+        audio_labels = ["[base_audio]"]
         audio_filters: list[str] = []
         for index, item in enumerate(audio_assets):
             input_index = input_indexes[item.asset_id]
@@ -118,11 +130,16 @@ def build_ffmpeg_command(
                 f"volume={item.volume_db:.1f}dB,adelay={delay}|{delay}[{label}]"
             )
             audio_labels.append(f"[{label}]")
-        video_filter += ";" + ";".join(audio_filters)
-        video_filter += (
-            ";" + "".join(audio_labels) + f"amix=inputs={len(audio_labels)}:duration=first[a]"
-        )
-        audio_map = "[a]"
+        if audio_assets:
+            video_filter += ";" + ";".join(audio_filters)
+            video_filter += (
+                ";"
+                + "".join(audio_labels)
+                + f"amix=inputs={len(audio_labels)}:duration=first:normalize=0[a]"
+            )
+            audio_map = "[a]"
+        else:
+            audio_map = "[base_audio]"
     elif not multi_slice:
         audio_map = f"0:a:{plan.audio_track_index}?"
     arguments = (
@@ -144,6 +161,8 @@ def build_ffmpeg_command(
         audio_map,
         "-c:v",
         "libx264",
+        "-bf",
+        "0",
         "-pix_fmt",
         "yuv420p",
         "-profile:v",

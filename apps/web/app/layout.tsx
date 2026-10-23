@@ -28,19 +28,34 @@ export default function RootLayout({
                 <span aria-hidden="true">⌂</span> Dashboard
               </Link>
               <Link href="/projects">
-                <span aria-hidden="true">▤</span> Projects
+                <span aria-hidden="true">▤</span> Source videos
               </Link>
               <Link href="/publishing">
                 <span aria-hidden="true">↗</span> Publishing
               </Link>
+              <Link href="/publishing/posts">
+                <span aria-hidden="true">☷</span> Social posts
+              </Link>
+              <Link href="/studio">
+                <span aria-hidden="true">✂</span> Studio
+              </Link>
               <Link href="/insights">
                 <span aria-hidden="true">▥</span> Insights
               </Link>
-              <Link href="/stories">
-                <span aria-hidden="true">◫</span> Story projects
+              <Link href="/growth">
+                <span aria-hidden="true">✦</span> Growth
               </Link>
-              <Link href="/generate">
-                <span aria-hidden="true">✦</span> Create story
+              <Link href="/created">
+                <span aria-hidden="true">◫</span> Created videos
+              </Link>
+              <Link href="/create">
+                <span aria-hidden="true">✦</span> Create a short
+              </Link>
+              <Link href="/projects/new">
+                <span aria-hidden="true">＋</span> Clip a video
+              </Link>
+              <Link href="/frames">
+                <span aria-hidden="true">◈</span> Frame library
               </Link>
               <Link href="/automations">
                 <span aria-hidden="true">↻</span> Automations

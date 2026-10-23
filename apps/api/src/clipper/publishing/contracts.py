@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
@@ -17,6 +18,9 @@ class OAuthConnection:
     profile_url: str = ""
     parent_page_id: str = ""
     parent_page_name: str = ""
+    access_token_expires_at: float | None = None
+    granted_scopes: tuple[str, ...] | None = None
+    management_access_token: str = ""
 
 
 class OAuthConfigurationError(RuntimeError):
@@ -35,6 +39,7 @@ class PublishRequest:
     privacy_status: str = "public"
     account_username: str = ""
     duration_seconds: float | None = None
+    on_upload_started: Callable[[str], None] | None = None
 
 
 @dataclass(frozen=True)
@@ -43,6 +48,7 @@ class PublishedPost:
     external_id: str | None = None
     status: str = "published"
     updated_connection: OAuthConnection | None = None
+    error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -93,3 +99,41 @@ class MetricsAdapter(Protocol):
         post_url: str | None,
         connection: OAuthConnection,
     ) -> ProviderMetrics: ...
+
+
+@runtime_checkable
+class TokenRefreshingAdapter(Protocol):
+    def refresh_connection(self, connection: OAuthConnection) -> OAuthConnection: ...
+
+
+@runtime_checkable
+class ExistingCredentialStore(Protocol):
+    def save_if_present(
+        self, account_id: str, connection: OAuthConnection, expected: OAuthConnection
+    ) -> bool: ...
+
+
+@runtime_checkable
+class RenewingCredentialStore(CredentialStore, Protocol):
+    def refresh(
+        self, account_id: str, renew: Callable[[OAuthConnection], OAuthConnection]
+    ) -> OAuthConnection: ...
+
+
+@runtime_checkable
+class PostUpdater(Protocol):
+    def update_post(
+        self,
+        external_id: str | None,
+        post_url: str | None,
+        title: str,
+        description: str,
+        connection: OAuthConnection,
+    ) -> None: ...
+
+
+@runtime_checkable
+class PostDeleter(Protocol):
+    def delete_post(
+        self, external_id: str | None, post_url: str | None, connection: OAuthConnection
+    ) -> None: ...
